@@ -1,0 +1,17 @@
+{
+  "name": "duel-survivor-server",
+  "version": "1.0.0",
+  "description": "Socket.IO multiplayer server for Duel Survivor",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
