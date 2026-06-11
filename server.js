@@ -35,6 +35,25 @@ app.get("/", (req, res) => {
   });
 });
 
+app.get("/debug", (req, res) => {
+  res.json({
+    ok: true,
+    onlinePlayers: [...players.values()].map(publicPlayer),
+    parties: [...parties.values()].map(p => ({
+      partyId: p.partyId,
+      leaderId: p.leaderId,
+      members: p.members,
+      status: p.status,
+      ready: p.ready
+    })),
+    matches: [...matches.values()].map(m => ({
+      matchId: m.matchId,
+      mode: m.mode,
+      playerCount: m.players.size
+    }))
+  });
+});
+
 function makeSurvivorId() {
   let id;
   do {
@@ -264,7 +283,10 @@ function checkMatchWinner(match) {
 }
 
 io.on("connection", socket => {
+  console.log("[socket] connected:", socket.id);
+
   socket.on("register", data => {
+    console.log("[socket] register:", socket.id, data?.playerId, data?.name);
     let playerId = String(data?.playerId || "").trim();
 
     if (!playerId || idToSocket.has(playerId)) {
