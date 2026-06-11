@@ -249,6 +249,45 @@ function createDuoMatchFromParty(party) {
   broadcastOnlineList();
 }
 
+function cancelMatchBackToPartyLobby(match, reason = "Queue cancelled.") {
+  if (!match) return;
+
+  const party = match.partyId ? parties.get(match.partyId) : null;
+
+  for (const entry of match.players.values()) {
+    const profile = getPlayer(entry.socketId);
+    const socket = io.sockets.sockets.get(entry.socketId);
+
+    if (profile) {
+      profile.inMatch = false;
+      profile.matchId = null;
+    }
+
+    if (socket) {
+      socket.leave(match.matchId);
+      socket.emit("matchQueueCancelled", {
+        matchId: match.matchId,
+        reason
+      });
+    }
+  }
+
+  if (party) {
+    party.status = "lobby";
+    party.matchId = null;
+    party.seed = null;
+
+    for (const id of party.members) {
+      party.ready[id] = false;
+    }
+
+    emitPartyUpdate(party.partyId);
+  }
+
+  matches.delete(match.matchId);
+  broadcastOnlineList();
+}
+
 function checkMatchWinner(match) {
   if (!match) return;
 
@@ -572,29 +611,66 @@ io.on("connection", socket => {
     }
   });
 
-  socket.on("matchLocalDeath", data => {
-    const p = getPlayer(socket.id);
-    if (!p || !p.matchId) return;
+socket.on("matchLocalDeath", data => {
+  const p = getPlayer(socket.id);
+  if (!p || !p.matchId) return;
 
-    const match = matches.get(p.matchId);
-    if (!match) return;
+  const matchId = p.matchId;
+  const match = matches.get(matchId);
+  if (!match) return;
 
-    const entry = match.players.get(socket.id);
+  const entry = match.players.get(socket.id);
+  const reason = data?.reason || "unknown";
+  const phase = data?.phase || entry?.state?.gameState || "";
 
+  // Leaving during queue should cancel the queue for both Duo players,
+  // not declare the remaining player as winner.
+  if (reason === "left_match" && phase === "QUEUE_LOBBY") {
+    cancelMatchBackToPartyLobby(match, `${p.name} left the queue.`);
+    return;
+  }
+
+  // Leaving during an active island match should only remove that player.
+  // It should not force the partner out and should not trigger a fake win.
+  if (reason === "left_match") {
     if (entry) {
       entry.alive = false;
       entry.hp = 0;
+      entry.leftMatch = true;
+      entry.leftAt = Date.now();
     }
 
-    socket.to(p.matchId).emit("matchPlayerEliminated", {
-      victimSocketId: socket.id,
-      killerSocketId: data?.killerSocketId || null,
-      victimName: p.name,
-      killerName: data?.killerName || "Unknown"
+    p.inMatch = false;
+    p.matchId = null;
+    socket.leave(matchId);
+
+    socket.to(matchId).emit("matchPlayerLeft", {
+      socketId: socket.id,
+      playerId: p.playerId,
+      name: p.name,
+      reason: "left_match"
     });
 
-    checkMatchWinner(match);
+    broadcastOnlineList();
+    if (p.partyId) emitPartyUpdate(p.partyId);
+    return;
+  }
+
+  // Real death/elimination.
+  if (entry) {
+    entry.alive = false;
+    entry.hp = 0;
+  }
+
+  socket.to(matchId).emit("matchPlayerEliminated", {
+    victimSocketId: socket.id,
+    killerSocketId: data?.killerSocketId || null,
+    victimName: p.name,
+    killerName: data?.killerName || "Unknown"
   });
+
+  checkMatchWinner(match);
+});
 
   socket.on("disconnect", () => {
     const p = getPlayer(socket.id);
@@ -605,20 +681,33 @@ io.on("connection", socket => {
       if (p.partyId) leaveParty(socket.id);
 
       if (p.matchId) {
-        const match = matches.get(p.matchId);
+        const matchId = p.matchId;
+        const match = matches.get(matchId);
 
         if (match) {
           const entry = match.players.get(socket.id);
-          if (entry) entry.alive = false;
+          const phase = entry?.state?.gameState || "";
 
-          socket.to(p.matchId).emit("matchPlayerEliminated", {
-            victimSocketId: socket.id,
-            killerSocketId: null,
-            victimName: p.name,
-            killerName: "Disconnected"
-          });
+          if (phase === "QUEUE_LOBBY") {
+            cancelMatchBackToPartyLobby(match, `${p.name} disconnected during queue.`);
+          } else {
+            if (entry) {
+              entry.alive = false;
+              entry.hp = 0;
+              entry.disconnected = true;
+              entry.disconnectedAt = Date.now();
+            }
 
-          checkMatchWinner(match);
+            socket.to(matchId).emit("matchPlayerLeft", {
+              socketId: socket.id,
+              playerId: p.playerId,
+              name: p.name,
+              reason: "disconnected"
+            });
+
+            // Do NOT call checkMatchWinner here.
+            // A disconnect/leave is not a legitimate match victory.
+          }
         }
       }
     }
