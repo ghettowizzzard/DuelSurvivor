@@ -1004,6 +1004,8 @@
 
         const mpState = {
             connected: false,
+            connecting: false,
+            connectionError: "",
             profile: null,
             onlinePlayers: [],
             friends: {},
@@ -1090,28 +1092,108 @@
         }
 
         function mpConnect() {
-            if (mpSocket || typeof io === "undefined") return;
+            if (mpSocket && mpSocket.connected) return;
+
+            if (typeof io === "undefined") {
+                mpState.connected = false;
+                mpState.connecting = false;
+                mpState.connectionError = "Socket.IO client failed to load.";
+                mpNotify("Socket.IO client failed to load.");
+                mpRefreshMenuMultiplayerUi();
+                return;
+            }
 
             mpLoadProfile();
 
+            if (mpSocket) {
+                try {
+                    mpSocket.removeAllListeners();
+                    mpSocket.disconnect();
+                } catch (e) {
+                    console.warn("Old multiplayer socket cleanup failed:", e);
+                }
+
+                mpSocket = null;
+            }
+
+            mpState.connected = false;
+            mpState.connecting = true;
+            mpState.connectionError = "";
+            mpRefreshMenuMultiplayerUi();
+
+            console.log("[MP] Connecting to:", MULTIPLAYER_SERVER_URL);
+
             mpSocket = io(MULTIPLAYER_SERVER_URL, {
-                transports: ["websocket", "polling"],
+                path: "/socket.io",
+                transports: ["polling", "websocket"],
+                upgrade: true,
                 reconnection: true,
+                reconnectionAttempts: Infinity,
                 reconnectionDelay: 850,
-                reconnectionDelayMax: 4000
+                reconnectionDelayMax: 4000,
+                timeout: 20000,
+                forceNew: true
             });
 
             mpSocket.on("connect", () => {
+                console.log("[MP] Connected:", mpSocket.id);
+
                 mpState.connected = true;
+                mpState.connecting = false;
+                mpState.connectionError = "";
+
                 mpSocket.emit("register", mpProfilePayload());
+
                 mpNotify("Connected to multiplayer server.");
                 mpRefreshMenuMultiplayerUi();
+                mpRenderFriendsPanel();
             });
 
-            mpSocket.on("disconnect", () => {
+            mpSocket.on("connect_error", err => {
+                console.error("[MP] Connection error:", err);
+
                 mpState.connected = false;
-                mpNotify("Disconnected from multiplayer server.");
+                mpState.connecting = false;
+                mpState.connectionError = err?.message || "Connection failed.";
+
+                mpNotify(`Multiplayer connection error: ${mpState.connectionError}`);
                 mpRefreshMenuMultiplayerUi();
+                mpRenderFriendsPanel();
+            });
+
+            mpSocket.on("disconnect", reason => {
+                console.warn("[MP] Disconnected:", reason);
+
+                mpState.connected = false;
+                mpState.connecting = false;
+                mpState.connectionError = reason || "Disconnected.";
+
+                mpNotify(`Disconnected from multiplayer server: ${mpState.connectionError}`);
+                mpRefreshMenuMultiplayerUi();
+                mpRenderFriendsPanel();
+            });
+
+            mpSocket.io.on("reconnect_attempt", attempt => {
+                mpState.connected = false;
+                mpState.connecting = true;
+                mpState.connectionError = `Reconnecting... attempt ${attempt}`;
+
+                mpRefreshMenuMultiplayerUi();
+                mpRenderFriendsPanel();
+            });
+
+            mpSocket.io.on("reconnect", attempt => {
+                console.log("[MP] Reconnected after attempt:", attempt);
+
+                mpState.connected = true;
+                mpState.connecting = false;
+                mpState.connectionError = "";
+
+                mpSocket.emit("register", mpProfilePayload());
+
+                mpNotify("Reconnected to multiplayer server.");
+                mpRefreshMenuMultiplayerUi();
+                mpRenderFriendsPanel();
             });
 
             mpSocket.on("profileAssigned", serverProfile => {
@@ -1133,6 +1215,10 @@
 
             mpSocket.on("onlinePlayers", players => {
                 mpState.onlinePlayers = Array.isArray(players) ? players : [];
+
+                console.log("[MP] Online players:", mpState.onlinePlayers);
+
+                mpRefreshSavedFriendsFromOnlineList();
                 mpRefreshMenuMultiplayerUi();
                 mpRenderFriendsPanel();
             });
@@ -1384,8 +1470,12 @@
             const online = mpState.onlinePlayers || [];
 
             const friendHtml = friends.length ? friends.map(f => {
-                const onlineFriend = online.find(p => p.playerId === f.playerId);
-                const isOnline = !!onlineFriend;
+                const onlineFriend = online.find(p =>
+    String(p.playerId || "").toLowerCase() === String(f.playerId || "").toLowerCase() ||
+    String(p.name || "").toLowerCase() === String(f.name || "").toLowerCase()
+);
+
+const isOnline = !!onlineFriend;
 
                 return `
                     <div class="p-2 rounded-lg bg-slate-900/80 border border-slate-700 flex items-center justify-between gap-2">
@@ -1431,9 +1521,22 @@
                     <div>
                         <div class="font-orbitron font-black text-cyan-300 tracking-widest">FRIENDS</div>
                         <div class="text-[10px] text-slate-500 font-orbitron">YOUR ID: <span class="text-cyan-300">${mpState.profile?.playerId || "Survivor"}</span></div>
-                        <div class="text-[10px] text-slate-500 font-orbitron">STATUS: <span class="${mpState.connected ? "text-emerald-400" : "text-red-400"}">${mpState.connected ? "ONLINE" : "OFFLINE"}</span></div>
+                        <div class="text-[10px] text-slate-500 font-orbitron">
+    STATUS:
+    <span class="${mpState.connected ? "text-emerald-400" : mpState.connecting ? "text-yellow-400" : "text-red-400"}">
+        ${mpState.connected ? "ONLINE" : mpState.connecting ? "CONNECTING" : "OFFLINE"}
+    </span>
+</div>
+${mpState.connectionError ? `
+    <div class="text-[10px] text-red-400 font-mono mt-1 break-words">
+        ${mpState.connectionError}
+    </div>
+` : ""}
                     </div>
-                    <button class="mp-mini-btn mp-mini-btn-danger" onclick="mpToggleFriendsPanel()">X</button>
+                    <div class="flex gap-2">
+    <button class="mp-mini-btn" onclick="mpConnect()">RECONNECT</button>
+    <button class="mp-mini-btn mp-mini-btn-danger" onclick="mpToggleFriendsPanel()">X</button>
+</div>
                 </div>
 
                 ${invite ? `
@@ -1523,6 +1626,36 @@
 
             mpRenderFriendsPanel();
             mpRefreshMenuMultiplayerUi();
+        }
+
+        function mpRefreshSavedFriendsFromOnlineList() {
+            if (!mpState.friends || !mpState.onlinePlayers) return;
+
+            let changed = false;
+
+            for (const onlinePlayer of mpState.onlinePlayers) {
+                const existing = Object.values(mpState.friends).find(f =>
+                    String(f.playerId || "").toLowerCase() === String(onlinePlayer.playerId || "").toLowerCase() ||
+                    String(f.name || "").toLowerCase() === String(onlinePlayer.name || "").toLowerCase()
+                );
+
+                if (existing && existing.playerId !== onlinePlayer.playerId) {
+                    delete mpState.friends[existing.playerId];
+                    mpState.friends[onlinePlayer.playerId] = {
+                        ...existing,
+                        ...onlinePlayer
+                    };
+                    changed = true;
+                } else if (existing) {
+                    mpState.friends[existing.playerId] = {
+                        ...existing,
+                        ...onlinePlayer
+                    };
+                    changed = true;
+                }
+            }
+
+            if (changed) mpSaveProfile();
         }
 
         function mpDeleteFriend(playerId) {
@@ -11535,7 +11668,10 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
         }
 
         loadCollectionState();
-        mpInit();
+
+        setTimeout(() => {
+            mpInit();
+        }, 250);
 
         // MAIN MENU NAVIGATION ACTION OVERLAY SWEEPER OVERRIDES
         const menuButtons = document.querySelectorAll('.menu-btn');
