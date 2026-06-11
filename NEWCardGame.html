@@ -4507,6 +4507,363 @@ const bots = [];
             };
         }
 
+                const BUILDING_NAV = {
+            WALL_THICKNESS: 12,
+            DOOR_SIZE: 72,
+            DOOR_CLEARANCE: 46
+        };
+
+        function addBuildingWallLocal(house, lx, ly, w, h) {
+            if (!house || w <= 0 || h <= 0) return;
+
+            house.walls.push({
+                x: house.x + lx,
+                y: house.y + ly,
+                w,
+                h,
+                floor: house.floor,
+                navigationWall: true
+            });
+        }
+
+        function addBuildingDoorLocal(house, lx, ly, w, h, horizontal = true) {
+            const door = createDoor(
+                house.x + lx,
+                house.y + ly,
+                w,
+                h,
+                horizontal,
+                house.style?.door || "#8b5a2b"
+            );
+
+            door.floor = house.floor;
+            door.open = true;
+            door.navDoor = true;
+            door.standardDoor = true;
+            door.hp = 9999;
+            door.maxHp = 9999;
+
+            house.doors.push(door);
+            return door;
+        }
+
+        function addVerticalWallWithDoorGap(house, lx, gapCenterY, gapSize = BUILDING_NAV.DOOR_SIZE) {
+            const t = BUILDING_NAV.WALL_THICKNESS;
+            const gapStart = Math.max(t, gapCenterY - gapSize / 2);
+            const gapEnd = Math.min(house.height - t, gapCenterY + gapSize / 2);
+
+            addBuildingWallLocal(house, lx, t, t, Math.max(0, gapStart - t));
+            addBuildingWallLocal(house, lx, gapEnd, t, Math.max(0, house.height - t - gapEnd));
+
+            addBuildingDoorLocal(house, lx, gapStart, t, gapSize, false);
+        }
+
+        function addHorizontalWallWithDoorGap(house, ly, gapCenterX, gapSize = BUILDING_NAV.DOOR_SIZE) {
+            const t = BUILDING_NAV.WALL_THICKNESS;
+            const gapStart = Math.max(t, gapCenterX - gapSize / 2);
+            const gapEnd = Math.min(house.width - t, gapCenterX + gapSize / 2);
+
+            addBuildingWallLocal(house, t, ly, Math.max(0, gapStart - t), t);
+            addBuildingWallLocal(house, gapEnd, ly, Math.max(0, house.width - t - gapEnd), t);
+
+            addBuildingDoorLocal(house, gapStart, ly, gapSize, t, true);
+        }
+
+        function addOuterBuildingShell(house, options = {}) {
+            const t = BUILDING_NAV.WALL_THICKNESS;
+            const doorSize = BUILDING_NAV.DOOR_SIZE;
+            const w = house.width;
+            const h = house.height;
+
+            const southDoorCenterX = w * 0.5;
+            const southGapStart = southDoorCenterX - doorSize / 2;
+            const southGapEnd = southDoorCenterX + doorSize / 2;
+
+            // Top wall
+            addBuildingWallLocal(house, 0, 0, w, t);
+
+            // Bottom/front wall with a proper doorway gap
+            addBuildingWallLocal(house, 0, h - t, southGapStart, t);
+            addBuildingWallLocal(house, southGapEnd, h - t, w - southGapEnd, t);
+            addBuildingDoorLocal(house, southGapStart, h - t, doorSize, t, true);
+
+            // Left wall
+            addBuildingWallLocal(house, 0, 0, t, h);
+
+            // Right wall, optionally with side entrance for bigger structures
+            if (options.eastDoor) {
+                const eastDoorCenterY = h * 0.54;
+                const eastGapStart = eastDoorCenterY - doorSize / 2;
+                const eastGapEnd = eastDoorCenterY + doorSize / 2;
+
+                addBuildingWallLocal(house, w - t, 0, t, eastGapStart);
+                addBuildingWallLocal(house, w - t, eastGapEnd, t, h - eastGapEnd);
+                addBuildingDoorLocal(house, w - t, eastGapStart, t, doorSize, false);
+            } else {
+                addBuildingWallLocal(house, w - t, 0, t, h);
+            }
+        }
+
+        function rebuildBuildingNavigation(house) {
+            if (!house) return;
+
+            house.walls = [];
+            house.doors = [];
+
+            const w = house.width;
+            const h = house.height;
+            const bigBuilding = w >= 300 || h >= 220;
+
+            addOuterBuildingShell(house, {
+                eastDoor: bigBuilding
+            });
+
+            // Keep all interiors simple and readable.
+            // Every internal doorway uses the exact same standardized doorway size.
+            if (house.type === "cabin") {
+                if (w > 185) {
+                    addVerticalWallWithDoorGap(house, w * 0.53, h * 0.56);
+                }
+
+            } else if (house.type === "corner_store") {
+                addHorizontalWallWithDoorGap(house, h * 0.55, w * 0.52);
+                if (w > 280) addVerticalWallWithDoorGap(house, w * 0.66, h * 0.55);
+
+            } else if (house.type === "office") {
+                addVerticalWallWithDoorGap(house, w * 0.36, h * 0.52);
+                addVerticalWallWithDoorGap(house, w * 0.66, h * 0.52);
+                addHorizontalWallWithDoorGap(house, h * 0.52, w * 0.52);
+
+            } else if (house.type === "clinic") {
+                addVerticalWallWithDoorGap(house, w * 0.36, h * 0.55);
+                addVerticalWallWithDoorGap(house, w * 0.68, h * 0.55);
+                addHorizontalWallWithDoorGap(house, h * 0.55, w * 0.52);
+
+            } else if (house.type === "cell_block") {
+                addVerticalWallWithDoorGap(house, w * 0.34, h * 0.5);
+                addVerticalWallWithDoorGap(house, w * 0.66, h * 0.5);
+                addHorizontalWallWithDoorGap(house, h * 0.5, w * 0.5);
+
+            } else if (house.type === "workshop") {
+                addHorizontalWallWithDoorGap(house, h * 0.58, w * 0.48);
+                addVerticalWallWithDoorGap(house, w * 0.52, h * 0.58);
+
+            } else {
+                if (bigBuilding) {
+                    addVerticalWallWithDoorGap(house, w * 0.5, h * 0.5);
+                    addHorizontalWallWithDoorGap(house, h * 0.55, w * 0.5);
+                }
+            }
+
+            house.rooms = [
+                {
+                    x: house.x + BUILDING_NAV.WALL_THICKNESS,
+                    y: house.y + BUILDING_NAV.WALL_THICKNESS,
+                    w: house.width - BUILDING_NAV.WALL_THICKNESS * 2,
+                    h: house.height - BUILDING_NAV.WALL_THICKNESS * 2
+                }
+            ];
+        }
+
+        function rectsOverlapExpanded(a, b, pad = 0) {
+            return a.x < b.x + b.w + pad &&
+                a.x + a.w > b.x - pad &&
+                a.y < b.y + b.h + pad &&
+                a.y + a.h > b.y - pad;
+        }
+
+        function getDoorClearanceRect(door) {
+            const pad = BUILDING_NAV.DOOR_CLEARANCE;
+
+            if (door.horizontal) {
+                return {
+                    x: door.x - pad,
+                    y: door.y - pad * 1.35,
+                    w: door.w + pad * 2,
+                    h: door.h + pad * 2.7
+                };
+            }
+
+            return {
+                x: door.x - pad * 1.35,
+                y: door.y - pad,
+                w: door.w + pad * 2.7,
+                h: door.h + pad * 2
+            };
+        }
+
+        function isFurnitureBlockingBuildingAccess(item, house) {
+            if (!item || !house) return false;
+
+            const itemRect = {
+                x: item.x,
+                y: item.y,
+                w: item.width,
+                h: item.height
+            };
+
+            for (let i = 0; i < house.doors.length; i++) {
+                const clearance = getDoorClearanceRect(house.doors[i]);
+                if (rectsOverlapExpanded(itemRect, clearance, 8)) return true;
+            }
+
+            // Keep the middle lanes open so interiors are easy to walk through.
+            const centerVerticalLane = {
+                x: house.x + house.width * 0.5 - BUILDING_NAV.DOOR_SIZE * 0.5,
+                y: house.y + 18,
+                w: BUILDING_NAV.DOOR_SIZE,
+                h: house.height - 36
+            };
+
+            const centerHorizontalLane = {
+                x: house.x + 18,
+                y: house.y + house.height * 0.55 - BUILDING_NAV.DOOR_SIZE * 0.5,
+                w: house.width - 36,
+                h: BUILDING_NAV.DOOR_SIZE
+            };
+
+            return rectsOverlapExpanded(itemRect, centerVerticalLane, 4) ||
+                rectsOverlapExpanded(itemRect, centerHorizontalLane, 4);
+        }
+
+        function clampFurnitureInsideHouse(item, house) {
+            item.x = Math.max(house.x + 22, Math.min(house.x + house.width - item.width - 22, item.x));
+            item.y = Math.max(house.y + 22, Math.min(house.y + house.height - item.height - 22, item.y));
+        }
+
+        function clearFurnitureBlockingBuildingAccess(house) {
+            if (!house) return;
+
+            const slots = [
+                { x: house.x + 24, y: house.y + 24 },
+                { x: house.x + house.width - 96, y: house.y + 24 },
+                { x: house.x + 24, y: house.y + house.height - 78 },
+                { x: house.x + house.width - 104, y: house.y + house.height - 82 },
+                { x: house.x + house.width * 0.18, y: house.y + house.height * 0.42 },
+                { x: house.x + house.width * 0.72, y: house.y + house.height * 0.42 }
+            ];
+
+            let slotIndex = 0;
+
+            for (let i = 0; i < furniture.length; i++) {
+                const item = furniture[i];
+                if (!item || item.houseId !== house.id || item.destroyed) continue;
+
+                if (isFurnitureBlockingBuildingAccess(item, house)) {
+                    const slot = slots[slotIndex % slots.length];
+                    slotIndex++;
+
+                    item.x = slot.x;
+                    item.y = slot.y;
+                    clampFurnitureInsideHouse(item, house);
+                }
+            }
+        }
+
+        function getHouseAtPoint(x, y, floor = currentFloor, padding = 0) {
+            for (let i = 0; i < houses.length; i++) {
+                const house = houses[i];
+                if (objectFloor(house) !== floor) continue;
+
+                if (
+                    x >= house.x - padding &&
+                    x <= house.x + house.width + padding &&
+                    y >= house.y - padding &&
+                    y <= house.y + house.height + padding
+                ) {
+                    return house;
+                }
+            }
+
+            return null;
+        }
+
+        function getDoorCenter(door) {
+            return {
+                x: door.x + door.w / 2,
+                y: door.y + door.h / 2
+            };
+        }
+
+        function getNearestHouseDoorCenter(house, fromX, fromY) {
+            if (!house || !house.doors || !house.doors.length) return null;
+
+            let best = null;
+            let bestDist = Infinity;
+
+            for (let i = 0; i < house.doors.length; i++) {
+                const center = getDoorCenter(house.doors[i]);
+                const dist = Math.hypot(center.x - fromX, center.y - fromY);
+
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = center;
+                }
+            }
+
+            return best;
+        }
+
+        function getBuildingPathWaypoint(actor, goalX, goalY) {
+            if (!actor) return null;
+
+            const floor = objectFloor(actor);
+            const actorHouse = getHouseAtPoint(actor.x, actor.y, floor, -3);
+            const goalHouse = getHouseAtPoint(goalX, goalY, floor, -3);
+
+            // Actor and goal are in the same building, so direct movement is okay.
+            if (actorHouse && goalHouse && actorHouse.id === goalHouse.id) {
+                return null;
+            }
+
+            // Goal is inside a building and actor is outside/different building.
+            if (goalHouse && (!actorHouse || actorHouse.id !== goalHouse.id)) {
+                return getNearestHouseDoorCenter(goalHouse, actor.x, actor.y);
+            }
+
+            // Actor is inside a building and goal is outside/different building.
+            if (actorHouse && (!goalHouse || actorHouse.id !== goalHouse.id)) {
+                return getNearestHouseDoorCenter(actorHouse, goalX, goalY);
+            }
+
+            return null;
+        }
+
+        function getHouseLootPoint(house) {
+            if (!house) return null;
+
+            const candidates = [
+                { x: house.x + house.width * 0.28, y: house.y + house.height * 0.34 },
+                { x: house.x + house.width * 0.72, y: house.y + house.height * 0.34 },
+                { x: house.x + house.width * 0.28, y: house.y + house.height * 0.72 },
+                { x: house.x + house.width * 0.72, y: house.y + house.height * 0.72 },
+                { x: house.x + house.width * 0.5, y: house.y + house.height * 0.36 }
+            ];
+
+            for (let i = 0; i < candidates.length; i++) {
+                const c = candidates[i];
+
+                let blocked = false;
+
+                for (let d = 0; d < house.doors.length; d++) {
+                    const clearance = getDoorClearanceRect(house.doors[d]);
+                    if (isPointInRect(c.x, c.y, clearance)) {
+                        blocked = true;
+                        break;
+                    }
+                }
+
+                if (blocked) continue;
+
+                return c;
+            }
+
+            return {
+                x: house.x + house.width * 0.5,
+                y: house.y + house.height * 0.5
+            };
+        }
+
         function createBuildingFromTemplate(cx, cy, templateId = "cabin", options = {}) {
             const template = BUILDING_TEMPLATES[templateId] || BUILDING_TEMPLATES.cabin;
             const width = options.width || template.width;
@@ -4553,6 +4910,11 @@ const bots = [];
                 const [kind, lx, ly, w, h] = template.roofProps[i];
                 house.roofProps.push({ kind, x: x + lx * scaleX, y: y + ly * scaleY, w: w * scaleX, h: h * scaleY });
             }
+
+            // Rebuild every building into a clean, navigable layout.
+            // This removes old wall segments that were blocking entrances/doorways.
+            rebuildBuildingNavigation(house);
+            clearFurnitureBlockingBuildingAccess(house);
 
             return house;
         }
@@ -4650,16 +5012,23 @@ const bots = [];
             for (let i = 0; i < houses.length; i++) {
                 const house = houses[i];
                 if (house.isUnderground || Math.random() > 0.62) continue;
+
                 const crateType = Math.random() < 0.55 ? "wood" : Math.random() < 0.8 ? "rune" : "monster";
+                const lootPoint = getHouseLootPoint(house);
+
+                if (!lootPoint) continue;
+
                 const crate = createDestructibleCrate(
-                    house.x + house.width * (0.25 + Math.random() * 0.5),
-                    house.y + house.height * (0.25 + Math.random() * 0.5),
+                    lootPoint.x,
+                    lootPoint.y,
                     38,
                     38,
                     null,
                     crateType
                 );
+
                 crate.floor = house.floor;
+                crate.insideHouseId = house.id;
                 crates.push(crate);
             }
         }
@@ -10429,17 +10798,28 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             return true;
         }
 
-        function findNearbyDownedAlly(range = 74) {
-            const allies = [getLocalDuoPartnerBot(), ...mpState.remotePlayers.values()].filter(Boolean);
+function findNearbyDownedAlly(range = 86) {
+            if (!isDuoMatchActive()) return null;
+
+            let best = null;
+            let bestDist = Infinity;
+
+            const allies = [getLocalDuoPartnerBot(), ...bots, ...mpState.remotePlayers.values()]
+                .filter(Boolean);
 
             for (const ally of allies) {
+                if (ally === player) continue;
                 if (!ally.isDowned || !isSameTeam(ally, player)) continue;
+                if (ally.objectType === "bot" && ally.isEliminated) continue;
 
                 const dist = Math.hypot(ally.x - player.x, ally.y - player.y);
-                if (dist <= range) return ally;
+                if (dist > range || dist >= bestDist) continue;
+
+                best = ally;
+                bestDist = dist;
             }
 
-            return null;
+            return best;
         }
 
 function getTeamActorsById(teamId) {
@@ -11308,22 +11688,257 @@ function mpDrawRemotePlayers() {
             return best;
         }
 
-        function findBestLootCrateForBot(bot) {
-            if (!botWantsLoot(bot)) return null;
+        function botHasOpenSlotForCategory(bot, category) {
+            if (!bot || !bot.combatLoadout) return false;
+
+            if (category === "monster") {
+                return bot.combatLoadout.monsterSlots.some(slot => !slot);
+            }
+
+            if (category === "magic") {
+                return !bot.combatLoadout.magicSlot;
+            }
+
+            if (category === "trap") {
+                return !bot.combatLoadout.trapSlot;
+            }
+
+            return false;
+        }
+
+        function botShouldPickupCard(bot, cardDef) {
+            if (!bot || !cardDef) return false;
+
+            // Always grab cards if the bot has an empty matching slot.
+            if (botHasOpenSlotForCategory(bot, cardDef.category)) return true;
+
+            // Looters keep collecting a little deeper than other personalities.
+            if (bot.personality === "looter" && bot.inventory.length < 8) return true;
+
+            // Allow upgrades if the card is better than what the bot currently has.
+            const weight = RARITY_WEIGHTS[cardDef.rarity] || 1;
+
+            if (cardDef.category === "magic" && bot.combatLoadout.magicSlot) {
+                return weight > (RARITY_WEIGHTS[bot.combatLoadout.magicSlot.rarity] || 1);
+            }
+
+            if (cardDef.category === "trap" && bot.combatLoadout.trapSlot) {
+                return weight > (RARITY_WEIGHTS[bot.combatLoadout.trapSlot.rarity] || 1);
+            }
+
+            if (cardDef.category === "monster") {
+                const weakest = bot.combatLoadout.monsterSlots
+                    .filter(Boolean)
+                    .sort((a, b) => (RARITY_WEIGHTS[a.rarity] || 1) - (RARITY_WEIGHTS[b.rarity] || 1))[0];
+
+                return weakest && weight > (RARITY_WEIGHTS[weakest.rarity] || 1);
+            }
+
+            return botWantsLoot(bot);
+        }
+
+        function findBestLootItemForBot(bot) {
+            if (!bot || !isTargetAlive(bot)) return null;
+
             let best = null;
             let bestScore = -Infinity;
+            const weaponless = getBotWeaponCount(bot) <= 0;
+
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (!item || item.collected) continue;
+                if (item.floor && item.floor !== objectFloor(bot)) continue;
+
+                const dist = Math.hypot(item.x - bot.x, item.y - bot.y);
+                if (dist > 1200) continue;
+
+                let score = -Infinity;
+
+                if (item.type === "card_drop") {
+                    const cardDef = getCardDefinition(item.cardId);
+                    if (!botShouldPickupCard(bot, cardDef)) continue;
+
+                    const rarityScore = RARITY_WEIGHTS[cardDef.rarity] || 1;
+                    const categoryNeed =
+                        cardDef.category === "monster" && bot.combatLoadout.monsterSlots.some(slot => !slot) ? 80 :
+                        cardDef.category === "magic" && !bot.combatLoadout.magicSlot ? 55 :
+                        cardDef.category === "trap" && !bot.combatLoadout.trapSlot ? 45 :
+                        18;
+
+                    score = categoryNeed + rarityScore * 10 - dist * 0.06;
+                    if (weaponless && cardDef.category === "monster") score += 120;
+                }
+
+                if (item.type?.startsWith("scout_lens_")) {
+                    score = 42 - dist * 0.04;
+                }
+
+                if (item.type === "heal_orb" && bot.hp < bot.maxHp * 0.82) {
+                    score = 50 - dist * 0.05;
+                }
+
+                if (item.type === "gold_coin" && bot.personality === "looter") {
+                    score = 12 - dist * 0.03;
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = item;
+                }
+            }
+
+            return best;
+        }
+
+        function moveBotTowardLootItem(bot, item, time) {
+            if (!bot || !item) return false;
+
+            const dist = Math.hypot(item.x - bot.x, item.y - bot.y);
+
+            if (dist > bot.radius + (item.radius || 12) + 8) {
+                moveBotToward(bot, item.x, item.y, bot.personality === "looter" ? 1.12 : 0.98);
+                return true;
+            }
+
+            processBotItemPickups(bot);
+            bot.aiTargetLootItem = null;
+            bot.aiThinkTimer = 0;
+            return true;
+        }
+
+        function findDownedAllyForBot(bot, range = 900) {
+            if (!bot || !isDuoMatchActive()) return null;
+
+            let best = null;
+            let bestDist = Infinity;
+
+            const candidates = [player, ...bots, ...mpState.remotePlayers.values()];
+
+            for (const ally of candidates) {
+                if (!ally || ally === bot) continue;
+                if (!ally.isDowned) continue;
+                if (!isSameTeam(ally, bot)) continue;
+
+                const dist = Math.hypot(ally.x - bot.x, ally.y - bot.y);
+                if (dist > range || dist >= bestDist) continue;
+
+                best = ally;
+                bestDist = dist;
+            }
+
+            return best;
+        }
+
+        function findNearestEnemyForBot(bot, range = 320) {
+            if (!bot) return null;
+
+            let best = null;
+            let bestDist = Infinity;
+            const enemies = [player, ...bots, ...mpState.remotePlayers.values()]
+                .filter(target => target && target !== bot && !isFriendlyTarget(target, bot) && isTargetAlive(target) && !target.isDowned);
+
+            for (const enemy of enemies) {
+                const dist = Math.hypot(enemy.x - bot.x, enemy.y - bot.y);
+                if (dist > range || dist >= bestDist) continue;
+
+                best = enemy;
+                bestDist = dist;
+            }
+
+            return best;
+        }
+
+        function tryBotReviveAlly(bot, dt, time) {
+            if (!bot || !isDuoMatchActive() || bot.isDowned || !isTargetAlive(bot)) return false;
+
+            const ally = findDownedAllyForBot(bot, bot.isDuoPartner ? 1300 : 850);
+            if (!ally) return false;
+
+            const threat = findNearestEnemyForBot(bot, 280);
+            const threatDist = threat ? Math.hypot(threat.x - bot.x, threat.y - bot.y) : Infinity;
+
+            // If an enemy is basically on top of the bot, defend first.
+            if (threat && threatDist < 175) {
+                bot.aiTarget = threat;
+                return false;
+            }
+
+            const dist = Math.hypot(ally.x - bot.x, ally.y - bot.y);
+
+            if (dist > 46) {
+                moveBotToward(bot, ally.x, ally.y, bot.isDuoPartner ? 1.18 : 1.08);
+                bot.aiObjective = "revive";
+                return true;
+            }
+
+            // Bot reached the downed teammate. Hold revive for 5 seconds.
+            ally.reviveHoldByAlly = (ally.reviveHoldByAlly || 0) + dt;
+            bot.aiObjective = "reviving";
+
+            spawnDamageNumber(
+                ally.x,
+                ally.y - ally.radius - 34,
+                `REVIVE ${Math.ceil(Math.max(0, 5 - ally.reviveHoldByAlly))}s`,
+                "#22d3ee"
+            );
+
+            // If danger walks in mid-revive, pause the revive and let normal combat run.
+            if (threat && threatDist < 245 && ally.reviveHoldByAlly < 4.2) {
+                return false;
+            }
+
+            if (ally.reviveHoldByAlly >= 5) {
+                reviveDuoActor(ally, bot);
+                bot.aiObjective = "guard";
+            }
+
+            return true;
+        }
+
+        function findBestLootCrateForBot(bot) {
+            if (!botWantsLoot(bot)) return null;
+
+            let best = null;
+            let bestScore = -Infinity;
+            const weaponless = getBotWeaponCount(bot) <= 0;
 
             for (let i = 0; i < crates.length; i++) {
                 const crate = crates[i];
                 if (!isTargetAlive(crate)) continue;
+                if (objectFloor(crate) !== objectFloor(bot)) continue;
 
                 const bounds = getCrateBounds(crate);
                 const dist = Math.hypot(bounds.centerX - bot.x, bounds.centerY - bot.y);
-                if (dist > 1150) continue;
+                if (dist > 1250) continue;
+
+                const crateHouse = getHouseAtPoint(bounds.centerX, bounds.centerY, objectFloor(crate), -3);
+                const botHouse = getHouseAtPoint(bot.x, bot.y, objectFloor(bot), -3);
+                const differentBuilding =
+                    crateHouse &&
+                    (!botHouse || botHouse.id !== crateHouse.id);
+
+                const door = differentBuilding
+                    ? getNearestHouseDoorCenter(crateHouse, bot.x, bot.y)
+                    : null;
+
+                const doorDist = door ? Math.hypot(door.x - bot.x, door.y - bot.y) : 0;
+                const routePenalty = differentBuilding ? doorDist * 0.035 : 0;
 
                 const config = getCrateTypeConfig(crate.crateType || "wood");
-                const rarityScore = crate.crateType === "godfall" ? 90 : crate.crateType === "prism" ? 65 : crate.crateType === "monster" ? 35 : crate.crateType === "rune" ? 32 : 12;
-                const score = rarityScore - dist * 0.06 + (bot.personality === "looter" ? 30 : 0) + (config.categoryBias?.includes("monster") ? 8 : 0);
+                const rarityScore =
+                    crate.crateType === "godfall" ? 90 :
+                    crate.crateType === "prism" ? 65 :
+                    crate.crateType === "monster" ? 38 :
+                    crate.crateType === "rune" ? 32 :
+                    12;
+
+                let score =
+                    rarityScore -
+                    dist * 0.045 -
+                    routePenalty +
+                    (bot.personality === "looter" ? 35 : 0) +
+                    (weaponless ? 45 : 0) +
+                    (config.categoryBias?.includes("monster") ? 10 : 0);
 
                 if (score > bestScore) {
                     bestScore = score;
@@ -11397,35 +12012,55 @@ function mpDrawRemotePlayers() {
             }
         }
 
-        function processBotItemPickups(bot) {
+function processBotItemPickups(bot) {
+            if (!bot || bot.isEliminated || bot.isDowned) return;
+
             for (let i = items.length - 1; i >= 0; i--) {
                 const item = items[i];
-                if (!checkCircleCollision(bot.x, bot.y, bot.radius, item.x, item.y, item.radius)) continue;
+                if (!item) continue;
+                if (item.floor && item.floor !== objectFloor(bot)) continue;
+                if (!checkCircleCollision(bot.x, bot.y, bot.radius + 6, item.x, item.y, item.radius || 10)) continue;
 
                 if (item.type === "card_drop") {
-                    if (!botWantsLoot(bot)) continue;
+                    const cardDef = getCardDefinition(item.cardId);
+                    if (!cardDef) continue;
+                    if (!botShouldPickupCard(bot, cardDef)) continue;
+
                     const added = addCardToBotInventory(bot, item.cardId, item.cardState);
+
                     if (added) {
-                        const picked = getCardDefinition(item.cardId);
-                        gainBotAether(bot, ["Rare", "Epic", "Legendary", "Mythic", "God Tier"].includes(picked?.rarity) ? 18 : 8, "Loot");
+                        const rarityBonus = ["Rare", "Epic", "Legendary", "Mythic", "God Tier"].includes(cardDef.rarity) ? 18 : 8;
+                        gainBotAether(bot, rarityBonus, "Loot");
                         spawnDamageNumber(bot.x, bot.y - bot.radius - 18, "LOOT", item.visualColor || "#fef08a");
                         items.splice(i, 1);
                     }
+
                 } else if (item.type?.startsWith("scout_lens_")) {
                     const level = item.type.endsWith("x8") ? "x8" : item.type.endsWith("x4") ? "x4" : "x2";
-                    bot.sightRadius = Math.max(bot.sightRadius || 440, level === "x8" ? 980 : level === "x4" ? 720 : 520);
+
+                    bot.sightRadius = Math.max(
+                        bot.sightRadius || 440,
+                        level === "x8" ? 980 : level === "x4" ? 720 : 520
+                    );
+
                     gainBotAether(bot, 10, "Lens");
+                    spawnDamageNumber(bot.x, bot.y - bot.radius - 18, level.toUpperCase(), "#facc15");
                     items.splice(i, 1);
+
                 } else if (item.type === "heal_orb" && bot.hp < bot.maxHp * 0.88) {
                     bot.hp = Math.min(bot.maxHp, bot.hp + item.healAmount);
                     bot.health = bot.hp;
+
                     if (item.shieldAmount > 0) {
                         bot.shieldHp = Math.max(bot.shieldHp || 0, item.shieldAmount);
                         bot.shieldMax = Math.max(bot.shieldMax || 0, item.shieldAmount);
                         bot.shieldTimer = 5;
                     }
+
                     gainBotAether(bot, 6, "Heal Pickup");
+                    spawnDamageNumber(bot.x, bot.y - bot.radius - 18, "+HP", "#34d399");
                     items.splice(i, 1);
+
                 } else if (item.type === "gold_coin") {
                     gainBotAether(bot, 3, "Gold Pickup");
                     items.splice(i, 1);
@@ -11623,7 +12258,7 @@ function mpDrawRemotePlayers() {
             return false;
         }
 
-        function updateDuoPartnerBotAi(bot, dt, time) {
+function updateDuoPartnerBotAi(bot, dt, time) {
             if (!bot || bot.isEliminated) return;
 
             if (bot.isDowned) {
@@ -11637,20 +12272,53 @@ function mpDrawRemotePlayers() {
             processBotItemPickups(bot);
 
             const distToPlayer = Math.hypot(player.x - bot.x, player.y - bot.y);
-            const enemy = findBestBotTarget(bot);
+            const weaponless = getBotWeaponCount(bot) <= 0;
 
-            if (player.isDowned) {
-                moveBotToward(bot, player.x, player.y, 1.18);
+            // Revive gets high priority, but not if an enemy is right on top of the bot.
+            if (tryBotReviveAlly(bot, dt, time)) {
                 return;
             }
 
+            const enemy = findBestBotTarget(bot);
+            const lootItem = findBestLootItemForBot(bot);
+            const crate = findBestLootCrateForBot(bot);
+
+            // If teammate has no cards yet, it should loot instead of chasing fights across the map.
+            if (weaponless && lootItem) {
+                const enemyDist = enemy ? Math.hypot(enemy.x - bot.x, enemy.y - bot.y) : Infinity;
+                if (enemyDist > 170) {
+                    moveBotTowardLootItem(bot, lootItem, time);
+                    return;
+                }
+            }
+
+            if (weaponless && crate) {
+                const enemyDist = enemy ? Math.hypot(enemy.x - bot.x, enemy.y - bot.y) : Infinity;
+                if (enemyDist > 170) {
+                    const bounds = getCrateBounds(crate);
+                    const dist = Math.hypot(bounds.centerX - bot.x, bounds.centerY - bot.y);
+
+                    if (dist > 58) {
+                        moveBotToward(bot, bounds.centerX, bounds.centerY, 1.08);
+                    } else if (time - (bot.aiLootAttackTimer || 0) > 520) {
+                        bot.aiLootAttackTimer = time;
+                        dealDamage(crate, 12, bot, "partner_crate_break");
+                        gainBotAether(bot, 2, "Break Crate");
+                    }
+
+                    return;
+                }
+            }
+
             // Drop a small heal if the player is weak and partner is nearby.
-            if (player.hp < player.maxHp * 0.42 && distToPlayer < 210 && time - (bot.lastHelpDropTime || 0) > 14000) {
+            if (player.hp < player.maxHp * 0.42 && !player.isDowned && distToPlayer < 210 && time - (bot.lastHelpDropTime || 0) > 14000) {
                 bot.lastHelpDropTime = time;
+
                 items.push({
                     id: `partner_heal_${Date.now()}`,
                     x: player.x + 28,
                     y: player.y + 28,
+                    floor: objectFloor(player),
                     type: "heal_orb",
                     name: "Partner Heal",
                     radius: 12,
@@ -11658,14 +12326,29 @@ function mpDrawRemotePlayers() {
                     shieldAmount: 0,
                     pulseTimer: Math.random() * Math.PI
                 });
+
                 spawnDamageNumber(bot.x, bot.y - bot.radius - 22, "DROPPED HEAL", "#22d3ee");
             }
 
-            if (enemy && isTargetAlive(enemy)) {
+            if (enemy && isTargetAlive(enemy) && !enemy.isDowned) {
                 const dist = Math.hypot(enemy.x - bot.x, enemy.y - bot.y);
                 bot.angle = smoothTurnToAngle(bot.angle, getBotAimAngle(bot, enemy, 0.03), 0.2);
 
                 if (dist < 620) botTryUseCards(bot, enemy);
+
+                // If no card weapon exists, only commit to fist fighting when close.
+                if (weaponless && dist > 210) {
+                    if (lootItem) {
+                        moveBotTowardLootItem(bot, lootItem, time);
+                        return;
+                    }
+
+                    if (crate) {
+                        const bounds = getCrateBounds(crate);
+                        moveBotToward(bot, bounds.centerX, bounds.centerY, 1.0);
+                        return;
+                    }
+                }
 
                 if (dist > 360) {
                     moveBotToward(bot, enemy.x, enemy.y, 1.04);
@@ -11674,22 +12357,26 @@ function mpDrawRemotePlayers() {
                     moveBotToward(bot, bot.x + Math.cos(strafeAngle) * 120, bot.y + Math.sin(strafeAngle) * 120, 0.85);
                 }
 
+                if (dist < bot.radius + getTargetRadius(enemy) + 14 && time - (bot.aiAttackTimer || 0) > 800) {
+                    bot.aiAttackTimer = time;
+                    dealDamage(enemy, 4, bot, "partner_fists");
+                }
+
                 return;
             }
 
-            if (distToPlayer > 520) {
-                moveBotToward(bot, player.x, player.y, 1.15);
+            if (lootItem && botWantsLoot(bot)) {
+                moveBotTowardLootItem(bot, lootItem, time);
                 return;
             }
 
-            const crate = findBestLootCrateForBot(bot);
-            if (crate && distToPlayer < 900) {
+            if (crate && distToPlayer < 950) {
                 const bounds = getCrateBounds(crate);
                 const dist = Math.hypot(bounds.centerX - bot.x, bounds.centerY - bot.y);
 
                 if (dist > 58) {
                     moveBotToward(bot, bounds.centerX, bounds.centerY, 1.0);
-                } else if (time - bot.aiLootAttackTimer > 520) {
+                } else if (time - (bot.aiLootAttackTimer || 0) > 520) {
                     bot.aiLootAttackTimer = time;
                     dealDamage(crate, 12, bot, "partner_crate_break");
                     gainBotAether(bot, 2, "Break Crate");
@@ -11703,18 +12390,49 @@ function mpDrawRemotePlayers() {
                 moveBotToward(bot, player.x + 90, player.y + 40, 0.84);
             } else {
                 bot.wanderTimer -= dt;
+
                 if (bot.wanderTimer <= 0) {
-                    bot.aiGoalX = player.x + (Math.random() - 0.5) * 260;
-                    bot.aiGoalY = player.y + (Math.random() - 0.5) * 260;
+                    let p = {
+                        x: player.x + (Math.random() - 0.5) * 260,
+                        y: player.y + (Math.random() - 0.5) * 260
+                    };
+
+                    const pHouse = getHouseAtPoint(p.x, p.y, objectFloor(bot), -3);
+                    const botHouse = getHouseAtPoint(bot.x, bot.y, objectFloor(bot), -3);
+
+                    if (pHouse && (!botHouse || botHouse.id !== pHouse.id)) {
+                        const door = getNearestHouseDoorCenter(pHouse, bot.x, bot.y);
+                        if (door) p = door;
+                    }
+
+                    bot.aiGoalX = p.x;
+                    bot.aiGoalY = p.y;
                     bot.wanderTimer = Math.random() * 2 + 1.2;
                 }
+
                 moveBotToward(bot, bot.aiGoalX, bot.aiGoalY, 0.55);
             }
         }
 
 function moveBotToward(bot, goalX, goalY, speedMult = 1) {
-            const dx = goalX - bot.x;
-            const dy = goalY - bot.y;
+            let targetX = goalX;
+            let targetY = goalY;
+
+            // If the target is inside/outside a building, route through the nearest real doorway first.
+            const buildingWaypoint = getBuildingPathWaypoint(bot, goalX, goalY);
+
+            if (buildingWaypoint) {
+                const waypointDist = Math.hypot(buildingWaypoint.x - bot.x, buildingWaypoint.y - bot.y);
+
+                if (waypointDist > 42) {
+                    targetX = buildingWaypoint.x;
+                    targetY = buildingWaypoint.y;
+                    bot.aiObjective = "doorway";
+                }
+            }
+
+            const dx = targetX - bot.x;
+            const dy = targetY - bot.y;
             const dist = Math.hypot(dx, dy);
 
             if (dist < 6) {
@@ -11724,10 +12442,6 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
 
             const desired = Math.atan2(dy, dx);
 
-            // Weighted turn instead of instant snapping.
-            const turnAmount = bot.isDuoPartner ? 0.20 : 0.16;
-            bot.angle = smoothTurnToAngle(bot.angle || desired, desired, turnAmount);
-
             const rootMult = bot.rootTimer > 0 ? 0 : 1;
             const shockMult = bot.shockTimer > 0 ? 0.65 : 1;
             const slowMult = bot.slowMultiplier || 1;
@@ -11736,21 +12450,96 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
             const downedMult = bot.isDowned ? 0.25 : 1;
             const moveSpeed = bot.speed * rootMult * shockMult * slowMult * waterMult * speedMult * difficultyMult * downedMult;
 
-            const stepAngle = bot.angle;
-            const next = applySolidCollisions(
-                bot.x + Math.cos(stepAngle) * moveSpeed,
-                bot.y + Math.sin(stepAngle) * moveSpeed,
-                bot.radius,
-                objectFloor(bot)
-            );
+            if (moveSpeed <= 0.001) {
+                spawnWaterWake(bot, false);
+                return;
+            }
 
-            spawnWaterWake(bot, moveSpeed > 0.05);
+            if (!bot.aiAvoidSide) {
+                bot.aiAvoidSide = Math.random() < 0.5 ? -1 : 1;
+            }
 
-            bot.x = next.x;
-            bot.y = next.y;
+            const floor = objectFloor(bot);
+            const desiredNX = Math.cos(desired);
+            const desiredNY = Math.sin(desired);
+
+            const testOffsets = [
+                0,
+                bot.aiAvoidSide * 0.42,
+                -bot.aiAvoidSide * 0.42,
+                bot.aiAvoidSide * 0.82,
+                -bot.aiAvoidSide * 0.82,
+                bot.aiAvoidSide * 1.22,
+                -bot.aiAvoidSide * 1.22
+            ];
+
+            let best = null;
+            let bestScore = -Infinity;
+
+            for (let i = 0; i < testOffsets.length; i++) {
+                const angle = desired + testOffsets[i];
+                const rawX = bot.x + Math.cos(angle) * moveSpeed;
+                const rawY = bot.y + Math.sin(angle) * moveSpeed;
+                const resolved = applySolidCollisions(rawX, rawY, bot.radius, floor);
+
+                const movedX = resolved.x - bot.x;
+                const movedY = resolved.y - bot.y;
+                const moved = Math.hypot(movedX, movedY);
+
+                const progress = moved > 0.001
+                    ? (movedX / moved) * desiredNX + (movedY / moved) * desiredNY
+                    : -1;
+
+                // Prefer actual progress toward the target, but allow side-stepping around walls.
+                const score = moved * 1.4 + progress * 36 - Math.abs(testOffsets[i]) * 4;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = {
+                        angle,
+                        x: resolved.x,
+                        y: resolved.y,
+                        moved,
+                        progress
+                    };
+                }
+            }
+
+            if (!best || best.moved < moveSpeed * 0.15) {
+                bot.aiStuckFrames = (bot.aiStuckFrames || 0) + 1;
+
+                if (bot.aiStuckFrames > 10) {
+                    bot.aiAvoidSide *= -1;
+                    bot.aiStuckFrames = 0;
+                    bot.aiGoalX = bot.x + Math.cos((bot.angle || desired) + bot.aiAvoidSide * Math.PI * 0.65) * 220;
+                    bot.aiGoalY = bot.y + Math.sin((bot.angle || desired) + bot.aiAvoidSide * Math.PI * 0.65) * 220;
+                }
+
+                spawnWaterWake(bot, false);
+                return;
+            }
+
+            if (best.progress < 0.12) {
+                bot.aiStuckFrames = (bot.aiStuckFrames || 0) + 1;
+
+                if (bot.aiStuckFrames > 8) {
+                    bot.aiAvoidSide *= -1;
+                    bot.aiStuckFrames = 0;
+                }
+            } else {
+                bot.aiStuckFrames = Math.max(0, (bot.aiStuckFrames || 0) - 1);
+            }
+
+            const turnAmount = bot.isDuoPartner ? 0.26 : 0.21;
+            bot.angle = smoothTurnToAngle(bot.angle || best.angle, best.angle, turnAmount);
+
+            bot.x = best.x;
+            bot.y = best.y;
+
+            spawnWaterWake(bot, best.moved > 0.05);
         }
 
-        function updateBotAi(bot, dt, time) {
+function updateBotAi(bot, dt, time) {
             if (bot.isDuoPartner && currentGameState === GAME_STATES.MATCH) {
                 updateDuoPartnerBotAi(bot, dt, time);
                 return;
@@ -11769,11 +12558,13 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
 
             if (currentGameState === GAME_STATES.QUEUE_LOBBY) {
                 bot.wanderTimer -= dt;
+
                 if (bot.wanderTimer <= 0) {
                     bot.aiGoalX = worldWidth / 2 + (Math.random() - 0.5) * 620;
                     bot.aiGoalY = worldHeight / 2 + (Math.random() - 0.5) * 620;
                     bot.wanderTimer = Math.random() * 2.5 + 1.5;
                 }
+
                 moveBotToward(bot, bot.aiGoalX, bot.aiGoalY, 0.75);
                 return;
             }
@@ -11781,15 +12572,38 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
             if (currentGameState !== GAME_STATES.MATCH) return;
 
             const distToStormCenter = Math.hypot(bot.x - storm.centerX, bot.y - storm.centerY);
+
             if (distToStormCenter > storm.currentRadius && time - bot.lastStormDamageTime > storm.damageTickRate) {
                 dealDamage(bot, 6, null, "storm");
                 bot.lastStormDamageTime = time;
             }
 
+            // Revive teammates if safe enough.
+            if (tryBotReviveAlly(bot, dt, time)) {
+                return;
+            }
+
             bot.aiThinkTimer -= dt;
+
             if (bot.aiThinkTimer <= 0) {
+                const weaponless = getBotWeaponCount(bot) <= 0;
+
                 bot.aiTarget = findBestBotTarget(bot);
-                bot.aiTargetCrate = !bot.aiTarget ? findBestLootCrateForBot(bot) : null;
+                bot.aiTargetLootItem = findBestLootItemForBot(bot);
+
+                const targetDist = bot.aiTarget ? Math.hypot(bot.aiTarget.x - bot.x, bot.aiTarget.y - bot.y) : Infinity;
+
+                // Weaponless bots should not chase distant enemies with fists.
+                // They should loot crates/cards first, unless danger is already close.
+                if (weaponless && targetDist > 180) {
+                    bot.aiTarget = null;
+                }
+
+                const shouldLoot =
+                    botWantsLoot(bot) &&
+                    (!bot.aiTarget || weaponless || bot.personality === "looter");
+
+                bot.aiTargetCrate = shouldLoot ? findBestLootCrateForBot(bot) : null;
                 bot.aiThinkTimer = Math.random() * 0.35 + 0.18;
             }
 
@@ -11804,12 +12618,34 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
                 return;
             }
 
-            if (bot.aiTarget && isTargetAlive(bot.aiTarget)) {
+            const weaponless = getBotWeaponCount(bot) <= 0;
+
+            if (bot.aiTargetLootItem && items.includes(bot.aiTargetLootItem)) {
+                const enemyDist = bot.aiTarget ? Math.hypot(bot.aiTarget.x - bot.x, bot.aiTarget.y - bot.y) : Infinity;
+
+                if (weaponless || enemyDist > 190 || bot.personality === "looter") {
+                    moveBotTowardLootItem(bot, bot.aiTargetLootItem, time);
+                    return;
+                }
+            }
+
+            if (bot.aiTarget && isTargetAlive(bot.aiTarget) && !bot.aiTarget.isDowned) {
                 const target = bot.aiTarget;
                 const dist = Math.hypot(target.x - bot.x, target.y - bot.y);
                 bot.angle = smoothTurnToAngle(bot.angle, getBotAimAngle(bot, target, 0.04), 0.18);
 
                 if (dist < 620) botTryUseCards(bot, target);
+
+                // If the bot has no cards, only fist-fight when close. Otherwise keep looting.
+                if (weaponless && dist > 210) {
+                    bot.aiTarget = null;
+                    bot.aiTargetCrate = findBestLootCrateForBot(bot);
+
+                    if (bot.aiTargetLootItem && items.includes(bot.aiTargetLootItem)) {
+                        moveBotTowardLootItem(bot, bot.aiTargetLootItem, time);
+                        return;
+                    }
+                }
 
                 if (dist > 360) {
                     moveBotToward(bot, target.x, target.y, bot.personality === "aggressive" ? 1.15 : 0.95);
@@ -11818,7 +12654,7 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
                     moveBotToward(bot, bot.x + Math.cos(strafeAngle) * 120, bot.y + Math.sin(strafeAngle) * 120, 0.82);
                 }
 
-                if (dist < bot.radius + getTargetRadius(target) + 14 && time - bot.aiAttackTimer > 800) {
+                if (dist < bot.radius + getTargetRadius(target) + 14 && time - (bot.aiAttackTimer || 0) > 800) {
                     bot.aiAttackTimer = time;
                     dealDamage(target, 4, bot, "bot_fists");
                 }
@@ -11832,17 +12668,31 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
 
                 if (dist > 58) {
                     moveBotToward(bot, bounds.centerX, bounds.centerY, bot.personality === "looter" ? 1.1 : 0.9);
-                } else if (time - bot.aiLootAttackTimer > 520) {
+                } else if (time - (bot.aiLootAttackTimer || 0) > 520) {
                     bot.aiLootAttackTimer = time;
                     dealDamage(bot.aiTargetCrate, 12, bot, "bot_crate_break");
                     gainBotAether(bot, 2, "Break Crate");
                 }
+
                 return;
             }
 
             bot.wanderTimer -= dt;
+
             if (bot.wanderTimer <= 0) {
-                const p = currentGameState === GAME_STATES.MATCH ? randomIslandPoint({ minEdge: 0.13, avoidWater: false, margin: 600 }) : { x: worldWidth / 2, y: worldHeight / 2 };
+                let p = currentGameState === GAME_STATES.MATCH
+                    ? randomIslandPoint({ minEdge: 0.13, avoidWater: false, margin: 600 })
+                    : { x: worldWidth / 2, y: worldHeight / 2 };
+
+                // Avoid choosing random wander targets deep inside a building unless the bot is already inside it.
+                const pHouse = getHouseAtPoint(p.x, p.y, objectFloor(bot), -3);
+                const botHouse = getHouseAtPoint(bot.x, bot.y, objectFloor(bot), -3);
+
+                if (pHouse && (!botHouse || botHouse.id !== pHouse.id)) {
+                    const door = getNearestHouseDoorCenter(pHouse, bot.x, bot.y);
+                    if (door) p = door;
+                }
+
                 bot.aiGoalX = p.x;
                 bot.aiGoalY = p.y;
                 bot.wanderTimer = Math.random() * 4 + 2;
@@ -12037,7 +12887,14 @@ function moveBotToward(bot, goalX, goalY, speedMult = 1) {
             if (k === 'e') {
                 keys.e = true;
 
-                if (findNearbyDownedAlly()) {
+                const downedAlly = findNearbyDownedAlly();
+                if (downedAlly) {
+                    spawnDamageNumber(
+                        downedAlly.x,
+                        downedAlly.y - downedAlly.radius - 34,
+                        "HOLD E TO REVIVE",
+                        "#22d3ee"
+                    );
                     return;
                 }
 
