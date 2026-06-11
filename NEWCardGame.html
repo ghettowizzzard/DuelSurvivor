@@ -1368,6 +1368,25 @@
                 mpNotify(`${data.victimName || "Player"} was eliminated by ${data.killerName || "Unknown"}.`);
             });
 
+            mpSocket.on("matchPlayerLeft", data => {
+                if (!data) return;
+
+                const remote = mpState.remotePlayers.get(data.socketId);
+
+                if (remote) {
+                    remote.alive = false;
+                    remote.takesDamage = false;
+                    remote.leftMatch = true;
+                    remote.hp = 0;
+                }
+
+                mpNotify(`${data.name || "Your teammate"} left the match.`);
+            });
+
+            mpSocket.on("matchQueueCancelled", data => {
+                mpReturnToMenuWithoutLeave(data?.reason || "Queue cancelled. Returning to Duo lobby.");
+            });
+
             mpSocket.on("matchWinner", data => {
                 const won = !!data?.won;
 
@@ -1748,20 +1767,30 @@ ${mpState.connectionError ? `
         let gameLoopFrameId = null;
         let lastTime = 0;
 
-        function mpRenderPartyLobbyHtml() {
+function mpRenderPartyLobbyHtml() {
             const party = mpState.party;
 
             if (!party || !party.members || party.members.length < 2) return "";
 
-            const members = party.members.map(m => `
-                <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-950/70 border ${m.ready ? "border-emerald-400" : "border-slate-700"} px-3 py-2">
-                    <div class="min-w-0">
-                        <div class="font-orbitron font-black text-slate-100 truncate">${m.name}${m.leader ? " 👑" : ""}</div>
-                        <div class="text-[10px] text-slate-500 font-orbitron">${m.playerId} · Lv.${m.level} · ${m.rank}</div>
+            const members = party.members.map(m => {
+                const isMe = mpSocket && m.socketId === mpSocket.id;
+                const isInMatch = party.status === "matching" && !isMe;
+
+                return `
+                    <div class="flex items-center justify-between gap-3 rounded-xl bg-slate-950/70 border ${m.ready ? "border-emerald-400" : "border-slate-700"} px-3 py-2">
+                        <div class="min-w-0">
+                            <div class="font-orbitron font-black text-slate-100 truncate">${m.name}${m.leader ? " 👑" : ""}</div>
+                            <div class="text-[10px] text-slate-500 font-orbitron">${m.playerId} · Lv.${m.level} · ${m.rank}</div>
+                        </div>
+                        <div class="text-xs font-orbitron font-black ${m.ready ? "text-emerald-400" : isInMatch ? "text-cyan-400" : "text-slate-500"}">
+                            ${party.status === "matching" ? (isMe ? "LOBBY" : "IN MATCH") : m.ready ? "READY" : "WAITING"}
+                        </div>
                     </div>
-                    <div class="text-xs font-orbitron font-black ${m.ready ? "text-emerald-400" : "text-slate-500"}">${m.ready ? "READY" : "WAITING"}</div>
-                </div>
-            `).join("");
+                `;
+            }).join("");
+
+            const matchInProgress = party.status === "matching";
+            const readying = party.status === "readying";
 
             return `
                 <div id="mp-party-lobby-card" class="mp-party-card mb-3">
@@ -1775,7 +1804,12 @@ ${mpState.connectionError ? `
 
                     <div class="space-y-2 mb-3">${members}</div>
 
-                    ${party.status === "readying" || party.status === "matching" ? `
+                    ${matchInProgress ? `
+                        <div class="text-center text-xs text-cyan-300 font-orbitron leading-relaxed border border-cyan-900 bg-cyan-950/30 rounded-xl p-3">
+                            DUO MATCH IN PROGRESS.<br>
+                            Wait for your partner to finish, or leave this Duo lobby.
+                        </div>
+                    ` : readying ? `
                         <button class="mp-ready-btn ${mpState.partyReady ? "ready" : ""}" onclick="mpToggleReady()">
                             ${mpState.partyReady ? "READY ✓" : "CLICK READY"}
                         </button>
@@ -1833,22 +1867,44 @@ ${mpState.connectionError ? `
             if (menuAnimFrameId) cancelAnimationFrame(menuAnimFrameId);
 
             mpState.matchMode = mode;
+            mpState.reviveTarget = null;
+            mpState.reviveHold = 0;
 
-            // Online duo uses a synchronized fixed queue timer so both clients deploy together.
-            if (mode === "duo-online") {
-                mpState.onlineQueueStartAt = performance.now();
-                mpState.onlineQueueDeployAt = mpState.onlineQueueStartAt + 15000;
+            player.isDowned = false;
+            player.downedTimer = 0;
+            player.reviveHoldByAlly = 0;
+            player.takesDamage = true;
+
+            if (mode === "solo") {
+                player.teamId = "solo_player";
+                player.color = "#38bdf8";
+                mpState.botDuoPartnerId = null;
+                mpState.botPartnerJoinAt = 0;
+                mpState.teammates = [];
+                clearAllBotTeams();
             }
 
-            // Solo-duo means player queued Duo alone and should receive a bot teammate.
+            if (mode === "duo-online") {
+                player.teamId = "player_team";
+                player.color = "#22d3ee";
+                mpState.onlineQueueStartAt = performance.now();
+                mpState.onlineQueueDeployAt = mpState.onlineQueueStartAt + 15000;
+                mpState.botDuoPartnerId = null;
+            }
+
             if (mode === "duo-bot") {
-                mpState.botPartnerJoinAt = Math.floor(Math.random() * 26) + 15; // 15-40 joined bots
+                player.teamId = "player_team";
+                player.color = "#22d3ee";
+                mpState.botPartnerJoinAt = Math.floor(Math.random() * 26) + 15;
                 mpState.botDuoPartnerId = null;
             }
 
             initQueueLobby();
-            mpSeedRemoteTeammatePlaceholders();
-            mpEmitPlayerState(performance.now(), true);
+
+            if (mode === "duo-online") {
+                mpSeedRemoteTeammatePlaceholders();
+                mpEmitPlayerState(performance.now(), true);
+            }
         }
 
         function getActorTeamId(actor) {
@@ -1905,7 +1961,20 @@ ${mpState.connectionError ? `
         }
 
         function mpApplyTeamSpawnOffset() {
+            player.isDowned = false;
+            player.downedTimer = 0;
+            player.reviveHoldByAlly = 0;
+            player.takesDamage = true;
+
+            if (!isDuoMatchActive()) {
+                player.teamId = "solo_player";
+                player.color = "#38bdf8";
+                mpState.botDuoPartnerId = null;
+                return;
+            }
+
             player.teamId = "player_team";
+            player.color = "#22d3ee";
 
             if (mpState.matchMode === "duo-online" && mpState.teammates?.length) {
                 const index = mpGetMyTeamIndex();
@@ -1915,17 +1984,16 @@ ${mpState.connectionError ? `
                     { x: 0, y: -42 },
                     { x: 0, y: 42 }
                 ];
+
                 const offset = offsets[index % offsets.length];
 
                 player.x += offset.x;
                 player.y += offset.y;
-                player.color = "#22d3ee";
 
                 mpSeedRemoteTeammatePlaceholders();
             }
 
             if (mpState.matchMode === "duo-bot") {
-                player.color = "#22d3ee";
                 ensureLocalDuoBotPartner(true);
             }
         }
@@ -1935,8 +2003,66 @@ ${mpState.connectionError ? `
             return bots.find(b => b.id === mpState.botDuoPartnerId && !b.isEliminated) || null;
         }
 
+function clearBotTeamFlags(bot) {
+            if (!bot) return;
+
+            bot.teamId = null;
+            bot.duoMateId = null;
+            bot.isDuoPartner = false;
+            bot.revivePriority = false;
+
+            if (bot.color === "#22d3ee") {
+                const personalityConfig = BOT_PERSONALITY_CONFIG[bot.personality] || BOT_PERSONALITY_CONFIG.balanced;
+                bot.color = personalityConfig.color;
+            }
+
+            if (bot.name && bot.name.endsWith(" Partner")) {
+                bot.name = bot.name.replace(" Partner", "");
+            }
+        }
+
+        function clearAllBotTeams() {
+            for (const bot of bots) {
+                clearBotTeamFlags(bot);
+                bot.isDowned = false;
+                bot.downedTimer = 0;
+                bot.reviveHoldByAlly = 0;
+                bot.takesDamage = true;
+            }
+
+            mpState.botDuoPartnerId = null;
+        }
+
+        function cleanupExtraDuoPartners(preferredBot = null) {
+            let kept = preferredBot || null;
+
+            if (!kept && mpState.botDuoPartnerId) {
+                kept = bots.find(b => b.id === mpState.botDuoPartnerId && !b.isEliminated) || null;
+            }
+
+            if (!kept) {
+                kept = bots.find(b => b.isDuoPartner && !b.isEliminated) || null;
+            }
+
+            for (const bot of bots) {
+                if (!bot || bot.isEliminated) continue;
+
+                if (bot.isDuoPartner && bot !== kept) {
+                    clearBotTeamFlags(bot);
+                }
+            }
+
+            if (kept) {
+                mpState.botDuoPartnerId = kept.id;
+            }
+
+            return kept;
+        }
+
         function assignBotAsDuoPartner(bot) {
             if (!bot) return;
+
+            cleanupExtraDuoPartners(bot);
 
             bot.teamId = "player_team";
             bot.isDuoPartner = true;
@@ -1944,6 +2070,10 @@ ${mpState.connectionError ? `
             bot.color = "#22d3ee";
             bot.revivePriority = true;
             bot.sightRadius = Math.max(bot.sightRadius || 500, 620);
+            bot.isDowned = false;
+            bot.downedTimer = 0;
+            bot.takesDamage = true;
+
             mpState.botDuoPartnerId = bot.id;
 
             spawnDamageNumber(bot.x, bot.y - bot.radius - 24, "DUO PARTNER", "#22d3ee");
@@ -1953,12 +2083,27 @@ ${mpState.connectionError ? `
         function ensureLocalDuoBotPartner(force = false) {
             if (mpState.matchMode !== "duo-bot") return null;
 
-            const existing = getLocalDuoPartnerBot();
-            if (existing) return existing;
+            const existing = cleanupExtraDuoPartners();
 
-            if (!force && getAliveBotCount() < (mpState.botPartnerJoinAt || 20)) return null;
+            if (existing && !existing.isEliminated) {
+                existing.teamId = "player_team";
+                existing.isDuoPartner = true;
+                existing.color = "#22d3ee";
+                mpState.botDuoPartnerId = existing.id;
+                return existing;
+            }
 
-            let candidate = bots.find(b => !b.isEliminated && !b.isDuoPartner);
+            if (!force && getAliveBotCount() < (mpState.botPartnerJoinAt || 20)) {
+                return null;
+            }
+
+            let candidate = bots.find(bot =>
+                bot &&
+                !bot.isEliminated &&
+                !bot.isDuoPartner &&
+                bot.teamId !== "player_team"
+            );
+
             if (!candidate) {
                 candidate = spawnLobbyBot();
             }
@@ -1966,24 +2111,46 @@ ${mpState.connectionError ? `
             if (!candidate) return null;
 
             assignBotAsDuoPartner(candidate);
+
             candidate.x = player.x + 70;
             candidate.y = player.y + 20;
             candidate.aiGoalX = candidate.x;
             candidate.aiGoalY = candidate.y;
 
+            cleanupExtraDuoPartners(candidate);
+
             return candidate;
         }
 
         function assignBotTeamsForDuoMatch() {
+            if (!isDuoMatchActive()) {
+                player.teamId = "solo_player";
+                player.isDowned = false;
+                player.downedTimer = 0;
+                player.takesDamage = true;
+                clearAllBotTeams();
+                return;
+            }
+
             player.teamId = "player_team";
 
-            const partner = getLocalDuoPartnerBot();
-            if (partner) {
-                partner.teamId = "player_team";
-                partner.isDuoPartner = true;
-                partner.color = "#22d3ee";
-                partner.x = player.x + 70;
-                partner.y = player.y + 25;
+            let partner = null;
+
+            if (mpState.matchMode === "duo-bot") {
+                partner = ensureLocalDuoBotPartner(true);
+
+                if (partner) {
+                    partner.teamId = "player_team";
+                    partner.isDuoPartner = true;
+                    partner.color = "#22d3ee";
+                    partner.x = player.x + 70;
+                    partner.y = player.y + 25;
+                    partner.isDowned = false;
+                    partner.downedTimer = 0;
+                    partner.takesDamage = true;
+                }
+
+                cleanupExtraDuoPartners(partner);
             }
 
             let teamNum = 1;
@@ -1992,15 +2159,20 @@ ${mpState.connectionError ? `
             for (const bot of bots) {
                 if (!bot || bot.isEliminated || bot.isDuoPartner) continue;
 
+                bot.isDowned = false;
+                bot.downedTimer = 0;
+                bot.takesDamage = true;
+
                 if (!waiting) {
                     waiting = bot;
                     waiting.teamId = `bot_team_${teamNum}`;
                     waiting.color = "#ef4444";
+                    waiting.duoMateId = null;
                 } else {
                     bot.teamId = waiting.teamId;
                     bot.color = "#ef4444";
-                    waiting.duoMateId = bot.id;
                     bot.duoMateId = waiting.id;
+                    waiting.duoMateId = bot.id;
                     waiting = null;
                     teamNum++;
                 }
@@ -2009,6 +2181,7 @@ ${mpState.connectionError ? `
             if (waiting) {
                 waiting.teamId = `bot_team_${teamNum}`;
                 waiting.color = "#ef4444";
+                waiting.duoMateId = null;
             }
         }
 
@@ -5470,7 +5643,10 @@ function resetCombatFx() {
             };
 
             for (let i = 0; i < AWAKENING_BRANCHES.length; i++) bot.branchCounts[AWAKENING_BRANCHES[i]] = 0;
-            seedBotStartingCards(bot, options.starterCards || null);
+            if (Array.isArray(options.starterCards) && options.starterCards.length > 0) {
+                seedBotStartingCards(bot, options.starterCards);
+            }
+
             return bot;
         }
 
@@ -5558,11 +5734,16 @@ function resetCombatFx() {
         }
 
         function gainAetherForActor(actor, amount, reason = "Aether") {
+            if (!actor || amount <= 0) return;
+
             if (actor === player) {
                 gainAether(amount, reason);
                 return;
             }
-            gainBotAether(actor, amount, reason);
+
+            if (actor.objectType === "bot") {
+                gainBotAether(actor, amount, reason);
+            }
         }
 
         function gainBotAether(bot, baseAmount, reason = "Aether") {
@@ -6202,46 +6383,123 @@ function resetCombatFx() {
             });
         }
 
-        function destroyWorldObject(object) {
+function destroyWorldObject(object, sourceActor = player) {
             if (!object || object.destroyed) return;
+
             const center = getTargetCenter(object);
             object.destroyed = true;
             object.alive = false;
             object.takesDamage = false;
 
             if (object.objectType === "destructibleTree") {
-                gainAether(4, "Break Tree");
-                debrisMarks.push({ x: center.x, y: center.y, type: "stump", radius: Math.max(8, object.trunkRadius * 0.65) });
-                spawnHitParticles(center.x, center.y, "leaves");
-                if (Math.random() < 0.15) spawnTestLootDrop(center.x, center.y);
-                triggerNotification("Tree chopped down.");
-            } else if (object.objectType === "destructibleRock") {
-                gainAether(5, "Break Rock");
-                debrisMarks.push({ x: center.x, y: center.y, type: "rubble", radius: Math.max(10, object.radius * 0.75) });
-                spawnHitParticles(center.x, center.y, "stone");
-                addScreenShake(4, 0.14);
-                triggerNotification("Rock cracked apart.");
-            } else if (object.objectType === "destructibleCrate") {
-                const config = getCrateTypeConfig(object.crateType || "wood");
-                gainAether(8, "Break Crate");
-                gainAether(object.rarity === "rare" ? 25 : 10, `${config.label || "CRATE"} Crate`);
-                debrisMarks.push({ x: center.x, y: center.y, type: "splinters", radius: Math.max(object.width, object.height) * 0.45 });
-                spawnHitParticles(center.x, center.y, object.crateType === "rune" ? "rune" : object.crateType === "prism" || object.crateType === "godfall" ? "star" : object.crateType === "healing" ? "healing" : object.crateType === "lens" ? "electric" : "wood");
-                spawnMagicRing(center.x, center.y, object.glowColor || config.glowColor || "#f59e0b", object.crateType === "godfall" ? 120 : object.crateType === "prism" ? 90 : 62, 0.45);
-                spawnCardLootDrop(center.x, center.y, object);
+                gainAetherForActor(sourceActor, 4, "Break Tree");
 
-                if (player.runtimeStats?.goldRush && Math.random() < 0.2) {
-                    items.push({ id: `gold_${Date.now()}_${Math.random()}`, x: center.x + 14, y: center.y, floor: objectFloor(object), type: "gold_coin", name: "Bonus Gold", radius: 9, amount: object.rarity === "rare" ? 20 : 8, pulseTimer: Math.random() * Math.PI });
+                debrisMarks.push({
+                    x: center.x,
+                    y: center.y,
+                    type: "stump",
+                    radius: Math.max(8, object.trunkRadius * 0.65)
+                });
+
+                spawnHitParticles(center.x, center.y, "leaves");
+
+                if (sourceActor === player && Math.random() < 0.15) {
+                    spawnTestLootDrop(center.x, center.y);
                 }
 
-addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
-                triggerNotification(`${config.label || "CRATE"} smashed. Loot released.`);
+                if (sourceActor === player) {
+                    triggerNotification("Tree chopped down.");
+                }
+
+            } else if (object.objectType === "destructibleRock") {
+                gainAetherForActor(sourceActor, 5, "Break Rock");
+
+                debrisMarks.push({
+                    x: center.x,
+                    y: center.y,
+                    type: "rubble",
+                    radius: Math.max(10, object.radius * 0.75)
+                });
+
+                spawnHitParticles(center.x, center.y, "stone");
+                addScreenShake(4, 0.14);
+
+                if (sourceActor === player) {
+                    triggerNotification("Rock cracked apart.");
+                }
+
+            } else if (object.objectType === "destructibleCrate") {
+                const config = getCrateTypeConfig(object.crateType || "wood");
+
+                gainAetherForActor(sourceActor, 8, "Break Crate");
+                gainAetherForActor(sourceActor, object.rarity === "rare" ? 25 : 10, `${config.label || "CRATE"} Crate`);
+
+                debrisMarks.push({
+                    x: center.x,
+                    y: center.y,
+                    type: "splinters",
+                    radius: Math.max(object.width, object.height) * 0.45
+                });
+
+                spawnHitParticles(
+                    center.x,
+                    center.y,
+                    object.crateType === "rune" ? "rune" :
+                    object.crateType === "prism" || object.crateType === "godfall" ? "star" :
+                    object.crateType === "healing" ? "healing" :
+                    object.crateType === "lens" ? "electric" :
+                    "wood"
+                );
+
+                spawnMagicRing(
+                    center.x,
+                    center.y,
+                    object.glowColor || config.glowColor || "#f59e0b",
+                    object.crateType === "godfall" ? 120 : object.crateType === "prism" ? 90 : 62,
+                    0.45
+                );
+
+                spawnCardLootDrop(center.x, center.y, object);
+
+                if (sourceActor === player && player.runtimeStats?.goldRush && Math.random() < 0.2) {
+                    items.push({
+                        id: `gold_${Date.now()}_${Math.random()}`,
+                        x: center.x + 14,
+                        y: center.y,
+                        floor: objectFloor(object),
+                        type: "gold_coin",
+                        name: "Bonus Gold",
+                        radius: 9,
+                        amount: object.rarity === "rare" ? 20 : 8,
+                        pulseTimer: Math.random() * Math.PI
+                    });
+                }
+
+                addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
+
+                if (sourceActor === player) {
+                    triggerNotification(`${config.label || "CRATE"} smashed. Loot released.`);
+                }
+
             } else if (object.objectType === "destructibleFurniture") {
-                gainAether(3, "Break Furniture");
-                debrisMarks.push({ x: center.x, y: center.y, type: "splinters", radius: Math.max(12, Math.max(object.width, object.height) * 0.35) });
+                gainAetherForActor(sourceActor, 3, "Break Furniture");
+
+                debrisMarks.push({
+                    x: center.x,
+                    y: center.y,
+                    type: "splinters",
+                    radius: Math.max(12, Math.max(object.width, object.height) * 0.35)
+                });
+
                 spawnHitParticles(center.x, center.y, getHitParticleType(object));
-                if (Math.random() < 0.1) spawnTestLootDrop(center.x, center.y);
-                triggerNotification("Furniture broken.");
+
+                if (sourceActor === player && Math.random() < 0.1) {
+                    spawnTestLootDrop(center.x, center.y);
+                }
+
+                if (sourceActor === player) {
+                    triggerNotification("Furniture broken.");
+                }
             }
 
             playBreakSound();
@@ -6256,12 +6514,14 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
             bot.lastAttacker = source;
         }
 
-        function handleBotZeroHp(bot, source = player) {
-            if (!bot) return;
+        function isDuoMatchActive() {
+            return mpState.matchMode === "duo-bot" || mpState.matchMode === "duo-online";
+        }
 
-            const isDuoMode = mpState.matchMode === "duo-bot" || mpState.matchMode === "duo-online" || !!bot.teamId;
+        function handleBotZeroHp(bot, source = null) {
+            if (!bot || bot.isEliminated) return;
 
-            if (isDuoMode && hasLivingTeamMate(bot)) {
+            if (isDuoMatchActive() && hasLivingTeamMate(bot)) {
                 downDuoActor(bot, source);
                 return;
             }
@@ -6271,27 +6531,51 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
 
         function eliminateBot(bot, source) {
             if (!bot || bot.isEliminated) return;
+
             const name = bot.name || "Bot";
+            const killerName = source?.name || "Unknown";
+
             bot.isEliminated = true;
             bot.alive = false;
             bot.takesDamage = false;
+            bot.isDowned = false;
+            bot.downedTimer = 0;
+
             const idx = bots.indexOf(bot);
             if (idx !== -1) bots.splice(idx, 1);
+
             refreshLobbyPlayerCountHud();
 
             if (source === player) {
                 gainAether(60, "Eliminate Enemy");
+
                 if (player.runtimeStats?.secondBreath) {
                     player.hp = Math.min(player.maxHp, player.hp + 8);
                     updatePlayerHealthHud();
                     spawnDamageNumber(player.x, player.y - player.radius - 22, "+8 HP", "#34d399");
                 }
+
                 if (player.runtimeStats?.goldRush && Math.random() < 0.25) {
-                    items.push({ id: `gold_${Date.now()}_${Math.random()}`, x: bot.x, y: bot.y, type: "gold_coin", name: "Elimination Gold", radius: 9, amount: 18, pulseTimer: Math.random() * Math.PI });
+                    items.push({
+                        id: `gold_${Date.now()}_${Math.random()}`,
+                        x: bot.x,
+                        y: bot.y,
+                        type: "gold_coin",
+                        name: "Elimination Gold",
+                        radius: 9,
+                        amount: 18,
+                        pulseTimer: Math.random() * Math.PI
+                    });
                 }
+
                 triggerNotification(`You knocked out ${name}`);
+
+            } else if (source && source.objectType === "bot") {
+                gainBotAether(source, 60, "Eliminate Enemy");
+                triggerNotification(`${killerName} eliminated ${name}.`);
+
             } else {
-                triggerNotification(`Combat Alert: ${name} was defeated in duel!`);
+                triggerNotification(`Combat Alert: ${name} was defeated.`);
             }
 
             playHoverSound();
@@ -6416,7 +6700,7 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
                     }
                 }
             } else if (target.objectType && target.objectType.startsWith("destructible")) {
-                if (nextHp <= 0) destroyWorldObject(target);
+                if (nextHp <= 0) destroyWorldObject(target, source);
             }
 
             return true;
@@ -9296,7 +9580,14 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                 bot.aiGoalY = bot.y;
                 bot.aiTarget = null;
                 bot.aiTargetCrate = null;
-                if (getBotWeaponCount(bot) === 0) seedBotStartingCards(bot);
+                // Bots start fair like the player: fists only, x1 sight, no free cards.
+                bot.inventory = [];
+                bot.combatLoadout = {
+                    trapSlot: null,
+                    monsterSlots: [null, null, null, null],
+                    magicSlot: null,
+                    selectedMonsterIndex: 0
+                };
             }
             refreshLobbyPlayerCountHud();
 
@@ -9341,6 +9632,7 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
             mpApplyTeamSpawnOffset();
             assignBotTeamsForDuoMatch();
+            cleanupExtraDuoPartners();
             mpEmitPlayerState(performance.now(), true);
 
             mpAfterLocalMatchStarted();
@@ -9356,18 +9648,48 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             mpNotify("Joined online Duo match.");
         }
 
+function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
+            currentGameState = GAME_STATES.MENU;
 
+            if (gameLoopFrameId) {
+                cancelAnimationFrame(gameLoopFrameId);
+            }
+
+            mpState.spectatingSocketId = null;
+            mpState.matchId = null;
+            mpState.matchSeed = null;
+            mpState.remotePlayers.clear();
+            mpState.remoteProjectiles.length = 0;
+            mpState.reviveTarget = null;
+            mpState.reviveHold = 0;
+
+            gameLayer.classList.add('hidden');
+            mainMenuUi.classList.remove('opacity-0');
+
+            resizeMenuCanvas();
+            animateMenu();
+
+            mpRefreshMenuMultiplayerUi();
+            triggerNotification(message);
+        }
 
         // Restart loop back to the pristine TCG main menu screen
         function exitToMainMenu() {
+            const previousGameState = currentGameState;
+
             currentGameState = GAME_STATES.MENU;
-            if (gameLoopFrameId) cancelAnimationFrame(gameLoopFrameId);
+
+            if (gameLoopFrameId) {
+                cancelAnimationFrame(gameLoopFrameId);
+            }
 
             mpState.spectatingSocketId = null;
 
             if (mpSocket && mpState.matchId) {
                 mpSocket.emit("matchLocalDeath", {
-                    reason: "left_match"
+                    reason: "left_match",
+                    phase: previousGameState,
+                    matchMode: mpState.matchMode
                 });
             }
 
@@ -9375,6 +9697,8 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             mpState.matchSeed = null;
             mpState.remotePlayers.clear();
             mpState.remoteProjectiles.length = 0;
+            mpState.reviveTarget = null;
+            mpState.reviveHold = 0;
 
             // Hide Game Layer UI
             gameLayer.classList.add('hidden');
@@ -9385,7 +9709,7 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             animateMenu();
 
             mpRefreshMenuMultiplayerUi();
-            triggerNotification("Aligned with the dimensions.");
+            triggerNotification("Returned to lobby.");
         }
 
 
@@ -10037,6 +10361,11 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
         function downDuoActor(actor, source = null) {
             if (!actor || actor.isDowned) return false;
 
+            if (!isDuoMatchActive()) {
+                finishDuoActor(actor, "KNOCKED OUT", source);
+                return false;
+            }
+
             actor.isDowned = true;
             actor.downedTimer = 40;
             actor.reviveHoldByAlly = 0;
@@ -10052,14 +10381,17 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                 spawnDamageNumber(actor.x, actor.y - actor.radius - 22, "DOWNED", "#facc15");
             }
 
+            enforceDuoTeamWipes(source);
+
             return true;
         }
 
-        function finishDuoActor(actor, reason = "BLEED OUT") {
+        function finishDuoActor(actor, reason = "BLEED OUT", source = null) {
             if (!actor) return;
 
             actor.isDowned = false;
             actor.downedTimer = 0;
+            actor.reviveHoldByAlly = 0;
             actor.alive = false;
             actor.takesDamage = false;
             actor.hp = 0;
@@ -10067,10 +10399,13 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
             if (actor === player) {
                 triggerGameOver(reason);
+
             } else if (actor.objectType === "bot") {
-                eliminateBot(actor, player);
+                eliminateBot(actor, source);
+
             } else if (actor.objectType === "remotePlayer") {
                 actor.alive = false;
+                actor.takesDamage = false;
             }
         }
 
@@ -10107,7 +10442,55 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             return null;
         }
 
+function getTeamActorsById(teamId) {
+            if (!teamId) return [];
+
+            return [player, ...bots, ...mpState.remotePlayers.values()].filter(actor => {
+                if (!actor) return false;
+                if (actor.objectType === "bot" && actor.isEliminated) return false;
+                if (actor.alive === false && !actor.isDowned) return false;
+                return getActorTeamId(actor) === teamId;
+            });
+        }
+
+        function enforceDuoTeamWipes(source = null) {
+            if (!isDuoMatchActive()) return;
+
+            const teamIds = new Set();
+
+            for (const actor of [player, ...bots, ...mpState.remotePlayers.values()]) {
+                if (!actor) continue;
+                if (actor.objectType === "bot" && actor.isEliminated) continue;
+
+                const teamId = getActorTeamId(actor);
+                if (teamId) teamIds.add(teamId);
+            }
+
+            for (const teamId of teamIds) {
+                const members = getTeamActorsById(teamId);
+                if (!members.length) continue;
+
+                const hasStandingMember = members.some(member =>
+                    isTargetAlive(member) &&
+                    !member.isDowned &&
+                    !(member.objectType === "bot" && member.isEliminated)
+                );
+
+                if (!hasStandingMember) {
+                    for (const member of members) {
+                        finishDuoActor(member, "TEAM WIPED", source);
+                    }
+                }
+            }
+        }
+
         function updateDuoReviveRuntime(dt) {
+            if (!isDuoMatchActive()) {
+                mpState.reviveTarget = null;
+                mpState.reviveHold = 0;
+                return;
+            }
+
             const actors = [player, ...bots, ...mpState.remotePlayers.values()];
 
             for (const actor of actors) {
@@ -10116,9 +10499,11 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                 actor.downedTimer = Math.max(0, (actor.downedTimer || 0) - dt);
 
                 if (actor.downedTimer <= 0) {
-                    finishDuoActor(actor, "BLED OUT");
+                    finishDuoActor(actor, "BLED OUT", null);
                 }
             }
+
+            enforceDuoTeamWipes(null);
 
             if (player.isDowned) {
                 const botPartner = getLocalDuoPartnerBot();
@@ -10130,7 +10515,7 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                         moveBotToward(botPartner, player.x, player.y, 1.08);
                     } else {
                         player.reviveHoldByAlly = (player.reviveHoldByAlly || 0) + dt;
-                        spawnDamageNumber(player.x, player.y - player.radius - 34, `REVIVE ${Math.ceil(5 - player.reviveHoldByAlly)}s`, "#22d3ee");
+                        spawnDamageNumber(player.x, player.y - player.radius - 34, `REVIVE ${Math.ceil(Math.max(0, 5 - player.reviveHoldByAlly))}s`, "#22d3ee");
 
                         if (player.reviveHoldByAlly >= 5) {
                             reviveDuoActor(player, botPartner);
@@ -10155,7 +10540,7 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             }
 
             mpState.reviveHold += dt;
-            spawnDamageNumber(target.x, target.y - target.radius - 34, `REVIVE ${Math.ceil(5 - mpState.reviveHold)}s`, "#22d3ee");
+            spawnDamageNumber(target.x, target.y - target.radius - 34, `REVIVE ${Math.ceil(Math.max(0, 5 - mpState.reviveHold))}s`, "#22d3ee");
 
             if (mpState.reviveHold >= 5) {
                 reviveDuoActor(target, player);
@@ -10163,7 +10548,6 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                 mpState.reviveHold = 0;
             }
         }
-
                 function mpSpawnRemoteMonsterCast(action) {
             const card = getCardDefinition(action.cardId);
             if (!card) return;
@@ -10950,11 +11334,30 @@ function mpDrawRemotePlayers() {
             return best;
         }
 
+        function normalizeAngleRadians(angle) {
+            while (angle > Math.PI) angle -= Math.PI * 2;
+            while (angle < -Math.PI) angle += Math.PI * 2;
+            return angle;
+        }
+
+        function smoothTurnToAngle(current, target, amount = 0.16) {
+            const diff = normalizeAngleRadians(target - current);
+            return current + diff * clamp01(amount);
+        }
+
         function getBotAimAngle(bot, target, extraNoise = 0) {
             const base = Math.atan2(target.y - bot.y, target.x - bot.x);
             const accuracy = clamp01(bot.accuracy || 0.7);
-            const noise = (1 - accuracy) * 0.42 + extraNoise;
-            return base + (Math.random() - 0.5) * noise;
+            const noiseAmount = (1 - accuracy) * 0.34 + extraNoise;
+
+            const now = performance.now();
+
+            if (!bot.stableAimNoise || now > bot.stableAimNoiseUntil) {
+                bot.stableAimNoise = (Math.random() - 0.5) * noiseAmount;
+                bot.stableAimNoiseUntil = now + 350 + Math.random() * 250;
+            }
+
+            return base + bot.stableAimNoise;
         }
 
         function updateBotRuntimeCards(bot, dt) {
@@ -11260,7 +11663,7 @@ function mpDrawRemotePlayers() {
 
             if (enemy && isTargetAlive(enemy)) {
                 const dist = Math.hypot(enemy.x - bot.x, enemy.y - bot.y);
-                bot.angle = getBotAimAngle(bot, enemy, 0.03);
+                bot.angle = smoothTurnToAngle(bot.angle, getBotAimAngle(bot, enemy, 0.03), 0.2);
 
                 if (dist < 620) botTryUseCards(bot, enemy);
 
@@ -11309,9 +11712,21 @@ function mpDrawRemotePlayers() {
             }
         }
 
-        function moveBotToward(bot, goalX, goalY, speedMult = 1) {
-            const desired = Math.atan2(goalY - bot.y, goalX - bot.x);
-            bot.angle = desired;
+function moveBotToward(bot, goalX, goalY, speedMult = 1) {
+            const dx = goalX - bot.x;
+            const dy = goalY - bot.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist < 6) {
+                spawnWaterWake(bot, false);
+                return;
+            }
+
+            const desired = Math.atan2(dy, dx);
+
+            // Weighted turn instead of instant snapping.
+            const turnAmount = bot.isDuoPartner ? 0.20 : 0.16;
+            bot.angle = smoothTurnToAngle(bot.angle || desired, desired, turnAmount);
 
             const rootMult = bot.rootTimer > 0 ? 0 : 1;
             const shockMult = bot.shockTimer > 0 ? 0.65 : 1;
@@ -11321,8 +11736,16 @@ function mpDrawRemotePlayers() {
             const downedMult = bot.isDowned ? 0.25 : 1;
             const moveSpeed = bot.speed * rootMult * shockMult * slowMult * waterMult * speedMult * difficultyMult * downedMult;
 
-            const next = applySolidCollisions(bot.x + Math.cos(bot.angle) * moveSpeed, bot.y + Math.sin(bot.angle) * moveSpeed, bot.radius, objectFloor(bot));
+            const stepAngle = bot.angle;
+            const next = applySolidCollisions(
+                bot.x + Math.cos(stepAngle) * moveSpeed,
+                bot.y + Math.sin(stepAngle) * moveSpeed,
+                bot.radius,
+                objectFloor(bot)
+            );
+
             spawnWaterWake(bot, moveSpeed > 0.05);
+
             bot.x = next.x;
             bot.y = next.y;
         }
@@ -11371,14 +11794,20 @@ function mpDrawRemotePlayers() {
             }
 
             if (distToStormCenter > storm.targetRadius - 280) {
-                moveBotToward(bot, storm.centerX + (Math.random() - 0.5) * 360, storm.centerY + (Math.random() - 0.5) * 360, 1.12);
+                if (!bot.aiStormGoalUntil || time > bot.aiStormGoalUntil) {
+                    bot.aiStormGoalX = storm.centerX + (Math.random() - 0.5) * 360;
+                    bot.aiStormGoalY = storm.centerY + (Math.random() - 0.5) * 360;
+                    bot.aiStormGoalUntil = time + 1800 + Math.random() * 900;
+                }
+
+                moveBotToward(bot, bot.aiStormGoalX, bot.aiStormGoalY, 1.12);
                 return;
             }
 
             if (bot.aiTarget && isTargetAlive(bot.aiTarget)) {
                 const target = bot.aiTarget;
                 const dist = Math.hypot(target.x - bot.x, target.y - bot.y);
-                bot.angle = getBotAimAngle(bot, target, 0.04);
+                bot.angle = smoothTurnToAngle(bot.angle, getBotAimAngle(bot, target, 0.04), 0.18);
 
                 if (dist < 620) botTryUseCards(bot, target);
 
