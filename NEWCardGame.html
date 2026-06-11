@@ -1022,7 +1022,17 @@
             remotePlayers: new Map(),
             remoteProjectiles: [],
             lastStateEmit: 0,
-            spectatingSocketId: null
+            spectatingSocketId: null,
+
+            // Duo / queue sync
+            onlineQueueStartAt: 0,
+            onlineQueueDeployAt: 0,
+            botPartnerJoinAt: 0,
+            botDuoPartnerId: null,
+
+            // Revive state
+            reviveTarget: null,
+            reviveHold: 0
         };
 
         function mpRandomSurvivorId() {
@@ -1295,8 +1305,11 @@
                 mpState.teammates = data.teammates || [];
                 mpState.remotePlayers.clear();
 
+                mpState.onlineQueueStartAt = performance.now();
+                mpState.onlineQueueDeployAt = mpState.onlineQueueStartAt + 15000;
+
                 mpNotify("Online Duo match found. Deploying together!");
-                mpTransitionToQueue("duo");
+                mpTransitionToQueue("duo-online");
             });
 
             mpSocket.on("matchState", state => {
@@ -1820,7 +1833,198 @@ ${mpState.connectionError ? `
             if (menuAnimFrameId) cancelAnimationFrame(menuAnimFrameId);
 
             mpState.matchMode = mode;
+
+            // Online duo uses a synchronized fixed queue timer so both clients deploy together.
+            if (mode === "duo-online") {
+                mpState.onlineQueueStartAt = performance.now();
+                mpState.onlineQueueDeployAt = mpState.onlineQueueStartAt + 15000;
+            }
+
+            // Solo-duo means player queued Duo alone and should receive a bot teammate.
+            if (mode === "duo-bot") {
+                mpState.botPartnerJoinAt = Math.floor(Math.random() * 26) + 15; // 15-40 joined bots
+                mpState.botDuoPartnerId = null;
+            }
+
             initQueueLobby();
+            mpSeedRemoteTeammatePlaceholders();
+            mpEmitPlayerState(performance.now(), true);
+        }
+
+        function getActorTeamId(actor) {
+            if (!actor) return null;
+            if (actor === player) return player.teamId || "player_team";
+            return actor.teamId || actor.partyId || actor.socketId || actor.id || null;
+        }
+
+        function isSameTeam(a, b) {
+            const aTeam = getActorTeamId(a);
+            const bTeam = getActorTeamId(b);
+            return !!aTeam && !!bTeam && aTeam === bTeam;
+        }
+
+        function isFriendlyTarget(target, source) {
+            if (!target || !source) return false;
+            if (target === source) return true;
+            return isSameTeam(target, source);
+        }
+
+        function mpSeedRemoteTeammatePlaceholders() {
+            if (!mpState.matchId || !mpState.teammates || !mpSocket) return;
+
+            for (const mate of mpState.teammates) {
+                if (!mate || mate.socketId === mpSocket.id) continue;
+
+                if (!mpState.remotePlayers.has(mate.socketId)) {
+                    mpState.remotePlayers.set(mate.socketId, {
+                        ...mate,
+                        objectType: "remotePlayer",
+                        takesDamage: true,
+                        alive: true,
+                        isDowned: false,
+                        downedTimer: 0,
+                        hp: 100,
+                        health: 100,
+                        maxHp: 100,
+                        radius: 16,
+                        x: player.x + 55,
+                        y: player.y + 20,
+                        angle: 0,
+                        floor: currentFloor,
+                        teamId: "player_team",
+                        color: "#22d3ee"
+                    });
+                }
+            }
+        }
+
+        function mpGetMyTeamIndex() {
+            if (!mpState.teammates || !mpSocket) return 0;
+            const index = mpState.teammates.findIndex(t => t.socketId === mpSocket.id);
+            return index < 0 ? 0 : index;
+        }
+
+        function mpApplyTeamSpawnOffset() {
+            player.teamId = "player_team";
+
+            if (mpState.matchMode === "duo-online" && mpState.teammates?.length) {
+                const index = mpGetMyTeamIndex();
+                const offsets = [
+                    { x: -42, y: 0 },
+                    { x: 42, y: 0 },
+                    { x: 0, y: -42 },
+                    { x: 0, y: 42 }
+                ];
+                const offset = offsets[index % offsets.length];
+
+                player.x += offset.x;
+                player.y += offset.y;
+                player.color = "#22d3ee";
+
+                mpSeedRemoteTeammatePlaceholders();
+            }
+
+            if (mpState.matchMode === "duo-bot") {
+                player.color = "#22d3ee";
+                ensureLocalDuoBotPartner(true);
+            }
+        }
+
+        function getLocalDuoPartnerBot() {
+            if (!mpState.botDuoPartnerId) return null;
+            return bots.find(b => b.id === mpState.botDuoPartnerId && !b.isEliminated) || null;
+        }
+
+        function assignBotAsDuoPartner(bot) {
+            if (!bot) return;
+
+            bot.teamId = "player_team";
+            bot.isDuoPartner = true;
+            bot.name = bot.name.includes("Partner") ? bot.name : `${bot.name} Partner`;
+            bot.color = "#22d3ee";
+            bot.revivePriority = true;
+            bot.sightRadius = Math.max(bot.sightRadius || 500, 620);
+            mpState.botDuoPartnerId = bot.id;
+
+            spawnDamageNumber(bot.x, bot.y - bot.radius - 24, "DUO PARTNER", "#22d3ee");
+            triggerNotification(`${bot.name} joined as your Duo partner.`);
+        }
+
+        function ensureLocalDuoBotPartner(force = false) {
+            if (mpState.matchMode !== "duo-bot") return null;
+
+            const existing = getLocalDuoPartnerBot();
+            if (existing) return existing;
+
+            if (!force && getAliveBotCount() < (mpState.botPartnerJoinAt || 20)) return null;
+
+            let candidate = bots.find(b => !b.isEliminated && !b.isDuoPartner);
+            if (!candidate) {
+                candidate = spawnLobbyBot();
+            }
+
+            if (!candidate) return null;
+
+            assignBotAsDuoPartner(candidate);
+            candidate.x = player.x + 70;
+            candidate.y = player.y + 20;
+            candidate.aiGoalX = candidate.x;
+            candidate.aiGoalY = candidate.y;
+
+            return candidate;
+        }
+
+        function assignBotTeamsForDuoMatch() {
+            player.teamId = "player_team";
+
+            const partner = getLocalDuoPartnerBot();
+            if (partner) {
+                partner.teamId = "player_team";
+                partner.isDuoPartner = true;
+                partner.color = "#22d3ee";
+                partner.x = player.x + 70;
+                partner.y = player.y + 25;
+            }
+
+            let teamNum = 1;
+            let waiting = null;
+
+            for (const bot of bots) {
+                if (!bot || bot.isEliminated || bot.isDuoPartner) continue;
+
+                if (!waiting) {
+                    waiting = bot;
+                    waiting.teamId = `bot_team_${teamNum}`;
+                    waiting.color = "#ef4444";
+                } else {
+                    bot.teamId = waiting.teamId;
+                    bot.color = "#ef4444";
+                    waiting.duoMateId = bot.id;
+                    bot.duoMateId = waiting.id;
+                    waiting = null;
+                    teamNum++;
+                }
+            }
+
+            if (waiting) {
+                waiting.teamId = `bot_team_${teamNum}`;
+                waiting.color = "#ef4444";
+            }
+        }
+
+        function getLivingTeamMembers(actor) {
+            const all = [player, ...bots, ...mpState.remotePlayers.values()];
+            return all.filter(other =>
+                other &&
+                other !== actor &&
+                isSameTeam(other, actor) &&
+                isTargetAlive(other) &&
+                !other.isDowned
+            );
+        }
+
+        function hasLivingTeamMate(actor) {
+            return getLivingTeamMembers(actor).length > 0;
         }
 
         function mpMulberry32(seed) {
@@ -1871,7 +2075,13 @@ ${mpState.connectionError ? `
             gold: 0,
             alive: true,
             takesDamage: true,
-            objectType: "player"
+            objectType: "player",
+
+            // Duo/team state
+            teamId: "player_team",
+            isDowned: false,
+            downedTimer: 0,
+            reviveHoldByAlly: 0
         };
 
         // Inputs
@@ -6046,6 +6256,19 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
             bot.lastAttacker = source;
         }
 
+        function handleBotZeroHp(bot, source = player) {
+            if (!bot) return;
+
+            const isDuoMode = mpState.matchMode === "duo-bot" || mpState.matchMode === "duo-online" || !!bot.teamId;
+
+            if (isDuoMode && hasLivingTeamMate(bot)) {
+                downDuoActor(bot, source);
+                return;
+            }
+
+            eliminateBot(bot, source);
+        }
+
         function eliminateBot(bot, source) {
             if (!bot || bot.isEliminated) return;
             const name = bot.name || "Bot";
@@ -6173,7 +6396,7 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
                     applyKnockback(target, { x: center.x - source.x, y: center.y - source.y }, 12);
                     setBotReaction(target, source);
                 }
-                if (nextHp <= 0) eliminateBot(target, source);
+                if (nextHp <= 0) handleBotZeroHp(target, source);
             } else if (target.objectType === "player") {
                 if (source && source !== player && damageType !== "storm") {
                     handlePlayerHitTraps(source, amount, damageType);
@@ -6182,9 +6405,15 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
                 handleLowHpTrap();
 
                 if (nextHp <= 0) {
-                    target.alive = false;
-                    target.takesDamage = false;
-                    triggerGameOver(damageType === "storm" ? "DAMAGE OVER TIME ZONE INSIDE RIFT" : "KNOCKED OUT");
+                    const isDuoMode = mpState.matchMode === "duo-bot" || mpState.matchMode === "duo-online";
+
+                    if (isDuoMode && hasLivingTeamMate(player)) {
+                        downDuoActor(player, source);
+                    } else {
+                        target.alive = false;
+                        target.takesDamage = false;
+                        triggerGameOver(damageType === "storm" ? "DAMAGE OVER TIME ZONE INSIDE RIFT" : "KNOCKED OUT");
+                    }
                 }
             } else if (target.objectType && target.objectType.startsWith("destructible")) {
                 if (nextHp <= 0) destroyWorldObject(target);
@@ -6282,6 +6511,11 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
         }
 
         function handlePrimaryAttack(time) {
+            if (player.isDowned) {
+                spawnDamageNumber(player.x, player.y - player.radius - 22, "DOWNED", "#facc15");
+                return;
+            }
+
             const selected = getSelectedMonsterCard();
             if (currentGameState === GAME_STATES.MATCH && isMonsterCardCastable(selected)) {
                 castMonsterCard(selected);
@@ -6291,11 +6525,12 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
             performUnarmedFallbackAttack(time);
         }
 
-                function mpEmitPlayerState(time) {
-            if (!mpSocket || !mpState.matchId || currentGameState !== GAME_STATES.MATCH) return;
+                function mpEmitPlayerState(time, force = false) {
+            if (!mpSocket || !mpState.matchId) return;
+            if (currentGameState !== GAME_STATES.MATCH && currentGameState !== GAME_STATES.QUEUE_LOBBY) return;
             if (mpState.spectatingSocketId) return;
 
-            if (time - mpState.lastStateEmit < 50) return;
+            if (!force && time - mpState.lastStateEmit < 50) return;
             mpState.lastStateEmit = time;
 
             mpSocket.emit("matchState", {
@@ -6307,11 +6542,15 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
                 maxHp: player.maxHp,
                 health: player.health,
                 alive: player.alive,
+                isDowned: !!player.isDowned,
+                downedTimer: player.downedTimer || 0,
                 color: player.color,
                 name: player.name,
                 floor: player.floor || currentFloor,
                 scopeLevel: player.scopeLevel,
-                visionRadius: player.visionRadius
+                visionRadius: player.visionRadius,
+                teamId: player.teamId || "player_team",
+                gameState: currentGameState
             });
         }
 
@@ -7247,7 +7486,7 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
             }
         }
 
-        function getDamageableCardTargets(source = player, options = {}) {
+function getDamageableCardTargets(source = player, options = {}) {
             const targets = [];
             const includeDestructibles = options.includeDestructibles !== false;
             const floor = objectFloor(source || player);
@@ -7272,20 +7511,20 @@ addScreenShake(object.rarity === "rare" ? 7 : 5, 0.18);
                 }
             }
 
-            if (source !== player && isTargetAlive(player) && objectFloor(player) === floor) {
+            if (source !== player && isTargetAlive(player) && objectFloor(player) === floor && !isFriendlyTarget(player, source)) {
                 targets.push(player);
             }
 
-            if (source === player && mpState.matchId) {
+            if (mpState.matchId) {
                 for (const remote of mpState.remotePlayers.values()) {
-                    if (remote !== source && isTargetAlive(remote) && objectFloor(remote) === floor) {
+                    if (remote !== source && isTargetAlive(remote) && objectFloor(remote) === floor && !isFriendlyTarget(remote, source)) {
                         targets.push(remote);
                     }
                 }
             }
 
             for (let i = 0; i < bots.length; i++) {
-                if (bots[i] !== source && isTargetAlive(bots[i]) && objectFloor(bots[i]) === floor) {
+                if (bots[i] !== source && isTargetAlive(bots[i]) && objectFloor(bots[i]) === floor && !isFriendlyTarget(bots[i], source)) {
                     targets.push(bots[i]);
                 }
             }
@@ -8865,6 +9104,30 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
         }
 
         function updateQueueLobbyFiller(time) {
+            // Online Duo: fixed synchronized queue timer.
+            // This prevents one tab/device from staying behind if its animation loop is throttled.
+            if (mpState.matchMode === "duo-online" && mpState.matchId) {
+                const deployAt = mpState.onlineQueueDeployAt || (time + 15000);
+                const remaining = Math.max(0, Math.ceil((deployAt - time) / 1000));
+                const progress = clamp01(1 - ((deployAt - time) / 15000));
+                const desiredBots = Math.max(
+                    LOBBY_FILL_CONFIG.visibleWarmupBots,
+                    Math.floor(progress * LOBBY_FILL_CONFIG.finalBotTarget)
+                );
+
+                while (getAliveBotCount() < desiredBots) spawnLobbyBot();
+
+                document.getElementById("game-timer-label").textContent = "ONLINE DUO DEPLOYS IN";
+                document.getElementById("game-timer-val").textContent = remaining;
+
+                return time >= deployAt;
+            }
+
+            // Solo Duo fallback: a bot teammate joins somewhere around 15-40 lobby fillers.
+            if (mpState.matchMode === "duo-bot") {
+                ensureLocalDuoBotPartner(false);
+            }
+
             if (lobbyFillPhase === "filling") {
                 const elapsed = time - lobbyQueueStartTime;
                 const progress = clamp01(elapsed / Math.max(1, lobbyPrimaryFillDuration));
@@ -8872,7 +9135,9 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
                 while (getAliveBotCount() < desiredBots) spawnLobbyBot();
 
-                document.getElementById("game-timer-label").textContent = "FINDING DUELISTS";
+                if (mpState.matchMode === "duo-bot") ensureLocalDuoBotPartner(false);
+
+                document.getElementById("game-timer-label").textContent = mpState.matchMode === "duo-bot" ? "FINDING DUO PARTNER" : "FINDING DUELISTS";
                 document.getElementById("game-timer-val").textContent = Math.max(0, Math.ceil((lobbyPrimaryFillDuration - elapsed) / 1000));
 
                 if (elapsed >= lobbyPrimaryFillDuration && getAliveBotCount() >= LOBBY_FILL_CONFIG.primaryBotTarget) {
@@ -8891,6 +9156,8 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                     spawnLobbyBot();
                     lobbyNextBotFillAt = time + Math.random() * 450 + 450;
                 }
+
+                if (mpState.matchMode === "duo-bot") ensureLocalDuoBotPartner(false);
 
                 const deltaCountdown = Math.floor((time - lastCountdownTime) / 1000);
                 if (deltaCountdown >= 1) {
@@ -9071,6 +9338,10 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             } else {
                 startActualMatchBase();
             }
+
+            mpApplyTeamSpawnOffset();
+            assignBotTeamsForDuoMatch();
+            mpEmitPlayerState(performance.now(), true);
 
             mpAfterLocalMatchStarted();
         }
@@ -9763,6 +10034,136 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             gctx.restore();
         }
 
+        function downDuoActor(actor, source = null) {
+            if (!actor || actor.isDowned) return false;
+
+            actor.isDowned = true;
+            actor.downedTimer = 40;
+            actor.reviveHoldByAlly = 0;
+            actor.hp = 1;
+            actor.health = 1;
+            actor.takesDamage = false;
+
+            if (actor === player) {
+                updatePlayerHealthHud();
+                spawnDamageNumber(player.x, player.y - player.radius - 26, "DOWNED", "#facc15");
+                triggerNotification("You are downed! Wait for your teammate to revive you.");
+            } else {
+                spawnDamageNumber(actor.x, actor.y - actor.radius - 22, "DOWNED", "#facc15");
+            }
+
+            return true;
+        }
+
+        function finishDuoActor(actor, reason = "BLEED OUT") {
+            if (!actor) return;
+
+            actor.isDowned = false;
+            actor.downedTimer = 0;
+            actor.alive = false;
+            actor.takesDamage = false;
+            actor.hp = 0;
+            actor.health = 0;
+
+            if (actor === player) {
+                triggerGameOver(reason);
+            } else if (actor.objectType === "bot") {
+                eliminateBot(actor, player);
+            } else if (actor.objectType === "remotePlayer") {
+                actor.alive = false;
+            }
+        }
+
+        function reviveDuoActor(actor, reviver = player) {
+            if (!actor || !actor.isDowned) return false;
+
+            actor.isDowned = false;
+            actor.downedTimer = 0;
+            actor.reviveHoldByAlly = 0;
+            actor.takesDamage = true;
+            actor.alive = true;
+            actor.hp = Math.max(35, Math.floor((actor.maxHp || 100) * 0.35));
+            actor.health = actor.hp;
+
+            spawnMagicRing(actor.x, actor.y, "#22d3ee", 78, 0.55);
+            spawnDamageNumber(actor.x, actor.y - actor.radius - 24, "REVIVED", "#22d3ee");
+
+            if (actor === player) updatePlayerHealthHud();
+
+            triggerNotification(`${actor.name || "Teammate"} revived.`);
+            return true;
+        }
+
+        function findNearbyDownedAlly(range = 74) {
+            const allies = [getLocalDuoPartnerBot(), ...mpState.remotePlayers.values()].filter(Boolean);
+
+            for (const ally of allies) {
+                if (!ally.isDowned || !isSameTeam(ally, player)) continue;
+
+                const dist = Math.hypot(ally.x - player.x, ally.y - player.y);
+                if (dist <= range) return ally;
+            }
+
+            return null;
+        }
+
+        function updateDuoReviveRuntime(dt) {
+            const actors = [player, ...bots, ...mpState.remotePlayers.values()];
+
+            for (const actor of actors) {
+                if (!actor || !actor.isDowned) continue;
+
+                actor.downedTimer = Math.max(0, (actor.downedTimer || 0) - dt);
+
+                if (actor.downedTimer <= 0) {
+                    finishDuoActor(actor, "BLED OUT");
+                }
+            }
+
+            if (player.isDowned) {
+                const botPartner = getLocalDuoPartnerBot();
+
+                if (botPartner && !botPartner.isDowned && isTargetAlive(botPartner)) {
+                    const dist = Math.hypot(botPartner.x - player.x, botPartner.y - player.y);
+
+                    if (dist > 42) {
+                        moveBotToward(botPartner, player.x, player.y, 1.08);
+                    } else {
+                        player.reviveHoldByAlly = (player.reviveHoldByAlly || 0) + dt;
+                        spawnDamageNumber(player.x, player.y - player.radius - 34, `REVIVE ${Math.ceil(5 - player.reviveHoldByAlly)}s`, "#22d3ee");
+
+                        if (player.reviveHoldByAlly >= 5) {
+                            reviveDuoActor(player, botPartner);
+                        }
+                    }
+                }
+
+                return;
+            }
+
+            const target = findNearbyDownedAlly();
+
+            if (!keys.e || !target) {
+                mpState.reviveTarget = null;
+                mpState.reviveHold = 0;
+                return;
+            }
+
+            if (mpState.reviveTarget !== target) {
+                mpState.reviveTarget = target;
+                mpState.reviveHold = 0;
+            }
+
+            mpState.reviveHold += dt;
+            spawnDamageNumber(target.x, target.y - target.radius - 34, `REVIVE ${Math.ceil(5 - mpState.reviveHold)}s`, "#22d3ee");
+
+            if (mpState.reviveHold >= 5) {
+                reviveDuoActor(target, player);
+                mpState.reviveTarget = null;
+                mpState.reviveHold = 0;
+            }
+        }
+
                 function mpSpawnRemoteMonsterCast(action) {
             const card = getCardDefinition(action.cardId);
             if (!card) return;
@@ -9829,35 +10230,42 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             return (mpState.teammates || []).some(t => t.socketId === socketId);
         }
 
-        function mpDrawRemotePlayers() {
+function mpDrawRemotePlayers() {
             for (const remote of mpState.remotePlayers.values()) {
                 if (!remote.alive || remote.floor !== currentFloor) continue;
 
                 gctx.save();
 
-                const isTeammate = mpIsTeammate(remote.socketId);
+                const isTeammate = mpIsTeammate(remote.socketId) || isSameTeam(remote, player);
+                const nameColor = isTeammate ? "#22d3ee" : "#fb7185";
 
-                gctx.fillStyle = "#ffffff";
+                gctx.fillStyle = nameColor;
                 gctx.font = "bold 11px Rajdhani";
                 gctx.textAlign = "center";
-                gctx.fillText(`${isTeammate ? "★ " : ""}${remote.name || remote.playerId}`, remote.x, remote.y - remote.radius - 10);
+                gctx.fillText(`${isTeammate ? "★ " : ""}${remote.name || remote.playerId}${remote.isDowned ? " [DOWN]" : ""}`, remote.x, remote.y - remote.radius - 10);
 
                 gctx.translate(remote.x, remote.y);
                 gctx.rotate(remote.angle || 0);
 
+                if (remote.isDowned) {
+                    gctx.scale(1.35, 0.55);
+                }
+
                 gctx.beginPath();
                 gctx.arc(0, 0, remote.radius || 16, 0, Math.PI * 2);
-                gctx.fillStyle = isTeammate ? "#22d3ee" : (remote.color || "#f87171");
-                gctx.strokeStyle = isTeammate ? "#e0f2fe" : "#000000";
+                gctx.fillStyle = remote.isDowned ? "#64748b" : isTeammate ? "#22d3ee" : (remote.color || "#ef4444");
+                gctx.strokeStyle = isTeammate ? "#e0f2fe" : "#111827";
                 gctx.lineWidth = isTeammate ? 3.5 : 2.5;
                 gctx.fill();
                 gctx.stroke();
 
-                gctx.beginPath();
-                gctx.arc((remote.radius || 16) * 0.8, -(remote.radius || 16) * 0.6, 5, 0, Math.PI * 2);
-                gctx.arc((remote.radius || 16) * 0.8, (remote.radius || 16) * 0.6, 5, 0, Math.PI * 2);
-                gctx.fillStyle = isTeammate ? "#67e8f9" : "#f59e0b";
-                gctx.fill();
+                if (!remote.isDowned) {
+                    gctx.beginPath();
+                    gctx.arc((remote.radius || 16) * 0.8, -(remote.radius || 16) * 0.6, 5, 0, Math.PI * 2);
+                    gctx.arc((remote.radius || 16) * 0.8, (remote.radius || 16) * 0.6, 5, 0, Math.PI * 2);
+                    gctx.fillStyle = isTeammate ? "#67e8f9" : "#f59e0b";
+                    gctx.fill();
+                }
 
                 gctx.restore();
 
@@ -9904,6 +10312,11 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
         function mpTick(dt, time) {
             mpUpdateRemoteProjectiles(dt);
+            updateDuoReviveRuntime(dt);
+
+            if (mpState.matchMode === "duo-bot" && currentGameState === GAME_STATES.QUEUE_LOBBY) {
+                ensureLocalDuoBotPartner(false);
+            }
 
             if (mpState.spectatingSocketId) {
                 const target = mpState.remotePlayers.get(mpState.spectatingSocketId);
@@ -9946,7 +10359,8 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             const playerShockMultiplier = player.shockTimer > 0 ? 0.45 : 1;
             const playerSlowMultiplier = player.slowMultiplier || 1;
             const playerWaterMultiplier = currentGameState === GAME_STATES.MATCH ? getTerrainMoveMultiplier(player.x, player.y) : 1;
-            const playerStatusMoveMultiplier = playerRootMultiplier * playerShockMultiplier * playerSlowMultiplier * playerWaterMultiplier;
+            const playerDownedMultiplier = player.isDowned ? 0.25 : 1;
+            const playerStatusMoveMultiplier = playerRootMultiplier * playerShockMultiplier * playerSlowMultiplier * playerWaterMultiplier * playerDownedMultiplier;
             const playerIsMoving = dx !== 0 || dy !== 0;
             let moveX = player.x + dx * player.speed * playerStatusMoveMultiplier;
             let moveY = player.y + dy * player.speed * playerStatusMoveMultiplier;
@@ -10296,10 +10710,11 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
                 gctx.save();
                 // Draw name tag
-                gctx.fillStyle = '#ffffff';
+                const botIsFriendly = isSameTeam(bot, player);
+                gctx.fillStyle = botIsFriendly ? '#22d3ee' : '#fb7185';
                 gctx.font = 'bold 11px Rajdhani';
                 gctx.textAlign = 'center';
-                gctx.fillText(bot.name, bot.x, bot.y - bot.radius - 8);
+                gctx.fillText(`${botIsFriendly ? "★ " : ""}${bot.name}${bot.isDowned ? " [DOWN]" : ""}`, bot.x, bot.y - bot.radius - 8);
 
                 // Draw dynamic direction pointers (Hands/Guns)
                 gctx.translate(bot.x, bot.y);
@@ -10308,8 +10723,8 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                 // Circular body matching Surviv.io styling
                 gctx.beginPath();
                 gctx.arc(0, 0, bot.radius, 0, Math.PI * 2);
-                gctx.fillStyle = bot.color;
-                gctx.strokeStyle = '#000000';
+                gctx.fillStyle = bot.isDowned ? '#64748b' : botIsFriendly ? '#22d3ee' : '#ef4444';
+                gctx.strokeStyle = botIsFriendly ? '#e0f2fe' : '#000000';
                 gctx.lineWidth = 2.5;
                 gctx.fill();
                 gctx.stroke();
@@ -10328,10 +10743,10 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
             // Render the Main Player circular character
             gctx.save();
-            gctx.fillStyle = '#ffffff';
+            gctx.fillStyle = '#22d3ee';
             gctx.font = 'bold 12px Orbitron';
             gctx.textAlign = 'center';
-            gctx.fillText(player.name, player.x, player.y - player.radius - 10);
+            gctx.fillText(`${player.name}${player.isDowned ? " [DOWN]" : ""}`, player.x, player.y - player.radius - 10);
 
             // Translate matrix to orient direction of weapon/eyes
             gctx.translate(player.x, player.y);
@@ -10480,14 +10895,16 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
         }
 
                 function findBestBotTarget(bot) {
-            const enemies = [player, ...bots.filter(other => other !== bot)];
+            const enemies = [player, ...bots.filter(other => other !== bot), ...mpState.remotePlayers.values()]
+                .filter(target => target && !isFriendlyTarget(target, bot));
+
             let best = null;
             let bestScore = -Infinity;
             const sight = bot.sightRadius * getRuntimeStat(bot, "visionRangeMult");
 
             for (let i = 0; i < enemies.length; i++) {
                 const target = enemies[i];
-                if (!isTargetAlive(target)) continue;
+                if (!isTargetAlive(target) || target.isDowned) continue;
 
                 const dist = Math.hypot(target.x - bot.x, target.y - bot.y);
                 if (dist > sight) continue;
@@ -10803,6 +11220,95 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             return false;
         }
 
+        function updateDuoPartnerBotAi(bot, dt, time) {
+            if (!bot || bot.isEliminated) return;
+
+            if (bot.isDowned) {
+                bot.angle += dt * 0.8;
+                return;
+            }
+
+            updateStatusRuntimeForTarget(bot, dt);
+            updateBotRuntimeCards(bot, dt);
+            updateBotMagicRuntime(bot, dt);
+            processBotItemPickups(bot);
+
+            const distToPlayer = Math.hypot(player.x - bot.x, player.y - bot.y);
+            const enemy = findBestBotTarget(bot);
+
+            if (player.isDowned) {
+                moveBotToward(bot, player.x, player.y, 1.18);
+                return;
+            }
+
+            // Drop a small heal if the player is weak and partner is nearby.
+            if (player.hp < player.maxHp * 0.42 && distToPlayer < 210 && time - (bot.lastHelpDropTime || 0) > 14000) {
+                bot.lastHelpDropTime = time;
+                items.push({
+                    id: `partner_heal_${Date.now()}`,
+                    x: player.x + 28,
+                    y: player.y + 28,
+                    type: "heal_orb",
+                    name: "Partner Heal",
+                    radius: 12,
+                    healAmount: 22,
+                    shieldAmount: 0,
+                    pulseTimer: Math.random() * Math.PI
+                });
+                spawnDamageNumber(bot.x, bot.y - bot.radius - 22, "DROPPED HEAL", "#22d3ee");
+            }
+
+            if (enemy && isTargetAlive(enemy)) {
+                const dist = Math.hypot(enemy.x - bot.x, enemy.y - bot.y);
+                bot.angle = getBotAimAngle(bot, enemy, 0.03);
+
+                if (dist < 620) botTryUseCards(bot, enemy);
+
+                if (dist > 360) {
+                    moveBotToward(bot, enemy.x, enemy.y, 1.04);
+                } else {
+                    const strafeAngle = Math.atan2(enemy.y - bot.y, enemy.x - bot.x) + bot.aiStrafeSide * Math.PI / 2;
+                    moveBotToward(bot, bot.x + Math.cos(strafeAngle) * 120, bot.y + Math.sin(strafeAngle) * 120, 0.85);
+                }
+
+                return;
+            }
+
+            if (distToPlayer > 520) {
+                moveBotToward(bot, player.x, player.y, 1.15);
+                return;
+            }
+
+            const crate = findBestLootCrateForBot(bot);
+            if (crate && distToPlayer < 900) {
+                const bounds = getCrateBounds(crate);
+                const dist = Math.hypot(bounds.centerX - bot.x, bounds.centerY - bot.y);
+
+                if (dist > 58) {
+                    moveBotToward(bot, bounds.centerX, bounds.centerY, 1.0);
+                } else if (time - bot.aiLootAttackTimer > 520) {
+                    bot.aiLootAttackTimer = time;
+                    dealDamage(crate, 12, bot, "partner_crate_break");
+                    gainBotAether(bot, 2, "Break Crate");
+                }
+
+                return;
+            }
+
+            // Stay near player but not stacked on top.
+            if (distToPlayer > 150) {
+                moveBotToward(bot, player.x + 90, player.y + 40, 0.84);
+            } else {
+                bot.wanderTimer -= dt;
+                if (bot.wanderTimer <= 0) {
+                    bot.aiGoalX = player.x + (Math.random() - 0.5) * 260;
+                    bot.aiGoalY = player.y + (Math.random() - 0.5) * 260;
+                    bot.wanderTimer = Math.random() * 2 + 1.2;
+                }
+                moveBotToward(bot, bot.aiGoalX, bot.aiGoalY, 0.55);
+            }
+        }
+
         function moveBotToward(bot, goalX, goalY, speedMult = 1) {
             const desired = Math.atan2(goalY - bot.y, goalX - bot.x);
             bot.angle = desired;
@@ -10812,7 +11318,8 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             const slowMult = bot.slowMultiplier || 1;
             const waterMult = currentGameState === GAME_STATES.MATCH ? getTerrainMoveMultiplier(bot.x, bot.y) : 1;
             const difficultyMult = currentGameState === GAME_STATES.MATCH && getActivePlayerCount() <= 12 ? 1.14 : 1;
-            const moveSpeed = bot.speed * rootMult * shockMult * slowMult * waterMult * speedMult * difficultyMult;
+            const downedMult = bot.isDowned ? 0.25 : 1;
+            const moveSpeed = bot.speed * rootMult * shockMult * slowMult * waterMult * speedMult * difficultyMult * downedMult;
 
             const next = applySolidCollisions(bot.x + Math.cos(bot.angle) * moveSpeed, bot.y + Math.sin(bot.angle) * moveSpeed, bot.radius, objectFloor(bot));
             spawnWaterWake(bot, moveSpeed > 0.05);
@@ -10821,6 +11328,17 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
         }
 
         function updateBotAi(bot, dt, time) {
+            if (bot.isDuoPartner && currentGameState === GAME_STATES.MATCH) {
+                updateDuoPartnerBotAi(bot, dt, time);
+                return;
+            }
+
+            if (bot.isDowned) {
+                bot.downedTimer = Math.max(0, (bot.downedTimer || 0) - dt);
+                if (bot.downedTimer <= 0) finishDuoActor(bot, "BLED OUT");
+                return;
+            }
+
             updateStatusRuntimeForTarget(bot, dt);
             updateBotRuntimeCards(bot, dt);
             updateBotMagicRuntime(bot, dt);
@@ -10947,13 +11465,14 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                 mmapCtx.fill();
             }
 
-            // Draw Bot players (Red dots)
-            mmapCtx.fillStyle = '#f87171';
+            // Draw Bot players / teammates
             for (let i = 0; i < bots.length; i++) {
                 const b = bots[i];
                 if (b.isEliminated) continue;
+
+                mmapCtx.fillStyle = isSameTeam(b, player) ? "#22d3ee" : "#f87171";
                 mmapCtx.beginPath();
-                mmapCtx.arc(b.x * mapRatio, b.y * mapRatio, 1.8, 0, Math.PI * 2);
+                mmapCtx.arc(b.x * mapRatio, b.y * mapRatio, isSameTeam(b, player) ? 2.6 : 1.8, 0, Math.PI * 2);
                 mmapCtx.fill();
             }
 
@@ -11087,6 +11606,12 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             if (k === 'u' && currentGameState !== GAME_STATES.MENU) toggleAwakeningTree();
             if (k === 'escape' && awakeningTreeOverlay && !awakeningTreeOverlay.classList.contains("hidden")) toggleAwakeningTree();
             if (k === 'e') {
+                keys.e = true;
+
+                if (findNearbyDownedAlly()) {
+                    return;
+                }
+
                 if (tryInteractWithBuilding()) return;
                 if (!trySwapNearbyCardDrop()) useMagicCard();
             }
@@ -11098,6 +11623,11 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             if (k === 's') keys.s = false;
             if (k === 'a') keys.a = false;
             if (k === 'd') keys.d = false;
+            if (k === 'e') {
+                keys.e = false;
+                mpState.reviveTarget = null;
+                mpState.reviveHold = 0;
+            }
         });
 
         gameCanvas.addEventListener('mousemove', (e) => {
@@ -11751,7 +12281,13 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                     setTimeout(() => {
                         mpState.matchId = null;
                         mpState.matchSeed = null;
-                        mpTransitionToQueue(action);
+
+                        // If player clicks Duo while alone, queue them with bots and assign a bot partner.
+                        if (action === "duo") {
+                            mpTransitionToQueue("duo-bot");
+                        } else {
+                            mpTransitionToQueue(action);
+                        }
                     }, 1400);
                 } else {
                     setTimeout(() => {
