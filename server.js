@@ -24,6 +24,12 @@ const idToSocket = new Map();
 const parties = new Map();
 const matches = new Map();
 
+const PARTY_MAX_SIZE = 4;
+const TEAM_SIZE_BY_MODE = {
+  duo: 2,
+  team: 4
+};
+
 app.get("/", (req, res) => {
   res.json({
     ok: true,
@@ -126,6 +132,9 @@ function emitPartyUpdate(partyId) {
     status: party.status,
     matchId: party.matchId || null,
     seed: party.seed || null,
+    modeIntent: party.modeIntent || "duo",
+    teamSize: party.teamSize || TEAM_SIZE_BY_MODE[party.modeIntent || "duo"] || 2,
+    maxSize: party.maxSize || PARTY_MAX_SIZE,
     members
   };
 
@@ -159,48 +168,108 @@ function leaveParty(socketId) {
   emitPartyUpdate(partyId);
 }
 
-function createParty(leaderId, guestId) {
+function makeParty(leaderId) {
   const leader = getPlayer(leaderId);
-  const guest = getPlayer(guestId);
-  if (!leader || !guest) return null;
+  if (!leader) return null;
 
   leaveParty(leaderId);
-  leaveParty(guestId);
 
   const partyId = makePartyId();
 
   const party = {
     partyId,
     leaderId,
-    members: [leaderId, guestId],
+    members: [leaderId],
     ready: {
-      [leaderId]: false,
-      [guestId]: false
+      [leaderId]: false
     },
     status: "lobby",
     matchId: null,
-    seed: null
+    seed: null,
+    modeIntent: "duo",
+    teamSize: 2,
+    maxSize: PARTY_MAX_SIZE
   };
 
   parties.set(partyId, party);
   leader.partyId = partyId;
-  guest.partyId = partyId;
 
-  emitPartyUpdate(partyId);
+  return party;
+}
+
+function addPlayerToParty(party, socketId) {
+  const p = getPlayer(socketId);
+
+  if (!party || !p) {
+    return { ok: false, error: "Player not found." };
+  }
+
+  if (p.partyId && p.partyId !== party.partyId) {
+    return { ok: false, error: "That player is already in a party." };
+  }
+
+  if (party.members.includes(socketId)) {
+    return { ok: true, party };
+  }
+
+  if (party.members.length >= (party.maxSize || PARTY_MAX_SIZE)) {
+    return { ok: false, error: "Party is already full." };
+  }
+
+  party.members.push(socketId);
+  party.ready[socketId] = false;
+  p.partyId = party.partyId;
+
+  return { ok: true, party };
+}
+
+function addGuestToLeaderParty(leaderId, guestId) {
+  const leader = getPlayer(leaderId);
+  const guest = getPlayer(guestId);
+
+  if (!leader || !guest) return null;
+  if (guest.partyId) return null;
+
+  let party = leader.partyId ? parties.get(leader.partyId) : null;
+
+  if (party && party.leaderId !== leaderId) return null;
+  if (!party) party = makeParty(leaderId);
+  if (!party) return null;
+
+  const added = addPlayerToParty(party, guestId);
+  if (!added.ok) return null;
+
+  party.status = "lobby";
+  party.matchId = null;
+  party.seed = null;
+
+  for (const id of party.members) {
+    party.ready[id] = false;
+  }
+
+  emitPartyUpdate(party.partyId);
   broadcastOnlineList();
 
   return party;
 }
 
-function createDuoMatchFromParty(party) {
+// Backwards-compatible name used by the old invite flow.
+function createParty(leaderId, guestId) {
+  return addGuestToLeaderParty(leaderId, guestId);
+}
+
+function createMatchFromParty(party, mode = "duo") {
+  const cleanMode = mode === "team" ? "team" : "duo";
+  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
   const matchId = makeMatchId();
   const seed = makeSeed();
 
   const match = {
     matchId,
     seed,
-    mode: "duo",
+    mode: cleanMode,
     partyId: party.partyId,
+    teamSize,
     players: new Map()
   };
 
@@ -232,21 +301,35 @@ function createDuoMatchFromParty(party) {
   party.matchId = matchId;
   party.seed = seed;
   party.status = "matching";
+  party.modeIntent = cleanMode;
+  party.teamSize = teamSize;
+
+  const teammates = party.members
+    .map(id => getPlayer(id))
+    .filter(Boolean)
+    .map(publicPlayer);
+
+  const botFillSlots = Math.max(0, teamSize - teammates.length);
 
   for (const socketId of party.members) {
     io.to(socketId).emit("partyMatchStart", {
       matchId,
       seed,
       partyId: party.partyId,
-      teammates: party.members
-        .map(id => getPlayer(id))
-        .filter(Boolean)
-        .map(publicPlayer)
+      mode: cleanMode,
+      teamSize,
+      botFillSlots,
+      queueMs: 15000,
+      teammates
     });
   }
 
   emitPartyUpdate(party.partyId);
   broadcastOnlineList();
+}
+
+function createDuoMatchFromParty(party) {
+  createMatchFromParty(party, "duo");
 }
 
 function cancelMatchBackToPartyLobby(match, reason = "Queue cancelled.") {
@@ -433,11 +516,23 @@ io.on("connection", socket => {
 
     if (!from) return;
     if (!targetSocket || !target) return socket.emit("partyInviteFailed", "Friend is offline.");
-    if (target.partyId) return socket.emit("partyInviteFailed", "That player is already in a Duo lobby.");
+    if (target.partyId) return socket.emit("partyInviteFailed", "That player is already in a party.");
+
+    const party = from.partyId ? parties.get(from.partyId) : null;
+
+    if (party && party.leaderId !== socket.id) {
+      return socket.emit("partyInviteFailed", "Only the party leader can invite players.");
+    }
+
+    if (party && party.members.length >= (party.maxSize || PARTY_MAX_SIZE)) {
+      return socket.emit("partyInviteFailed", "Party is already full.");
+    }
 
     targetSocket.emit("partyInviteIncoming", {
       fromSocketId: socket.id,
-      fromPlayer: publicPlayer(from)
+      fromPlayer: publicPlayer(from),
+      partySize: party ? party.members.length : 1,
+      maxSize: PARTY_MAX_SIZE
     });
 
     socket.emit("partyInviteSent", { targetId: data?.targetId });
@@ -468,18 +563,48 @@ io.on("connection", socket => {
     broadcastOnlineList();
   });
 
-  socket.on("partyStartDuoReady", () => {
+  function startPartyReadyCheck(mode = "duo") {
+    const cleanMode = mode === "team" ? "team" : "duo";
+
     const p = getPlayer(socket.id);
     if (!p || !p.partyId) return;
 
     const party = parties.get(p.partyId);
     if (!party) return;
-    if (party.leaderId !== socket.id) return socket.emit("partyError", "Only the lobby leader can start Duo.");
+
+    if (party.leaderId !== socket.id) {
+      return socket.emit("partyError", "Only the party leader can start ready check.");
+    }
+
+    if (party.members.length < 2) {
+      return socket.emit("partyError", "Invite at least one teammate first, or queue alone with NPC teammates from the client.");
+    }
+
+    if (cleanMode === "duo" && party.members.length > 2) {
+      return socket.emit("partyError", "Duo only supports 2 players. Use Team Mode for 3-4 players.");
+    }
+
+    if (party.members.length > PARTY_MAX_SIZE) {
+      return socket.emit("partyError", "Party is too large.");
+    }
 
     party.status = "readying";
-    for (const id of party.members) party.ready[id] = false;
+    party.modeIntent = cleanMode;
+    party.teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
+
+    for (const id of party.members) {
+      party.ready[id] = false;
+    }
 
     emitPartyUpdate(party.partyId);
+  }
+
+  socket.on("partyStartModeReady", data => {
+    startPartyReadyCheck(data?.mode || "duo");
+  });
+
+  socket.on("partyStartDuoReady", () => {
+    startPartyReadyCheck("duo");
   });
 
   socket.on("partyReady", ready => {
@@ -492,10 +617,12 @@ io.on("connection", socket => {
     party.ready[socket.id] = !!ready;
     emitPartyUpdate(party.partyId);
 
-    const allReady = party.members.length >= 2 && party.members.every(id => party.ready[id]);
+    const allReady =
+      party.members.length >= 2 &&
+      party.members.every(id => party.ready[id]);
 
     if (party.status === "readying" && allReady) {
-      createDuoMatchFromParty(party);
+      createMatchFromParty(party, party.modeIntent || "duo");
     }
   });
 
@@ -525,7 +652,7 @@ io.on("connection", socket => {
         socketId: socket.id,
         playerId: p.playerId,
         name: p.name,
-        teamId: p.partyId || socket.id,
+        teamId: p.partyId || state?.teamId || socket.id,
         alive: true,
         hp: 100,
         x: 0,
@@ -551,7 +678,9 @@ io.on("connection", socket => {
       color: p.color,
       level: p.level,
       rank: p.rank,
-      teamId: entry.teamId
+      teamId: entry.teamId,
+      matchMode: match.mode,
+      teamSize: match.teamSize || 2
     });
   });
 
