@@ -1,13 +1,14 @@
 const express = require("express");
 const cors = require("cors");
-const publicDir = path.join(__dirname, "public");
-app.use(express.static(publicDir));
+const path = require("path");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
+
 const publicDir = path.join(__dirname, "public");
 app.use(express.static(publicDir));
 
