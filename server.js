@@ -235,7 +235,7 @@ function getVoiceRoomId(p) {
   if (!p) return null;
   if (p.matchId && matches.has(p.matchId)) return `match:${p.matchId}`;
   if (p.partyId && parties.has(p.partyId)) return `party:${p.partyId}`;
-  return null;
+  return "menu:global";
 }
 
 function getVoicePeerPayload(p) {
@@ -939,8 +939,14 @@ io.on("connection", socket => {
     const roomId = getVoiceRoomId(p);
 
     if (!p || !roomId) {
-      socket.emit("voiceError", { message: "Join a party lobby or online match before enabling voice." });
+      socket.emit("voiceError", { message: "Connect to the multiplayer server before enabling voice." });
       return;
+    }
+
+    const oldRoomId = p.voiceRoomId || null;
+    if (oldRoomId && oldRoomId !== roomId) {
+      emitVoicePeerLeft(socket.id, "room_changed");
+      socket.leave(oldRoomId);
     }
 
     socket.join(roomId);
