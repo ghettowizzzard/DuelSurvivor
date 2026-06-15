@@ -30,7 +30,9 @@ const parties = new Map();
 const matches = new Map();
 
 const PARTY_MAX_SIZE = 4;
-const MATCH_TOTAL_SLOTS = 60;
+const MATCH_TOTAL_SLOTS = 100;
+const MATCH_BOT_MIN = 40;
+const MATCH_BOT_MAX = 99;
 const ONLINE_QUEUE_MS = 15000;
 const WORLD_SNAPSHOT_MIN_MS = 160;
 
@@ -42,6 +44,43 @@ const TEAM_SIZE_BY_MODE = {
 function getMatchHumanCount(match) {
   if (!match) return 0;
   return [...match.players.values()].filter(p => p && !p.leftMatch && !p.disconnected).length;
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function rollMatchBotTarget(humanCount = 1) {
+  const safeHumanCount = Math.max(1, Number(humanCount) || 1);
+  const maxBotsForSlots = Math.max(0, MATCH_TOTAL_SLOTS - safeHumanCount);
+  if (maxBotsForSlots <= 0) return 0;
+
+  const minBots = Math.min(MATCH_BOT_MIN, maxBotsForSlots);
+  const activeOnline = Math.max(safeHumanCount, players.size || safeHumanCount);
+  const popularityRatio = clampNumber((activeOnline - safeHumanCount) / Math.max(1, MATCH_TOTAL_SLOTS - safeHumanCount), 0, 1);
+  const lowPopulationTarget = MATCH_BOT_MIN + Math.round((MATCH_BOT_MAX - MATCH_BOT_MIN) * (1 - popularityRatio));
+  const jitter = Math.floor(Math.random() * 17) - 8;
+
+  let target = clampNumber(lowPopulationTarget + jitter, minBots, maxBotsForSlots);
+
+  if (Math.random() < (popularityRatio < 0.18 ? 0.22 : 0.08)) {
+    target = maxBotsForSlots;
+  } else if (Math.random() < 0.12) {
+    target = clampNumber(target - Math.floor(Math.random() * 18), minBots, maxBotsForSlots);
+  }
+
+  return Math.round(target);
+}
+
+function getMatchBotTarget(match, humanCount = getMatchHumanCount(match)) {
+  const maxBotsForSlots = Math.max(0, MATCH_TOTAL_SLOTS - Math.max(0, humanCount));
+  const configured = Number(match?.botTarget);
+
+  if (Number.isFinite(configured)) {
+    return Math.max(0, Math.min(maxBotsForSlots, Math.round(configured)));
+  }
+
+  return Math.min(MATCH_BOT_MIN, maxBotsForSlots);
 }
 
 function chooseWorldAuthority(match) {
@@ -57,6 +96,7 @@ function chooseWorldAuthority(match) {
 
 function makeMatchSyncPayload(match) {
   const humanCount = getMatchHumanCount(match);
+  const botCount = getMatchBotTarget(match, humanCount);
   const worldAuthoritySocketId = chooseWorldAuthority(match);
 
   return {
@@ -66,7 +106,8 @@ function makeMatchSyncPayload(match) {
     teamSize: match.teamSize || 2,
     totalSlots: MATCH_TOTAL_SLOTS,
     humanCount,
-    botCount: Math.max(0, MATCH_TOTAL_SLOTS - humanCount),
+    botCount,
+    populationTarget: Math.min(MATCH_TOTAL_SLOTS, humanCount + botCount),
     serverNow: Date.now(),
     queueStartAt: match.queueStartAt,
     deployAt: match.deployAt,
@@ -96,7 +137,7 @@ function sanitizeWorldSnapshot(snapshot) {
     seq: Number(snapshot?.seq || 0),
     state: String(snapshot?.state || "MATCH").slice(0, 32),
     serverNow: Date.now(),
-    bots: Array.isArray(snapshot?.bots) ? snapshot.bots.slice(0, 80).map(bot => ({
+    bots: Array.isArray(snapshot?.bots) ? snapshot.bots.slice(0, MATCH_TOTAL_SLOTS).map(bot => ({
       id: String(bot.id || ""),
       name: String(bot.name || "Bot").slice(0, 32),
       x: Number(bot.x || 0),
@@ -525,6 +566,11 @@ function createMatchFromParty(party, mode = "duo") {
     .filter(Boolean)
     .map(publicPlayer);
 
+  const humanCount = Math.max(1, teammates.length);
+  const botTarget = rollMatchBotTarget(humanCount);
+  match.botTarget = botTarget;
+  match.populationTarget = Math.min(MATCH_TOTAL_SLOTS, humanCount + botTarget);
+
   const botFillSlots = Math.max(0, teamSize - teammates.length);
 
   for (const socketId of party.members) {
@@ -536,7 +582,8 @@ function createMatchFromParty(party, mode = "duo") {
       teamSize,
       botFillSlots,
       totalSlots: MATCH_TOTAL_SLOTS,
-      botCount: Math.max(0, MATCH_TOTAL_SLOTS - teammates.length),
+      botCount: botTarget,
+      populationTarget: match.populationTarget,
       queueMs: ONLINE_QUEUE_MS,
       serverNow: now,
       deployAt: match.deployAt,
