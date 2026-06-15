@@ -2810,6 +2810,7 @@
 
                 player.name = mpState.profile.name;
 
+                voiceMaybeAutoStartForMatch();
                 mpRefreshMenuMultiplayerUi();
                 if (currentGameState !== GAME_STATES.MENU) updatePlayerHealthHud();
             });
@@ -2820,6 +2821,7 @@
                 console.log("[MP] Online players:", mpState.onlinePlayers);
 
                 mpRefreshSavedFriendsFromOnlineList();
+                voiceMaybeAutoStartForMatch();
                 mpRefreshMenuMultiplayerUi();
                 mpRenderFriendsPanel();
             });
@@ -4597,18 +4599,9 @@ ${mpState.connectionError ? `
         async function voiceEnsureStarted() {
             if (voiceState.starting || voiceState.joined) return voiceState.joined;
 
-            const hasVoiceRoom = !!(mpState.matchId || mpState.party?.partyId);
-
             if (!mpSocket?.connected) {
                 await voiceBuildLocalStream();
                 mpNotify("Microphone ready. Connect to multiplayer to use voice chat.");
-                voiceRefreshUi();
-                return false;
-            }
-
-            if (!hasVoiceRoom) {
-                await voiceBuildLocalStream();
-                mpNotify("Microphone ready. Join a party lobby or online match to connect voice.");
                 voiceRefreshUi();
                 return false;
             }
@@ -4740,8 +4733,11 @@ ${mpState.connectionError ? `
             const audio = new Audio();
             audio.autoplay = true;
             audio.playsInline = true;
+            audio.muted = false;
+            audio.controls = false;
             audio.volume = 0;
             audio.dataset.voicePeer = socketId;
+            audio.setAttribute("playsinline", "");
             document.body.appendChild(audio);
 
             peer = {
@@ -4769,7 +4765,10 @@ ${mpState.connectionError ? `
 
                 peer.stream = stream;
                 peer.audio.srcObject = stream;
-                peer.audio.play().catch(() => {});
+                peer.audio.muted = false;
+                peer.audio.play().catch(error => {
+                    console.warn("Remote voice autoplay blocked until user interaction:", error);
+                });
             };
 
             pc.onconnectionstatechange = () => {
@@ -4927,7 +4926,7 @@ ${mpState.connectionError ? `
 
         function voiceMaybeAutoStartForMatch() {
             if (!voiceSettings.micEnabled) return;
-            if (!mpSocket?.connected || !(mpState.matchId || mpState.party?.partyId)) return;
+            if (!mpSocket?.connected) return;
             if (voiceState.starting) return;
 
             if (voiceState.joined) {
@@ -4978,6 +4977,14 @@ ${mpState.connectionError ? `
             voiceRefreshUi();
         }
 
+        function voiceUnlockRemoteAudio() {
+            for (const peer of voiceState.peers.values()) {
+                if (!peer.audio || !peer.stream) continue;
+                peer.audio.muted = false;
+                peer.audio.play().catch(() => {});
+            }
+        }
+
         function voiceInitUi() {
             const btn = document.getElementById("top-voice-btn");
             if (btn && !btn.dataset.voiceBound) {
@@ -4986,12 +4993,16 @@ ${mpState.connectionError ? `
             }
 
             document.addEventListener("pointerdown", event => {
+                voiceUnlockRemoteAudio();
+
                 const panel = document.getElementById("voice-settings-panel");
                 const voiceBtn = document.getElementById("top-voice-btn");
                 if (!panel) return;
                 if (panel.contains(event.target) || voiceBtn?.contains(event.target)) return;
                 panel.remove();
             }, true);
+
+            document.addEventListener("keydown", voiceUnlockRemoteAudio, true);
 
             voiceRefreshUi();
         }
