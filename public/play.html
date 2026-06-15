@@ -2357,7 +2357,7 @@
             remoteProjectiles: [],
             lastStateEmit: 0,
             serverNowOffsetMs: 0,
-            serverTotalSlots: 60,
+            serverTotalSlots: 100,
             serverHumanCount: 1,
             serverBotCount: 0,
             serverDeployAt: 0,
@@ -2912,7 +2912,7 @@
                 const now = performance.now();
                 const serverNow = Number(data.serverNow || Date.now());
                 mpState.serverNowOffsetMs = serverNow - now;
-                mpState.serverTotalSlots = data.totalSlots || 60;
+                mpState.serverTotalSlots = data.totalSlots || LOBBY_FILL_CONFIG.totalSlots;
                 mpState.serverBotCount = data.botCount ?? Math.max(0, mpState.serverTotalSlots - (mpState.teammates.length || 1));
                 mpState.worldAuthoritySocketId = data.worldAuthoritySocketId || null;
 
@@ -2956,7 +2956,7 @@
                 const now = performance.now();
                 const serverNow = Number(sync.serverNow || Date.now());
                 mpState.serverNowOffsetMs = serverNow - now;
-                mpState.serverTotalSlots = sync.totalSlots || mpState.serverTotalSlots || 60;
+                mpState.serverTotalSlots = sync.totalSlots || mpState.serverTotalSlots || LOBBY_FILL_CONFIG.totalSlots;
                 mpState.serverHumanCount = sync.humanCount ?? mpState.serverHumanCount ?? 1;
                 mpState.serverBotCount = sync.botCount ?? mpState.serverBotCount ?? 0;
                 mpState.worldAuthoritySocketId = sync.worldAuthoritySocketId || mpState.worldAuthoritySocketId;
@@ -5267,6 +5267,7 @@ function mpSafeText(value) {
                 mpState.botFillSlots = mode === "team-bot" ? 3 : 1;
             }
 
+            configureLobbyBotTargets(mode);
             initQueueLobby();
 
             if (mode === "duo-online" || mode === "team-online") {
@@ -14438,14 +14439,66 @@ const bots = [];
         let lobbyNextBotFillAt = 0;
 
         const LOBBY_FILL_CONFIG = {
-            totalSlots: 60,
+            totalSlots: 100,
             visibleWarmupBots: 3,
-            primaryBotTarget: 40,
-            finalBotTarget: 59,
+            minBotTarget: 40,
+            maxBotTarget: 99,
             primaryFillMinMs: 30000,
             primaryFillMaxMs: 42000,
             countdownSeconds: 15
         };
+
+        let lobbyBotTarget = 59;
+        let lobbyPrimaryBotTarget = 40;
+
+        function rollLocalLobbyBotTarget() {
+            const maxBots = Math.max(0, LOBBY_FILL_CONFIG.totalSlots - 1);
+            const minBots = Math.min(LOBBY_FILL_CONFIG.minBotTarget, maxBots);
+            const onlinePressure = clamp01((mpState.onlinePlayers?.length || 0) / Math.max(1, LOBBY_FILL_CONFIG.totalSlots));
+            const base = LOBBY_FILL_CONFIG.minBotTarget + Math.round((LOBBY_FILL_CONFIG.maxBotTarget - LOBBY_FILL_CONFIG.minBotTarget) * (1 - onlinePressure));
+            const jitter = Math.floor(Math.random() * 19) - 9;
+
+            let target = Math.round(clamp(base + jitter, minBots, maxBots));
+
+            if (Math.random() < (onlinePressure < 0.18 ? 0.22 : 0.08)) {
+                target = maxBots;
+            } else if (Math.random() < 0.14) {
+                target = Math.round(clamp(target - (8 + Math.random() * 20), minBots, maxBots));
+            }
+
+            return target;
+        }
+
+        function configureLobbyBotTargets(mode = mpState.matchMode) {
+            const onlineMode = mode === "duo-online" || mode === "team-online";
+            const maxBots = Math.max(0, LOBBY_FILL_CONFIG.totalSlots - 1);
+
+            lobbyBotTarget = onlineMode
+                ? Math.round(clamp(mpState.serverBotCount || rollLocalLobbyBotTarget(), 0, maxBots))
+                : rollLocalLobbyBotTarget();
+
+            lobbyPrimaryBotTarget = Math.round(clamp(
+                lobbyBotTarget * (0.62 + Math.random() * 0.18),
+                LOBBY_FILL_CONFIG.visibleWarmupBots,
+                lobbyBotTarget
+            ));
+        }
+
+        function getLobbyBotTarget() {
+            return Math.round(clamp(lobbyBotTarget || LOBBY_FILL_CONFIG.minBotTarget, 0, LOBBY_FILL_CONFIG.maxBotTarget));
+        }
+
+        function getLobbyPrimaryBotTarget() {
+            return Math.round(clamp(lobbyPrimaryBotTarget || LOBBY_FILL_CONFIG.minBotTarget, LOBBY_FILL_CONFIG.visibleWarmupBots, getLobbyBotTarget()));
+        }
+
+        function getLobbyPopulationTarget() {
+            if (mpState.matchId && (mpState.matchMode === "duo-online" || mpState.matchMode === "team-online")) {
+                return Math.min(mpState.serverTotalSlots || LOBBY_FILL_CONFIG.totalSlots, (mpState.serverHumanCount || 1) + getLobbyBotTarget());
+            }
+
+            return Math.min(LOBBY_FILL_CONFIG.totalSlots, 1 + getLobbyBotTarget());
+        }
 
         const BOT_PERSONALITY_CONFIG = {
             aggressive: { color: "#ef4444", preferredBranches: ["Summon", "Sigil", "Godbound"], sight: 500, accuracy: 0.78, lootGreed: 0.35 },
@@ -14601,10 +14654,6 @@ const bots = [];
         }
 
         function getActivePlayerCount() {
-            if (mpState.matchId && (mpState.matchMode === "duo-online" || mpState.matchMode === "team-online")) {
-                return Math.min(mpState.serverTotalSlots || 60, (mpState.serverHumanCount || 1) + (mpState.serverBotCount || 0));
-            }
-
             const localCount =
                 player &&
                 player.alive !== false &&
@@ -14622,7 +14671,13 @@ const bots = [];
                 ).length
                 : 0;
 
-            return localCount + onlineCount + getAliveBotCount();
+            const visibleCount = localCount + onlineCount + getAliveBotCount();
+
+            if (mpState.matchId && (mpState.matchMode === "duo-online" || mpState.matchMode === "team-online")) {
+                return Math.min(mpState.serverTotalSlots || LOBBY_FILL_CONFIG.totalSlots, visibleCount);
+            }
+
+            return visibleCount;
         }
 
         function refreshLobbyPlayerCountHud() {
@@ -21444,7 +21499,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
         }
 
                 function spawnLobbyBot() {
-            if (getAliveBotCount() >= LOBBY_FILL_CONFIG.finalBotTarget) return null;
+            if (getAliveBotCount() >= getLobbyBotTarget()) return null;
 
             const p = getQueueStagingPoint(18, {
                 minDist: 130,
@@ -21479,7 +21534,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
                 const progress = clamp01(1 - ((deployAt - time) / 15000));
                 const desiredBots = Math.max(
                     LOBBY_FILL_CONFIG.visibleWarmupBots,
-                    Math.floor(progress * LOBBY_FILL_CONFIG.finalBotTarget)
+                    Math.floor(progress * getLobbyBotTarget())
                 );
 
                 while (getAliveBotCount() < desiredBots) spawnLobbyBot();
@@ -21512,7 +21567,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
                 const progress = clamp01(elapsed / Math.max(1, lobbyPrimaryFillDuration));
                 const desiredBots = Math.max(
                     LOBBY_FILL_CONFIG.visibleWarmupBots,
-                    Math.floor(progress * LOBBY_FILL_CONFIG.primaryBotTarget)
+                    Math.floor(progress * getLobbyPrimaryBotTarget())
                 );
 
                 while (getAliveBotCount() < desiredBots) spawnLobbyBot();
@@ -21533,7 +21588,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
 
                 if (
                     elapsed >= lobbyPrimaryFillDuration &&
-                    getAliveBotCount() >= LOBBY_FILL_CONFIG.primaryBotTarget
+                    getAliveBotCount() >= getLobbyPrimaryBotTarget()
                 ) {
                     lobbyFillPhase = "countdown";
                     lobbyCountdown = LOBBY_FILL_CONFIG.countdownSeconds;
@@ -21551,7 +21606,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
             if (lobbyFillPhase === "countdown") {
                 if (
                     time >= lobbyNextBotFillAt &&
-                    getAliveBotCount() < LOBBY_FILL_CONFIG.finalBotTarget
+                    getAliveBotCount() < getLobbyBotTarget()
                 ) {
                     spawnLobbyBot();
                     lobbyNextBotFillAt = time + Math.random() * 450 + 450;
@@ -21716,7 +21771,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
             resetEnvironmentLightingForMatch();
             initializeAmbientFireflies(90);
 
-            while (getAliveBotCount() < LOBBY_FILL_CONFIG.finalBotTarget) {
+            while (getAliveBotCount() < getLobbyBotTarget()) {
                 bots.push(createBot({
                     id: Date.now() + Math.floor(Math.random() * 9999),
                     x: worldWidth / 2,
@@ -28710,7 +28765,7 @@ function processBotItemPickups(bot) {
         }
 
         function matchReportCountStartingTeams() {
-            const slots = LOBBY_FILL_CONFIG?.totalSlots || 60;
+            const slots = getLobbyPopulationTarget();
             return isDuoMatchActive() ? Math.max(1, Math.ceil(slots / 2)) : slots;
         }
 
