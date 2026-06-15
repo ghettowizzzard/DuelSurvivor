@@ -1,11 +1,15 @@
 const express = require("express");
 const cors = require("cors");
+const publicDir = path.join(__dirname, "public");
+app.use(express.static(publicDir));
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+const publicDir = path.join(__dirname, "public");
+app.use(express.static(publicDir));
 
 const httpServer = createServer(app);
 
@@ -135,7 +139,7 @@ function sanitizeWorldSnapshot(snapshot) {
   };
 }
 
-app.get("/", (req, res) => {
+app.get("/status", (req, res) => {
   res.json({
     ok: true,
     name: "Duel Survivor Multiplayer Server",
@@ -163,6 +167,10 @@ app.get("/debug", (req, res) => {
       playerCount: m.players.size
     }))
   });
+});
+
+app.get("/play", (req, res) => {
+  res.sendFile(path.join(publicDir, "play.html"));
 });
 
 function makeSurvivorId() {
@@ -222,32 +230,52 @@ function broadcastOnlineList() {
   io.emit("onlinePlayers", [...players.values()].map(publicPlayer));
 }
 
+function getVoiceRoomId(p) {
+  if (!p) return null;
+  if (p.matchId && matches.has(p.matchId)) return `match:${p.matchId}`;
+  if (p.partyId && parties.has(p.partyId)) return `party:${p.partyId}`;
+  return null;
+}
+
 function getVoicePeerPayload(p) {
+  const voiceRoomId = p.voiceRoomId || getVoiceRoomId(p);
+
   return {
     ...publicPlayer(p),
     socketId: p.socketId,
-    matchId: p.matchId || null
+    matchId: p.matchId || null,
+    partyId: p.partyId || null,
+    voiceRoomId
   };
 }
 
 function getVoiceMatchPeerIds(socketId) {
   const p = getPlayer(socketId);
-  if (!p || !p.matchId) return [];
+  const roomId = p?.voiceRoomId || getVoiceRoomId(p);
+  if (!p || !roomId) return [];
 
-  const match = matches.get(p.matchId);
-  if (match) {
-    return [...match.players.keys()].filter(id => id !== socketId && io.sockets.sockets.has(id));
+  if (roomId.startsWith("match:")) {
+    const matchId = roomId.slice("match:".length);
+    const match = matches.get(matchId);
+    if (match) return [...match.players.keys()].filter(id => id !== socketId && io.sockets.sockets.has(id));
+  }
+
+  if (roomId.startsWith("party:")) {
+    const partyId = roomId.slice("party:".length);
+    const party = parties.get(partyId);
+    if (party) return party.members.filter(id => id !== socketId && io.sockets.sockets.has(id));
   }
 
   return [...players.values()]
-    .filter(other => other.socketId !== socketId && other.matchId === p.matchId)
+    .filter(other => other.socketId !== socketId && (other.voiceRoomId || getVoiceRoomId(other)) === roomId)
     .map(other => other.socketId)
     .filter(id => io.sockets.sockets.has(id));
 }
 
 function emitVoicePeerLeft(socketId, reason = "left") {
   const p = getPlayer(socketId);
-  if (!p || !p.matchId) return;
+  const roomId = p?.voiceRoomId || getVoiceRoomId(p);
+  if (!p || !roomId) return;
 
   for (const peerId of getVoiceMatchPeerIds(socketId)) {
     io.to(peerId).emit("voicePeerLeft", {
@@ -907,19 +935,16 @@ io.on("connection", socket => {
 
   socket.on("voiceJoin", data => {
     const p = getPlayer(socket.id);
-    if (!p || !p.matchId) {
-      socket.emit("voiceError", { message: "Join an online match before enabling voice." });
+    const roomId = getVoiceRoomId(p);
+
+    if (!p || !roomId) {
+      socket.emit("voiceError", { message: "Join a party lobby or online match before enabling voice." });
       return;
     }
 
-    const match = matches.get(p.matchId);
-    if (!match) {
-      socket.emit("voiceError", { message: "Voice match not found." });
-      return;
-    }
+    socket.join(roomId);
 
-    socket.join(p.matchId);
-
+    p.voiceRoomId = roomId;
     p.voiceReady = true;
     p.voiceMuted = !!data?.muted;
     p.voiceMode = data?.mode === "open" ? "open" : "ptt";
@@ -931,32 +956,33 @@ io.on("connection", socket => {
       .map(getVoicePeerPayload);
 
     socket.emit("voicePeers", {
-      matchId: p.matchId,
+      roomId,
+      matchId: p.matchId || null,
+      partyId: p.partyId || null,
       peers
     });
 
     for (const peerId of getVoiceMatchPeerIds(socket.id)) {
       const peer = getPlayer(peerId);
-      if (peer?.voiceReady) {
-        io.to(peerId).emit("voicePeerJoined", getVoicePeerPayload(p));
-      }
+      if (peer?.voiceReady) io.to(peerId).emit("voicePeerJoined", getVoicePeerPayload(p));
     }
   });
 
   socket.on("voiceLeave", () => {
     const p = getPlayer(socket.id);
     if (!p) return;
-
     if (p.voiceReady) emitVoicePeerLeft(socket.id, "left");
-
     p.voiceReady = false;
     p.voiceMuted = true;
+    p.voiceRoomId = null;
   });
 
   socket.on("voiceState", data => {
     const p = getPlayer(socket.id);
-    if (!p || !p.matchId) return;
+    const roomId = p?.voiceRoomId || getVoiceRoomId(p);
+    if (!p || !roomId) return;
 
+    p.voiceRoomId = roomId;
     p.voiceReady = data?.ready !== false;
     p.voiceMuted = !!data?.muted;
     p.voiceMode = data?.mode === "open" ? "open" : "ptt";
@@ -969,12 +995,12 @@ io.on("connection", socket => {
 
   socket.on("voiceSignal", data => {
     const p = getPlayer(socket.id);
-    if (!p || !p.matchId) return;
-
+    const senderRoomId = p?.voiceRoomId || getVoiceRoomId(p);
     const targetSocketId = String(data?.toSocketId || "");
     const target = getPlayer(targetSocketId);
+    const targetRoomId = target?.voiceRoomId || getVoiceRoomId(target);
 
-    if (!target || target.matchId !== p.matchId) return;
+    if (!p || !senderRoomId || !target || targetRoomId !== senderRoomId) return;
 
     io.to(targetSocketId).emit("voiceSignal", {
       fromSocketId: socket.id,
