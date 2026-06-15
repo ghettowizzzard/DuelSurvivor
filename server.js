@@ -210,12 +210,53 @@ function publicPlayer(p) {
     color: p.color || "#38bdf8",
     icon: p.icon || "DS",
     partyId: p.partyId || null,
-    inMatch: !!p.inMatch
+    inMatch: !!p.inMatch,
+    voiceReady: !!p.voiceReady,
+    voiceMuted: !!p.voiceMuted,
+    voiceMode: p.voiceMode || "ptt",
+    voiceRange: Number(p.voiceRange || 650)
   };
 }
 
 function broadcastOnlineList() {
   io.emit("onlinePlayers", [...players.values()].map(publicPlayer));
+}
+
+function getVoicePeerPayload(p) {
+  return {
+    ...publicPlayer(p),
+    socketId: p.socketId,
+    matchId: p.matchId || null
+  };
+}
+
+function getVoiceMatchPeerIds(socketId) {
+  const p = getPlayer(socketId);
+  if (!p || !p.matchId) return [];
+
+  const match = matches.get(p.matchId);
+  if (match) {
+    return [...match.players.keys()].filter(id => id !== socketId && io.sockets.sockets.has(id));
+  }
+
+  return [...players.values()]
+    .filter(other => other.socketId !== socketId && other.matchId === p.matchId)
+    .map(other => other.socketId)
+    .filter(id => io.sockets.sockets.has(id));
+}
+
+function emitVoicePeerLeft(socketId, reason = "left") {
+  const p = getPlayer(socketId);
+  if (!p || !p.matchId) return;
+
+  for (const peerId of getVoiceMatchPeerIds(socketId)) {
+    io.to(peerId).emit("voicePeerLeft", {
+      socketId,
+      playerId: p.playerId,
+      name: p.name,
+      reason
+    });
+  }
 }
 
 function emitPartyUpdate(partyId) {
@@ -852,7 +893,7 @@ io.on("connection", socket => {
     });
   });
 
-  socket.on("matchAction", action => {
+    socket.on("matchAction", action => {
     const p = getPlayer(socket.id);
     if (!p || !p.matchId) return;
 
@@ -861,6 +902,84 @@ io.on("connection", socket => {
       fromSocketId: socket.id,
       fromPlayerId: p.playerId,
       fromName: p.name
+    });
+  });
+
+  socket.on("voiceJoin", data => {
+    const p = getPlayer(socket.id);
+    if (!p || !p.matchId) {
+      socket.emit("voiceError", { message: "Join an online match before enabling voice." });
+      return;
+    }
+
+    const match = matches.get(p.matchId);
+    if (!match) {
+      socket.emit("voiceError", { message: "Voice match not found." });
+      return;
+    }
+
+    socket.join(p.matchId);
+
+    p.voiceReady = true;
+    p.voiceMuted = !!data?.muted;
+    p.voiceMode = data?.mode === "open" ? "open" : "ptt";
+    p.voiceRange = Math.max(120, Math.min(1600, Number(data?.range || 650)));
+
+    const peers = getVoiceMatchPeerIds(socket.id)
+      .map(id => getPlayer(id))
+      .filter(peer => peer && peer.voiceReady)
+      .map(getVoicePeerPayload);
+
+    socket.emit("voicePeers", {
+      matchId: p.matchId,
+      peers
+    });
+
+    for (const peerId of getVoiceMatchPeerIds(socket.id)) {
+      const peer = getPlayer(peerId);
+      if (peer?.voiceReady) {
+        io.to(peerId).emit("voicePeerJoined", getVoicePeerPayload(p));
+      }
+    }
+  });
+
+  socket.on("voiceLeave", () => {
+    const p = getPlayer(socket.id);
+    if (!p) return;
+
+    if (p.voiceReady) emitVoicePeerLeft(socket.id, "left");
+
+    p.voiceReady = false;
+    p.voiceMuted = true;
+  });
+
+  socket.on("voiceState", data => {
+    const p = getPlayer(socket.id);
+    if (!p || !p.matchId) return;
+
+    p.voiceReady = data?.ready !== false;
+    p.voiceMuted = !!data?.muted;
+    p.voiceMode = data?.mode === "open" ? "open" : "ptt";
+    p.voiceRange = Math.max(120, Math.min(1600, Number(data?.range || p.voiceRange || 650)));
+
+    for (const peerId of getVoiceMatchPeerIds(socket.id)) {
+      io.to(peerId).emit("voicePeerState", getVoicePeerPayload(p));
+    }
+  });
+
+  socket.on("voiceSignal", data => {
+    const p = getPlayer(socket.id);
+    if (!p || !p.matchId) return;
+
+    const targetSocketId = String(data?.toSocketId || "");
+    const target = getPlayer(targetSocketId);
+
+    if (!target || target.matchId !== p.matchId) return;
+
+    io.to(targetSocketId).emit("voiceSignal", {
+      fromSocketId: socket.id,
+      fromPlayer: getVoicePeerPayload(p),
+      signal: data?.signal || null
     });
   });
 
@@ -1032,7 +1151,12 @@ socket.on("matchLocalDeath", data => {
   socket.on("disconnect", () => {
     const p = getPlayer(socket.id);
 
-    if (p) {
+       if (p) {
+      if (p.voiceReady) {
+        emitVoicePeerLeft(socket.id, "disconnected");
+        p.voiceReady = false;
+      }
+
       if (p.playerId) idToSocket.delete(p.playerId);
 
       if (p.partyId) leaveParty(socket.id);
