@@ -2446,6 +2446,7 @@
             spectateTargetIndex: 0,
             spectateTargetKey: null,
             spectateAllowEnemies: true,
+            onlineSpectatorCounts: {},
 
             reconnectingToMatch: false,
             reconnectSession: null,
@@ -2930,6 +2931,11 @@
 
             mpSocket.on("leaderboards", data => {
                 mpApplyLeaderboards(data);
+            });
+
+            mpSocket.on("spectatorCounts", counts => {
+                mpState.onlineSpectatorCounts = counts && typeof counts === "object" ? counts : {};
+                updateMatchKillsHud();
             });
 
             mpSocket.on("friendRequestIncoming", req => {
@@ -4067,6 +4073,8 @@ ${mpState.connectionError ? `
         };
 
         const PERF_STORAGE_KEY = "duel_survivor_perf_settings_v1";
+        const PERF_AUTO_PROFILE_KEY = "duel_survivor_perf_auto_profile_v1";
+        const PERF_USER_OVERRIDE_KEY = "duel_survivor_perf_user_override_v1";
 
         const PERF_PRESETS = {
             low: {
@@ -4086,7 +4094,11 @@ ${mpState.connectionError ? `
                 showHealthBars: false,
                 postProcessing: false,
                 fogEffects: false,
-                audioAmbience: false
+                audioAmbience: false,
+                terrainTileSize: 260,
+                terrainStreamSteps: 34,
+                fogPuffs: 0,
+                canopyLeafCount: 5
             },
             medium: {
                 preset: "medium",
@@ -4105,7 +4117,11 @@ ${mpState.connectionError ? `
                 showHealthBars: true,
                 postProcessing: true,
                 fogEffects: true,
-                audioAmbience: true
+                audioAmbience: true,
+                terrainTileSize: 220,
+                terrainStreamSteps: 48,
+                fogPuffs: 4,
+                canopyLeafCount: 8
             },
             high: {
                 preset: "high",
@@ -4124,7 +4140,11 @@ ${mpState.connectionError ? `
                 showHealthBars: true,
                 postProcessing: true,
                 fogEffects: true,
-                audioAmbience: true
+                audioAmbience: true,
+                terrainTileSize: 170,
+                terrainStreamSteps: 70,
+                fogPuffs: 9,
+                canopyLeafCount: 13
             }
         };
 
@@ -4132,14 +4152,19 @@ ${mpState.connectionError ? `
 
         const perfState = {
             frameCounter: 0,
+            frameId: 0,
             fps: 60,
             frameAvg: 16.6,
             lastFpsTime: 0,
             lastMinimapDraw: 0,
+            lastLowFpsNotice: 0,
             intervalTimers: {},
+            cameraBoundsCache: {},
             fogMaskCanvas: document.createElement("canvas"),
             fogMaskCtx: null,
-            autoDowngradeCooldown: 0
+            autoDowngradeCooldown: 0,
+            loadedSavedSettings: false,
+            deviceClass: null
         };
 
         perfState.fogMaskCtx = perfState.fogMaskCanvas.getContext("2d");
@@ -4148,15 +4173,89 @@ ${mpState.connectionError ? `
             return Math.max(min, Math.min(max, value));
         }
 
-        function perfDetectAutoPreset() {
+        function perfStorageJson(key, fallback = null) {
+            try {
+                return JSON.parse(localStorage.getItem(key) || "null") ?? fallback;
+            } catch (e) {
+                return fallback;
+            }
+        }
+
+        function perfWriteStorageJson(key, value) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value));
+            } catch (e) {}
+        }
+
+        function perfIsUserOverrideActive() {
+            try {
+                return localStorage.getItem(PERF_USER_OVERRIDE_KEY) === "1";
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function perfSetUserOverride(active = true) {
+            try {
+                if (active) localStorage.setItem(PERF_USER_OVERRIDE_KEY, "1");
+                else localStorage.removeItem(PERF_USER_OVERRIDE_KEY);
+            } catch (e) {}
+        }
+
+        function perfGetGpuHint() {
+            try {
+                const canvas = document.createElement("canvas");
+                const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+                if (!gl) return { renderer: "unknown", weak: true };
+
+                const ext = gl.getExtension("WEBGL_debug_renderer_info");
+                const renderer = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || "") : "";
+                const weak = /intel.*hd|intel\(r\).*hd|uhd graphics|swiftshader|llvmpipe|mesa/i.test(renderer);
+
+                return { renderer: renderer || "webgl", weak };
+            } catch (e) {
+                return { renderer: "unknown", weak: false };
+            }
+        }
+
+        function perfDetectDeviceClass() {
             const cores = navigator.hardwareConcurrency || 4;
             const memory = navigator.deviceMemory || 4;
             const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
             const weakScreen = Math.max(window.innerWidth, window.innerHeight) <= 900;
+            const dpr = window.devicePixelRatio || 1;
+            const gpu = perfGetGpuHint();
 
-            if (mobile || cores <= 2 || memory <= 2 || weakScreen) return "low";
-            if (cores <= 4 || memory <= 4) return "medium";
-            return "high";
+            let score = 0;
+            const reasons = [];
+
+            if (mobile) { score += 2; reasons.push("mobile"); }
+            if (cores <= 2) { score += 3; reasons.push("2-core CPU"); }
+            else if (cores <= 4) { score += 1; reasons.push("4-core CPU"); }
+
+            if (memory <= 2) { score += 3; reasons.push("low memory"); }
+            else if (memory <= 4) { score += 1; reasons.push("mid memory"); }
+
+            if (weakScreen) { score += 1; reasons.push("small screen"); }
+            if (dpr >= 2.5) { score += 1; reasons.push("high DPR"); }
+            if (gpu.weak) { score += 2; reasons.push("integrated/weak GPU"); }
+
+            const preset = score >= 5 ? "low" : score >= 3 ? "medium" : "high";
+
+            return {
+                preset,
+                score,
+                cores,
+                memory,
+                mobile,
+                dpr,
+                gpu: gpu.renderer,
+                reasons
+            };
+        }
+
+        function perfDetectAutoPreset() {
+            return perfDetectDeviceClass().preset;
         }
 
         function perfSaveSettings() {
@@ -4166,28 +4265,77 @@ ${mpState.connectionError ? `
         }
 
         function perfLoadSettings() {
-            try {
-                const saved = JSON.parse(localStorage.getItem(PERF_STORAGE_KEY) || "null");
+            perfState.deviceClass = perfDetectDeviceClass();
 
-                if (saved && saved.preset && PERF_PRESETS[saved.preset]) {
-                    perfSettings = { ...PERF_PRESETS[saved.preset], ...saved };
-                    return;
-                }
-            } catch (e) {}
+            const saved = perfStorageJson(PERF_STORAGE_KEY, null);
 
-            perfSettings = { ...PERF_PRESETS[perfDetectAutoPreset()] };
+            if (saved && saved.preset && PERF_PRESETS[saved.preset]) {
+                perfSettings = { ...PERF_PRESETS[saved.preset], ...saved };
+                perfState.loadedSavedSettings = true;
+                return;
+            }
+
+            perfState.loadedSavedSettings = false;
+            perfSettings = { ...PERF_PRESETS[perfState.deviceClass.preset] };
             perfSaveSettings();
         }
 
-        function perfApplyPreset(presetName, silent = false) {
+        function perfApplyPreset(presetName, silent = false, markUserOverride = true) {
             const preset = PERF_PRESETS[presetName] || PERF_PRESETS.medium;
             perfSettings = { ...preset };
+            perfState.cameraBoundsCache = {};
+            if (markUserOverride) perfSetUserOverride(true);
             perfSaveSettings();
             resizeGameCanvas();
 
             if (!silent) {
                 triggerNotification(`Performance preset applied: ${presetName.toUpperCase()}`);
             }
+        }
+
+        function perfRunInitialAutoProfile() {
+            if (perfState.loadedSavedSettings || perfIsUserOverrideActive()) return;
+
+            const previousProfile = perfStorageJson(PERF_AUTO_PROFILE_KEY, null);
+            if (previousProfile) return;
+
+            const samples = [];
+            let last = performance.now();
+
+            function sample(now) {
+                samples.push(Math.max(0, now - last));
+                last = now;
+
+                if (samples.length < 14) {
+                    requestAnimationFrame(sample);
+                    return;
+                }
+
+                if (perfIsUserOverrideActive()) return;
+
+                const sorted = samples.slice(2).sort((a, b) => a - b);
+                const avg = sorted.reduce((sum, v) => sum + v, 0) / Math.max(1, sorted.length);
+                const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] || avg;
+
+                let presetName = perfState.deviceClass?.preset || perfDetectAutoPreset();
+
+                if ((avg > 30 || p95 > 48) && presetName === "high") presetName = "medium";
+                if (avg > 38 || p95 > 70) presetName = "low";
+
+                perfApplyPreset(presetName, true, false);
+
+                perfWriteStorageJson(PERF_AUTO_PROFILE_KEY, {
+                    preset: presetName,
+                    avgFrameMs: Math.round(avg * 10) / 10,
+                    p95FrameMs: Math.round(p95 * 10) / 10,
+                    device: perfState.deviceClass,
+                    createdAt: Date.now()
+                });
+
+                if (document.getElementById("perf-settings-panel")) perfOpenSettings();
+            }
+
+            requestAnimationFrame(sample);
         }
 
         function perfGetRenderScale() {
@@ -4221,16 +4369,29 @@ ${mpState.connectionError ? `
         }
 
         function perfGetCameraBounds(margin = 180) {
+            const cacheKey = String(Math.round(margin));
+            const cached = perfState.cameraBoundsCache[cacheKey];
+
+            if (cached && cached.frameId === perfState.frameId) {
+                return cached.bounds;
+            }
+
             const cameraScale = Math.max(0.001, perfGetCameraScale());
             const halfW = gameCanvas.width / cameraScale / 2 + margin;
             const halfH = gameCanvas.height / cameraScale / 2 + margin;
-
-            return {
+            const bounds = {
                 left: player.x - halfW,
                 right: player.x + halfW,
                 top: player.y - halfH,
                 bottom: player.y + halfH
             };
+
+            perfState.cameraBoundsCache[cacheKey] = {
+                frameId: perfState.frameId,
+                bounds
+            };
+
+            return bounds;
         }
 
         function perfPointVisible(x, y, margin = 120) {
@@ -4251,6 +4412,7 @@ ${mpState.connectionError ? `
         }
 
         function perfUpdateFrameStats(time) {
+            perfState.frameId++;
             perfState.frameCounter++;
 
             if (!perfState.lastFpsTime) {
@@ -4265,20 +4427,15 @@ ${mpState.connectionError ? `
                 perfState.frameAvg = elapsed / Math.max(1, perfState.frameCounter);
                 perfState.frameCounter = 0;
                 perfState.lastFpsTime = time;
+                perfState.cameraBoundsCache = {};
 
-                // Automatic emergency downgrade when the game is struggling.
                 if (
                     currentGameState === GAME_STATES.MATCH &&
-                    perfState.fps < 38 &&
-                    time - perfState.autoDowngradeCooldown > 9000
+                    perfState.fps < 24 &&
+                    time - perfState.lastLowFpsNotice > 18000
                 ) {
-                    perfState.autoDowngradeCooldown = time;
-
-                    if (perfSettings.preset === "high") {
-                        perfApplyPreset("medium");
-                    } else if (perfSettings.preset === "medium") {
-                        perfApplyPreset("low");
-                    }
+                    perfState.lastLowFpsNotice = time;
+                    triggerNotification("Performance warning: try Medium or Low in the performance menu.");
                 }
             }
         }
@@ -4629,6 +4786,7 @@ ${mpState.connectionError ? `
         }
 
         perfLoadSettings();
+        perfRunInitialAutoProfile();
 
         // Game engine loop variables
         let gameLoopFrameId = null;
@@ -19286,6 +19444,10 @@ function destroyWorldObject(object, sourceActor = player) {
                 return false;
             }
 
+            if (source === player && mpIsSpectating()) {
+                return false;
+            }
+
             if (!target || !target.takesDamage || !isTargetAlive(target)) return false;
 
             if (source && source.weakenTimer > 0 && amount > 0) {
@@ -19543,6 +19705,8 @@ function destroyWorldObject(object, sourceActor = player) {
         }
 
         function handlePrimaryAttack(time) {
+            if (mpIsSpectating()) return;
+
             if (player.isDowned) {
                 spawnDamageNumber(player.x, player.y - player.radius - 22, "DOWNED", "#facc15");
                 return;
@@ -19588,7 +19752,8 @@ function destroyWorldObject(object, sourceActor = player) {
                     scopeLevel: player.scopeLevel,
                     visionRadius: player.visionRadius,
                     teamId: player.teamId || "player_team",
-                    gameState: currentGameState
+                    gameState: currentGameState,
+                    combatLoadout: mpBuildSpectatorCombatLoadout()
                 });
         }
 
@@ -20192,6 +20357,8 @@ function destroyWorldObject(object, sourceActor = player) {
         }
 
         function useMagicCard() {
+            if (mpIsSpectating()) return;
+
             const card = combatLoadout.magicSlot;
             if (!card || card.category !== "magic") {
                 triggerNotification("No Magic card equipped.");
@@ -20438,6 +20605,7 @@ function destroyWorldObject(object, sourceActor = player) {
         }
 
         function triggerTrapCard(card, context = {}) {
+            if (mpIsSpectating()) return false;
             if (!card || card.category !== "trap") return false;
 
             const attacker = context.attacker || null;
@@ -21480,6 +21648,7 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
         function drawDebrisMarks() {
             for (let i = 0; i < debrisMarks.length; i++) {
                 const mark = debrisMarks[i];
+                if (!perfPointVisible(mark.x, mark.y, (mark.radius || 24) + 90)) continue;
                 gctx.save();
                 gctx.translate(mark.x, mark.y);
                 if (mark.type === "stump") {
@@ -23709,9 +23878,10 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         }
 
                 function getActiveCharacters() {
-            const actors = [player];
+            const floor = mpIsSpectating() ? currentFloor : objectFloor(player);
+            const actors = mpIsSpectating() ? [] : [player];
             for (let i = 0; i < bots.length; i++) {
-                if (isTargetAlive(bots[i]) && objectFloor(bots[i]) === objectFloor(player)) actors.push(bots[i]);
+                if (isTargetAlive(bots[i]) && objectFloor(bots[i]) === floor) actors.push(bots[i]);
             }
             return actors;
         }
@@ -24479,7 +24649,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             gctx.lineWidth = width;
             gctx.beginPath();
 
-            const steps = 70;
+            const steps = Math.max(18, Math.round(perfSettings.terrainStreamSteps || 70));
             for (let i = 0; i <= steps; i++) {
                 const t = i / steps;
                 const y = yStart + (yEnd - yStart) * t;
@@ -24497,7 +24667,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             gctx.fillStyle = "#0f3f5f";
             gctx.fillRect(bounds.x1, bounds.y1, bounds.x2 - bounds.x1, bounds.y2 - bounds.y1);
 
-            const tile = 170;
+            const tile = Math.max(150, Math.round(perfSettings.terrainTileSize || 170));
             const startX = Math.floor(bounds.x1 / tile) * tile;
             const startY = Math.floor(bounds.y1 / tile) * tile;
 
@@ -24559,6 +24729,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             if (currentFloor !== "surface") return;
             for (let i = 0; i < roads.length; i++) {
                 const r = roads[i];
+                if (!perfRectVisible(r.x, r.y, r.w, r.h, 180)) continue;
                 gctx.save();
                 if (r.type === "road") {
                     gctx.fillStyle = "#2f3338";
@@ -24726,7 +24897,8 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 gctx.save();
                 gctx.globalAlpha = playerInside ? 0.46 : 0.88;
 
-                for (let p = 0; p < 13; p++) {
+                const leafCount = Math.max(5, Math.round(perfSettings.canopyLeafCount || 13));
+                for (let p = 0; p < leafCount; p++) {
                     const a = bush.alphaSeed + p * 1.77;
                     const r = bush.radius * (0.18 + (p % 4) * 0.06);
                     const ox = Math.cos(a) * bush.radius * (0.12 + (p % 5) * 0.09);
@@ -24810,6 +24982,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             for (let i = 0; i < houses.length; i++) {
                 const house = houses[i];
                 if (objectFloor(house) !== currentFloor) continue;
+                if (!perfRectVisible(house.x, house.y, house.width, house.height, 220)) continue;
                 const revealInterior = shouldRevealHouseInterior(house);
                 if (!revealInterior) continue;
 
@@ -24840,6 +25013,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             for (let i = 0; i < furniture.length; i++) {
                 const item = furniture[i];
                 if (item.destroyed || objectFloor(item) !== currentFloor) continue;
+                if (!perfRectVisible(item.x, item.y, item.width, item.height, 90)) continue;
                 const house = houses.find(h => h.id === item.houseId);
                 if (house && !shouldRevealHouseInterior(house)) continue;
 
@@ -24875,7 +25049,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                     gctx.fillRect(item.x + item.width * 0.25, item.y + item.height * 0.28, item.width * 0.5, item.height * 0.32);
                 }
                 gctx.restore();
-                drawDamageableHealthBar(item, item.x + item.width / 2, item.y - 8, Math.max(30, item.width));
+                if (perfSettings.showHealthBars) {
+                    drawDamageableHealthBar(item, item.x + item.width / 2, item.y - 8, Math.max(30, item.width));
+                }
             }
         }
 
@@ -24883,6 +25059,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             for (let i = 0; i < houses.length; i++) {
                 const house = houses[i];
                 if (objectFloor(house) !== currentFloor) continue;
+                if (!perfRectVisible(house.x, house.y, house.width, house.height, 260)) continue;
                 const revealInterior = shouldRevealHouseInterior(house);
                 gctx.save();
 
@@ -25271,7 +25448,8 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             const fogColor = night > 0.4 ? "rgba(96, 165, 250, 0.45)" : "rgba(255, 244, 214, 0.22)";
             gctx.fillStyle = fogColor;
 
-            for (let i = 0; i < 9; i++) {
+            const fogPuffs = Math.max(0, Math.round(perfSettings.fogPuffs ?? 9));
+            for (let i = 0; i < fogPuffs; i++) {
                 const x = player.x - 900 + ((i * 260 + time * 9000) % 1800);
                 const y = player.y - 650 + Math.sin(time * 10 + i) * 180 + i * 120;
 
@@ -30333,7 +30511,7 @@ function processBotItemPickups(bot) {
         }
 
         function matchReportRecordDamage(target, source, amount) {
-            if (!matchReportStats.active || !Number.isFinite(amount) || amount <= 0) return;
+            if (!matchReportStats.active || mpIsSpectating() || !Number.isFinite(amount) || amount <= 0) return;
 
             const rounded = Math.round(amount);
 
@@ -30347,7 +30525,7 @@ function processBotItemPickups(bot) {
         }
 
         function matchReportRecordElimination(victim, source = null, damageType = "generic", reason = "") {
-            if (!matchReportStats.active || !source || source === victim) return;
+            if (!matchReportStats.active || mpIsSpectating() || !source || source === victim) return;
             if (damageType === "storm" || /storm|rift|zone/i.test(reason)) return;
 
             const localKill = source === player;
@@ -30365,7 +30543,7 @@ function processBotItemPickups(bot) {
         }
 
         function matchReportRecordRemoteElimination(data = {}) {
-            if (!matchReportStats.active || !data) return;
+            if (!matchReportStats.active || mpIsSpectating() || !data) return;
 
             const killerId = String(data.killerSocketId || data.killerPlayerId || data.killerId || "");
             const killerName = String(data.killerName || "");
@@ -30397,7 +30575,7 @@ function processBotItemPickups(bot) {
         }
 
         function matchReportRecordCardCollected(card) {
-            if (!matchReportStats.active || !card) return;
+            if (!matchReportStats.active || mpIsSpectating() || !card) return;
             matchReportStats.cardsCollected++;
         }
 
@@ -30418,7 +30596,7 @@ function processBotItemPickups(bot) {
         }
 
         function matchReportRecordRevive(actor, reviver = player) {
-            if (!matchReportStats.active) return;
+            if (!matchReportStats.active || mpIsSpectating()) return;
             if (reviver !== player) return;
 
             matchReportStats.revives++;
