@@ -230,6 +230,17 @@
             box-shadow: 0 0 18px rgba(251, 191, 36, 0.22);
         }
 
+        .quest-icon-btn.leaderboard-icon-btn {
+            border-color: rgba(34, 197, 94, 0.6);
+            color: #86efac;
+        }
+
+        .quest-icon-btn.leaderboard-icon-btn:hover {
+            background: rgba(34, 197, 94, 0.16);
+            border-color: #22c55e;
+            box-shadow: 0 0 18px rgba(34, 197, 94, 0.22);
+        }
+
         .quest-icon-btn.emote-icon-btn {
             border-color: rgba(244, 114, 182, 0.55);
             color: #f9a8d4;
@@ -621,7 +632,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="mr-1">
-                        <span class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.82</span>
+                        <span class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.83</span>
                         <span class="font-orbitron font-black text-lg tracking-wider text-slate-100">DUEL.IO</span>
                     </div>
                     <button id="quest-menu-btn" class="quest-icon-btn" title="Quests" aria-label="Quests">
@@ -631,6 +642,9 @@
                     <button id="top-rewards-btn" class="quest-icon-btn reward-icon-btn" title="Daily Rewards" aria-label="Daily Rewards" onclick="renderDailyRewardsScreen()">
                         <i class="fa-solid fa-gift text-sm"></i>
                         <span id="daily-reward-ready-badge" class="hidden absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.95)]"></span>
+                    </button>
+                    <button id="top-leaderboards-btn" class="quest-icon-btn leaderboard-icon-btn" title="Leaderboards" aria-label="Leaderboards" onclick="renderLeaderboardsScreen()">
+                        <i class="fa-solid fa-ranking-star text-sm"></i>
                     </button>
                     <button id="top-emotes-btn" class="quest-icon-btn emote-icon-btn" title="Edit Emotes" aria-label="Edit Emotes" onclick="renderEditEmotesScreen()">
                         <i class="fa-solid fa-face-laugh-squint text-sm"></i>
@@ -650,7 +664,11 @@
             </div>
 
             <!-- User Information Widget -->
-            <div class="flex items-center space-x-6 bg-slate-900/80 border border-slate-700/50 px-4 py-2 rounded-xl backdrop-blur-md">
+            <div class="flex items-center space-x-4 bg-slate-900/80 border border-slate-700/50 px-4 py-2 rounded-xl backdrop-blur-md">
+                <button id="profile-reset-btn" onclick="openProfileResetModal()" class="w-8 h-8 rounded-lg bg-red-950/70 hover:bg-red-900 border border-red-500/40 text-red-300 hover:text-red-100 transition-colors flex items-center justify-center" title="Reset Save">
+                    <i class="fa-solid fa-triangle-exclamation text-sm"></i>
+                </button>
+
                 <!-- Level / Avatar -->
                 <div class="flex items-center space-x-3">
                     <div class="relative">
@@ -658,11 +676,15 @@
                              alt="Avatar" 
                              class="w-10 h-10 rounded-lg border-2 border-cyan-400 object-cover"
                              onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'40\' height=\'40\'><rect width=\'100%\' height=\'100%\' fill=\'%230ea5e9\'/><text x=\'50%\' y=\'60%\' font-size=\'20\' fill=\'white\' text-anchor=\'middle\'>DS</text></svg>'">
-                        <div class="absolute -bottom-1 -right-1 bg-cyan-500 text-[9px] font-black font-orbitron px-1 rounded-sm text-black">LV.1</div>
+                        <div id="profile-level-badge" class="absolute -bottom-1 -right-1 bg-cyan-500 text-[9px] font-black font-orbitron px-1 rounded-sm text-black">LV.1</div>
                     </div>
-                    <div class="hidden md:block">
+                    <div class="hidden md:block min-w-44">
                         <div class="text-sm font-bold text-slate-100">Survivor</div>
                         <div class="text-[10px] text-cyan-400 font-orbitron tracking-wider">RANK: SURVIVOR</div>
+                        <div class="mt-1 h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                            <div id="profile-xp-bar" class="h-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-amber-300" style="width:0%"></div>
+                        </div>
+                        <div id="profile-xp-label" class="text-[9px] text-slate-500 font-orbitron mt-0.5">XP 0 / 0</div>
                     </div>
                 </div>
 
@@ -805,11 +827,21 @@
                                     <span class="w-5 h-5 rounded-full bg-red-600/80 flex items-center justify-center border border-red-400 text-xs text-white" title="Fire Attribute"><i class="fa-solid fa-fire text-[10px]"></i></span>
                                 </div>
 
-                                <div class="relative z-10 border border-amber-500/30 h-28 my-auto rounded-lg overflow-hidden flex items-center justify-center bg-black/35 backdrop-blur-xs">
-                                    <svg class="w-20 h-20 text-amber-500/60 animate-spin" style="animation-duration: 25s;" viewBox="0 0 100 100">
-                                        <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-dasharray="6,6" stroke-width="1.5" />
-                                        <polygon points="50,5 90,80 10,80" fill="none" stroke="currentColor" stroke-width="1" />
-                                        <polygon points="50,95 90,20 10,20" fill="none" stroke="currentColor" stroke-width="1" />
+                                <div class="relative z-10 border border-amber-500/30 h-32 my-2 rounded-lg overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-xs">
+                                    <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_25%,rgba(239,68,68,.45),transparent_38%),radial-gradient(circle_at_50%_80%,rgba(168,85,247,.24),transparent_48%)]"></div>
+                                    <svg class="relative z-10 w-full h-full" viewBox="0 0 240 180" aria-label="Aurelia, Infernal Reaper artwork">
+                                        <path d="M0 150 C42 130 80 146 122 130 C164 114 202 130 240 112 V180 H0Z" fill="#020617" opacity=".62"/>
+                                        <path d="M58 132 C69 69 91 37 121 37 C151 37 171 74 183 132 C157 121 138 130 120 143 C101 129 82 121 58 132Z" fill="#020617" stroke="#ef4444" stroke-width="5"/>
+                                        <path d="M92 72 C97 48 143 48 149 73 C138 63 103 63 92 72Z" fill="#111827" stroke="#334155" stroke-width="4"/>
+                                        <circle cx="120" cy="78" r="16" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
+                                        <circle cx="114" cy="75" r="4" fill="#020617"/>
+                                        <circle cx="126" cy="75" r="4" fill="#020617"/>
+                                        <path d="M113 88 H127" stroke="#020617" stroke-width="3" stroke-linecap="round"/>
+                                        <path d="M83 94 C58 81 49 73 35 57 M35 57 C63 50 88 39 111 22" fill="none" stroke="#e5e7eb" stroke-width="7" stroke-linecap="round"/>
+                                        <path d="M112 22 C90 24 63 34 35 57" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+                                        <path d="M148 94 C166 86 177 81 190 72" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                                        <path d="M88 139 C109 126 132 126 154 139" stroke="#f87171" stroke-width="6" stroke-linecap="round" opacity=".9"/>
+                                        <path d="M104 108 C113 119 128 119 138 108" fill="none" stroke="#7f1d1d" stroke-width="5" stroke-linecap="round"/>
                                     </svg>
                                 </div>
 
@@ -1998,6 +2030,43 @@
             osc2.stop(now + 0.4);
         }
 
+        let profileResetAlarmTimer = null;
+
+        function playProfileResetAlarmPulse() {
+            if (isMuted) return;
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(940, now);
+            osc.frequency.setValueAtTime(620, now + 0.14);
+
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.34);
+        }
+
+        function startProfileResetAlarm() {
+            if (profileResetAlarmTimer) return;
+            playProfileResetAlarmPulse();
+            profileResetAlarmTimer = setInterval(playProfileResetAlarmPulse, 680);
+        }
+
+        function stopProfileResetAlarm() {
+            if (!profileResetAlarmTimer) return;
+            clearInterval(profileResetAlarmTimer);
+            profileResetAlarmTimer = null;
+        }
+
         // Play portal activation transition warp sweep
         function playPortalSound() {
             if (isMuted) return;
@@ -2344,6 +2413,10 @@
             connectionError: "",
             profile: null,
             onlinePlayers: [],
+            leaderboards: { kills: [], wins: [], overall: [] },
+            leaderboardTab: "kills",
+            lastLeaderboardReportKey: "",
+            pendingLevelUpNotice: null,
             friends: {},
             friendRequests: [],
             searchResults: [],
@@ -2414,11 +2487,25 @@
                     name: "Survivor",
                     rank: "SURVIVOR",
                     level: 1,
+                    profileXp: 0,
                     wins: 0,
+                    kills: 0,
+                    deaths: 0,
+                    losses: 0,
+                    revives: 0,
                     color: "#38bdf8",
                     icon: "DS"
                 };
             }
+
+            saved.level = Math.max(1, Math.min(100, Number(saved.level || 1)));
+            saved.profileXp = Math.max(0, Number(saved.profileXp || saved.xp || 0));
+            if (saved.level >= 100) saved.profileXp = 0;
+            saved.wins = Number(saved.wins || 0);
+            saved.kills = Number(saved.kills || 0);
+            saved.deaths = Number(saved.deaths || 0);
+            saved.losses = Number(saved.losses || 0);
+            saved.revives = Number(saved.revives || 0);
 
             mpState.profile = saved;
 
@@ -2682,7 +2769,12 @@
                 name: p.name,
                 rank: p.rank || "SURVIVOR",
                 level: p.level || 1,
+                profileXp: p.profileXp || 0,
                 wins: p.wins || 0,
+                kills: p.kills || 0,
+                deaths: p.deaths || 0,
+                losses: p.losses || 0,
+                revives: p.revives || 0,
                 gold: playerCollection?.gold || 0,
                 gems: playerCollection?.gems || 0,
                 color: p.color || "#38bdf8",
@@ -2806,7 +2898,15 @@
                 }
 
                 mpState.profile.name = serverProfile.name || mpState.profile.name;
+                mpState.profile.rank = serverProfile.rank || mpState.profile.rank;
+                mpState.profile.level = serverProfile.level ?? mpState.profile.level;
+                mpState.profile.profileXp = serverProfile.profileXp ?? mpState.profile.profileXp ?? 0;
+                mpNormalizeProfileProgress(mpState.profile);
                 mpState.profile.wins = serverProfile.wins ?? mpState.profile.wins;
+                mpState.profile.kills = serverProfile.kills ?? mpState.profile.kills ?? 0;
+                mpState.profile.deaths = serverProfile.deaths ?? mpState.profile.deaths ?? 0;
+                mpState.profile.losses = serverProfile.losses ?? mpState.profile.losses ?? 0;
+                mpState.profile.revives = serverProfile.revives ?? mpState.profile.revives ?? 0;
 
                 mpSaveProfile();
 
@@ -2826,6 +2926,10 @@
                 voiceMaybeAutoStartForMatch();
                 mpRefreshMenuMultiplayerUi();
                 mpRenderFriendsPanel();
+            });
+
+            mpSocket.on("leaderboards", data => {
+                mpApplyLeaderboards(data);
             });
 
             mpSocket.on("friendRequestIncoming", req => {
@@ -3213,11 +3317,6 @@
 
                 dsStopGameplayAmbience();
 
-                if (won) {
-                    mpState.profile.wins = (mpState.profile.wins || 0) + 1;
-                    mpSaveProfile();
-                }
-
                 mpShowWinnerScreen(won, data?.winners || [], data || {});
             });
         }
@@ -3231,14 +3330,305 @@
             mpRefreshMenuMultiplayerUi();
         }
 
+        const PROFILE_MAX_LEVEL = 100;
+
+        function mpProfileXpForNextLevel(level = 1) {
+            const safeLevel = Math.max(1, Math.min(PROFILE_MAX_LEVEL, Math.round(Number(level || 1))));
+            if (safeLevel >= PROFILE_MAX_LEVEL) return 0;
+            return Math.round(220 + Math.pow(safeLevel, 1.82) * 72);
+        }
+
+        function mpNormalizeProfileProgress(profile = mpState.profile) {
+            if (!profile) return null;
+            profile.level = Math.max(1, Math.min(PROFILE_MAX_LEVEL, Math.round(Number(profile.level || 1))));
+            profile.profileXp = Math.max(0, Math.round(Number(profile.profileXp || profile.xp || 0)));
+            if (profile.level >= PROFILE_MAX_LEVEL) profile.profileXp = 0;
+            return profile;
+        }
+
+        function mpAwardProfileXp(amount = 0, source = "XP", options = {}) {
+            if (!mpState.profile) mpLoadProfile();
+
+            const profile = mpNormalizeProfileProgress(mpState.profile);
+            const xpGain = Math.max(0, Math.round(Number(amount || 0)));
+            if (!profile || xpGain <= 0 || profile.level >= PROFILE_MAX_LEVEL) {
+                mpUpdateProfileHeader();
+                return { oldLevel: profile?.level || 1, newLevel: profile?.level || 1, leveled: false, xpGain };
+            }
+
+            const oldLevel = profile.level;
+            profile.profileXp += xpGain;
+
+            while (profile.level < PROFILE_MAX_LEVEL) {
+                const needed = mpProfileXpForNextLevel(profile.level);
+                if (needed <= 0 || profile.profileXp < needed) break;
+                profile.profileXp -= needed;
+                profile.level++;
+            }
+
+            if (profile.level >= PROFILE_MAX_LEVEL) profile.profileXp = 0;
+
+            mpSaveProfile();
+            mpUpdateProfileHeader();
+
+            const leveled = profile.level > oldLevel;
+            if (leveled) {
+                mpState.pendingLevelUpNotice = {
+                    oldLevel,
+                    newLevel: profile.level,
+                    xpGain,
+                    source
+                };
+
+                if (currentGameState === GAME_STATES.MENU && !options.deferNotice) {
+                    mpFlushPendingLevelUpNotice();
+                }
+            }
+
+            return { oldLevel, newLevel: profile.level, leveled, xpGain };
+        }
+
+        function mpShowProfileLevelUpNotice(notice) {
+            if (!notice || currentGameState !== GAME_STATES.MENU) return;
+
+            const existing = document.getElementById("profile-level-up-notice");
+            if (existing) existing.remove();
+
+            const overlay = document.createElement("div");
+            overlay.id = "profile-level-up-notice";
+            overlay.className = "fixed inset-0 z-[135] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center px-6";
+            overlay.innerHTML = `
+                <div class="max-w-md w-full rounded-2xl border border-amber-300/60 bg-slate-950 shadow-[0_0_55px_rgba(250,204,21,.28)] p-6 text-center">
+                    <div class="text-[11px] text-amber-300 font-orbitron font-black tracking-[0.35em]">PROFILE LEVEL UP</div>
+                    <div class="mt-3 text-5xl font-orbitron font-black text-white">LV.${notice.newLevel}</div>
+                    <div class="mt-2 text-sm text-slate-400">Advanced from LV.${notice.oldLevel} after ${matchReportEscapeHtml(notice.source || "XP reward")}.</div>
+                    <div class="mt-4 rounded-lg border border-emerald-400/25 bg-emerald-400/10 p-3 text-emerald-200 font-orbitron font-black">+${Number(notice.xpGain || 0).toLocaleString()} PROFILE XP</div>
+                    <button id="close-profile-level-up" class="mt-5 px-6 py-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-orbitron font-black">CONTINUE</button>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+
+            const close = overlay.querySelector("#close-profile-level-up");
+            if (close) close.addEventListener("click", () => overlay.remove());
+
+            if (virtualInput?.mode === "gamepad") {
+                setTimeout(() => setControllerFocus(close), 0);
+            }
+
+            playPickupSound();
+        }
+
+        function mpFlushPendingLevelUpNotice() {
+            if (!mpState.pendingLevelUpNotice || currentGameState !== GAME_STATES.MENU) return;
+            const notice = mpState.pendingLevelUpNotice;
+            mpState.pendingLevelUpNotice = null;
+            mpShowProfileLevelUpNotice(notice);
+        }
+
+        function mpFreshResetProfile(keepName, keepPlayerId) {
+            return {
+                playerId: keepPlayerId || mpRandomSurvivorId(),
+                name: keepName || "Survivor",
+                rank: "SURVIVOR",
+                level: 1,
+                profileXp: 0,
+                wins: 0,
+                kills: 0,
+                deaths: 0,
+                losses: 0,
+                revives: 0,
+                rankedPoints: 1000,
+                color: "#38bdf8",
+                icon: "DS"
+            };
+        }
+
+        function openProfileResetModal(step = "warning", errorText = "") {
+            if (currentGameState !== GAME_STATES.MENU) {
+                triggerNotification("Reset is only available from the main menu.");
+                return;
+            }
+
+            const old = document.getElementById("profile-reset-modal");
+            if (old) old.remove();
+
+            startProfileResetAlarm();
+
+            const profile = mpState.profile || mpLoadProfile();
+            const playerId = profile?.playerId || "Survivor";
+            const modal = document.createElement("div");
+            modal.id = "profile-reset-modal";
+            modal.className = "fixed inset-0 z-[140] bg-red-950/60 backdrop-blur-md flex items-center justify-center px-6";
+            modal.addEventListener("click", event => {
+                if (event.target === modal) closeProfileResetModal();
+            });
+
+            const body = step === "confirm" ? `
+                <div class="text-[11px] text-red-300 font-orbitron font-black tracking-[0.32em]">FINAL CONFIRMATION</div>
+                <h2 class="mt-3 text-3xl font-orbitron font-black text-white">TYPE YOUR USER ID</h2>
+                <p class="mt-3 text-sm text-slate-300">Enter <span class="text-cyan-300 font-orbitron font-black">${matchReportEscapeHtml(playerId)}</span> to erase this save.</p>
+                ${errorText ? `<div class="mt-3 rounded border border-red-400/50 bg-red-500/10 px-3 py-2 text-red-200 text-sm">${matchReportEscapeHtml(errorText)}</div>` : ""}
+                <input id="profile-reset-id-input" class="mt-5 w-full rounded-lg border border-red-500/50 bg-slate-950 px-4 py-3 text-white font-orbitron outline-none focus:border-red-300" placeholder="${matchReportEscapeHtml(playerId)}">
+                <div class="mt-5 grid grid-cols-2 gap-3">
+                    <button id="profile-reset-final-btn" class="rounded-lg bg-red-600 hover:bg-red-500 text-white font-orbitron font-black py-3">CONFIRM RESET</button>
+                    <button onclick="closeProfileResetModal()" class="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-orbitron font-black py-3">NO</button>
+                </div>
+            ` : step === "done" ? `
+                <div class="text-[11px] text-emerald-300 font-orbitron font-black tracking-[0.32em]">SAVE ERASED</div>
+                <h2 class="mt-3 text-3xl font-orbitron font-black text-white">Confirmed, Stats reset!</h2>
+                <p class="mt-3 text-sm text-slate-300">Your name and Survivor ID were kept. Profile level, money, gems, binder, quests, rewards, friends, and match progress are back to scratch.</p>
+                <button onclick="closeProfileResetModal()" class="mt-6 w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-orbitron font-black py-3">CLOSE</button>
+            ` : `
+                <div class="text-[11px] text-red-300 font-orbitron font-black tracking-[0.32em]">DANGEROUS ACCOUNT ACTION</div>
+                <h2 class="mt-3 text-3xl font-orbitron font-black text-white">Are you sure?</h2>
+                <p class="mt-3 text-sm text-slate-300">This will erase your save. Your current name stays, but profile progress, currency, gems, card binder, deck/loadout, quests, daily rewards, friends, stats, and reconnect data will be reset.</p>
+                <div class="mt-5 grid grid-cols-2 gap-3">
+                    <button id="profile-reset-yes-btn" class="rounded-lg bg-red-600 hover:bg-red-500 text-white font-orbitron font-black py-3">YES</button>
+                    <button onclick="closeProfileResetModal()" class="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-orbitron font-black py-3">NO</button>
+                </div>
+            `;
+
+            modal.innerHTML = `
+                <div class="max-w-lg w-full rounded-2xl border border-red-400/60 bg-slate-950 shadow-[0_0_65px_rgba(239,68,68,.32)] p-6">
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="text-red-300 font-orbitron font-black text-xs tracking-widest">RESET SAVE</div>
+                        <button onclick="closeProfileResetModal()" class="w-8 h-8 rounded bg-slate-900 hover:bg-slate-800 text-slate-300">X</button>
+                    </div>
+                    ${body}
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            const yes = modal.querySelector("#profile-reset-yes-btn");
+            if (yes) yes.addEventListener("click", () => openProfileResetModal("confirm"));
+
+            const finalBtn = modal.querySelector("#profile-reset-final-btn");
+            if (finalBtn) finalBtn.addEventListener("click", confirmProfileResetById);
+
+            const input = modal.querySelector("#profile-reset-id-input");
+            if (input) {
+                input.focus();
+                input.addEventListener("keydown", event => {
+                    if (event.key === "Enter") confirmProfileResetById();
+                });
+            }
+
+            if (virtualInput?.mode === "gamepad") {
+                setTimeout(() => {
+                    const focusables = getInputFocusableElements(modal);
+                    if (focusables.length) setControllerFocus(focusables[0]);
+                }, 0);
+            }
+        }
+
+        function closeProfileResetModal() {
+            const modal = document.getElementById("profile-reset-modal");
+            if (modal) modal.remove();
+            stopProfileResetAlarm();
+        }
+
+        function confirmProfileResetById() {
+            const profile = mpState.profile || mpLoadProfile();
+            const expected = String(profile?.playerId || "").trim();
+            const typed = String(document.getElementById("profile-reset-id-input")?.value || "").trim();
+
+            if (!expected || typed !== expected) {
+                openProfileResetModal("confirm", "User ID did not match. Reset cancelled.");
+                return;
+            }
+
+            performFullProfileReset();
+        }
+
+        function performFullProfileReset() {
+            const current = mpState.profile || mpLoadProfile();
+            const keepName = current?.name || "Survivor";
+            const keepPlayerId = current?.playerId || mpRandomSurvivorId();
+
+            [COLLECTION_SAVE_KEY, BATTLE_LOADOUT_SAVE_KEY, DAILY_REWARD_SAVE_KEY, QUEST_SAVE_KEY, MP_FRIENDS_KEY, MP_RECONNECT_KEY].forEach(key => {
+                try { localStorage.removeItem(key); } catch (err) { console.warn("Reset remove failed", key, err); }
+            });
+
+            mpState.profile = mpFreshResetProfile(keepName, keepPlayerId);
+            mpState.friends = {};
+            mpState.friendRequests = [];
+            mpState.searchResults = [];
+            mpState.partyInvite = null;
+            mpState.pendingLevelUpNotice = null;
+            mpState.lastLeaderboardReportKey = "";
+
+            player.name = keepName;
+
+            playerCollection.gold = 0;
+            playerCollection.gems = 0;
+            playerCollection.owned = {};
+            playerCollection.boosterTickets = {};
+            playerCollection.eventTickets = 0;
+            playerCollection.starterSeeded = true;
+
+            battleLoadout.monster = [];
+            battleLoadout.magic = [];
+            battleLoadout.trap = [];
+
+            dailyRewardState.lastClaimDayKey = "";
+            dailyRewardState.trackIndex = 0;
+            dailyRewardState.totalClaims = 0;
+            dailyRewardState.claimHistory = [];
+
+            questState.activeTier = "day";
+            questState.periods = {
+                day: { key: "", quests: [] },
+                week: { key: "", quests: [] },
+                month: { key: "", quests: [] }
+            };
+            questState.tracked = [];
+            questState.history = [];
+            questState.dropdownOpen = false;
+            questEnsureFreshPeriods();
+
+            clearCombatLoadout();
+            mpSaveProfile();
+            saveCollectionState();
+            mpUpdateProfileHeader();
+            mpRefreshMenuMultiplayerUi();
+            mpRenderFriendsPanel();
+
+            if (mpSocket?.connected) {
+                mpSocket.emit("profileReset", {
+                    playerId: keepPlayerId,
+                    name: keepName
+                });
+                mpSocket.emit("register", mpProfilePayload());
+            }
+
+            stopProfileResetAlarm();
+            triggerNotification("Confirmed, Stats reset!");
+            openProfileResetModal("done");
+        }
+
         function mpUpdateProfileHeader() {
+            const profile = mpNormalizeProfileProgress(mpState.profile || mpLoadProfile());
             const nameEl = document.querySelector(".hidden.md\\:block .text-sm.font-bold.text-slate-100");
-            if (nameEl) nameEl.textContent = mpState.profile?.name || "ChronosX";
+            if (nameEl) nameEl.textContent = profile?.name || "ChronosX";
 
             const rankEl = document.querySelector(".hidden.md\\:block .text-\\[10px\\].text-cyan-400");
             if (rankEl) {
-                rankEl.textContent = `ID: ${mpState.profile?.playerId || "Survivor"} / ${mpState.profile?.rank || "SURVIVOR"}`;
+                rankEl.textContent = `ID: ${profile?.playerId || "Survivor"} / ${profile?.rank || "SURVIVOR"}`;
             }
+
+            const badge = document.getElementById("profile-level-badge");
+            if (badge) badge.textContent = `LV.${profile?.level || 1}`;
+
+            const xpBar = document.getElementById("profile-xp-bar");
+            const xpLabel = document.getElementById("profile-xp-label");
+            const needed = mpProfileXpForNextLevel(profile?.level || 1);
+            const xp = Math.max(0, Math.round(Number(profile?.profileXp || 0)));
+            const pct = profile?.level >= PROFILE_MAX_LEVEL || needed <= 0 ? 100 : Math.min(100, (xp / needed) * 100);
+
+            if (xpBar) xpBar.style.width = `${pct}%`;
+            if (xpLabel) xpLabel.textContent = profile?.level >= PROFILE_MAX_LEVEL ? "MAX LEVEL" : `XP ${xp.toLocaleString()} / ${needed.toLocaleString()}`;
         }
 
         function mpUpdateMainMenuOnlineCount() {
@@ -17421,7 +17811,8 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             gems: 480,
             owned: {},
             boosterTickets: {},
-            eventTickets: 0
+            eventTickets: 0,
+            starterSeeded: false
         };
 
         const dailyRewardState = {
@@ -17512,7 +17903,9 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             const baseCash = cfg.cashMin + rand() * (cfg.cashMax - cfg.cashMin);
             const cash = Math.max(1, Math.round(baseCash * 0.5));
             const gems = rand() < cfg.gemChance ? Math.max(1, Math.round(rand() * cfg.gemMax * 0.5)) : 0;
-            return { cash, gems };
+            const xpBase = tier === "month" ? 1300 : tier === "week" ? 420 : 95;
+            const xp = Math.round((xpBase + index * (tier === "month" ? 55 : tier === "week" ? 24 : 8)) * (0.9 + rand() * 0.25));
+            return { cash, gems, xp };
         }
 
         function questAddDefinition(defs, tier, event, title, target, filter = {}, rewardIndex = 0) {
@@ -17780,6 +18173,7 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             quest.claimed = true;
             playerCollection.gold += def.reward.cash || 0;
             playerCollection.gems += def.reward.gems || 0;
+            mpAwardProfileXp(def.reward.xp || 0, "Quest Reward");
 
             saveCollectionState();
             saveQuestStateOnly();
@@ -17787,7 +18181,7 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             renderQuestDropdown();
             refreshQuestTrackerHud();
 
-            triggerNotification(`Quest Reward: +${(def.reward.cash || 0).toLocaleString()} Cash${def.reward.gems ? ` +${def.reward.gems} Gems` : ""}`);
+            triggerNotification(`Quest Reward: +${(def.reward.cash || 0).toLocaleString()} Cash${def.reward.gems ? ` +${def.reward.gems} Gems` : ""}${def.reward.xp ? ` +${def.reward.xp.toLocaleString()} XP` : ""}`);
         }
 
         function questToggleTracked(questId) {
@@ -17851,7 +18245,7 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
                         <div class="flex justify-between gap-3">
                             <div class="min-w-0">
                                 <div class="font-orbitron font-black text-slate-100 text-sm leading-tight">${mpSafeText(def.title)}</div>
-                                <div class="text-[10px] text-slate-500 font-orbitron mt-1">${questProgressLabel(q, def)} / +${def.reward.cash.toLocaleString()} Cash${def.reward.gems ? ` / +${def.reward.gems} Gems` : ""}</div>
+                                <div class="text-[10px] text-slate-500 font-orbitron mt-1">${questProgressLabel(q, def)} / +${def.reward.cash.toLocaleString()} Cash${def.reward.gems ? ` / +${def.reward.gems} Gems` : ""}${def.reward.xp ? ` / +${def.reward.xp.toLocaleString()} XP` : ""}</div>
                             </div>
                             <div class="flex gap-1 shrink-0">
                                 <button class="mp-mini-btn ${tracked ? "text-amber-200 border-amber-300" : ""}" onclick="questToggleTracked('${q.id}')">${tracked ? "PINNED" : "PIN"}</button>
@@ -18120,6 +18514,7 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
                     playerCollection.owned = savedCollection.owned || {};
                     playerCollection.boosterTickets = savedCollection.boosterTickets || {};
                     playerCollection.eventTickets = Number(savedCollection.eventTickets || 0);
+                    playerCollection.starterSeeded = !!savedCollection.starterSeeded;
                 }
             } catch (err) {
                 console.warn("Collection save failed to parse", err);
@@ -18158,10 +18553,14 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
         }
 
         function seedStarterBinderCards() {
+            if (playerCollection.starterSeeded) return;
+
             const starters = ["ember_pup", "iron_ram", "frost_serpent", "spark_wasp", "thorn_boar", "healing_veil", "cleanse_rune", "revenge_thorn", "static_trap"];
             for (let i = 0; i < starters.length; i++) {
                 if (!playerCollection.owned[starters[i]]) playerCollection.owned[starters[i]] = 1;
             }
+
+            playerCollection.starterSeeded = true;
         }
 
         function saveCollectionState() {
@@ -23023,6 +23422,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
 
             mpRefreshMenuMultiplayerUi();
             triggerNotification("Returned to lobby.");
+            setTimeout(mpFlushPendingLevelUpNotice, 500);
         }
 
 
@@ -30105,6 +30505,7 @@ function processBotItemPickups(bot) {
                 playerCollection.gems += matchReportStats.rewards.gems;
 
                 if (mpState.profile) {
+                    mpAwardProfileXp(matchReportStats.rewards.xp, "Match Report", { deferNotice: true });
                     mpState.profile.rankedPoints = matchReportStats.rankedAfter;
                     mpSaveProfile();
                 }
@@ -30114,6 +30515,51 @@ function processBotItemPickups(bot) {
             }
 
             return matchReportStats.rewards;
+        }
+
+        function mpSubmitMatchLeaderboardStats(won = false, placement = 0) {
+            if (!mpState.profile) mpLoadProfile();
+
+            const matchKey = `${mpState.profile?.playerId || "local"}:${mpState.matchId || "local"}:${Math.round(matchReportStats.matchStartedAt || 0)}:${won ? "W" : "L"}`;
+            if (mpState.lastLeaderboardReportKey === matchKey) return;
+            mpState.lastLeaderboardReportKey = matchKey;
+
+            const delta = {
+                kills: Math.max(0, Math.round(matchReportStats.eliminations || 0)),
+                deaths: won ? 0 : 1,
+                wins: won ? 1 : 0,
+                losses: won ? 0 : 1,
+                revives: Math.max(0, Math.round(matchReportStats.revives || 0))
+            };
+
+            mpState.profile.kills = Number(mpState.profile.kills || 0) + delta.kills;
+            mpState.profile.deaths = Number(mpState.profile.deaths || 0) + delta.deaths;
+            mpState.profile.wins = Number(mpState.profile.wins || 0) + delta.wins;
+            mpState.profile.losses = Number(mpState.profile.losses || 0) + delta.losses;
+            mpState.profile.revives = Number(mpState.profile.revives || 0) + delta.revives;
+            mpNormalizeProfileProgress(mpState.profile);
+            mpSaveProfile();
+            mpRefreshMenuMultiplayerUi();
+
+            if (mpSocket?.connected) {
+                mpSocket.emit("matchResultReport", {
+                    reportKey: matchKey,
+                    matchId: mpState.matchId || null,
+                    mode: mpState.matchMode || "solo",
+                    won,
+                    placement,
+                    profile: {
+                        playerId: mpState.profile.playerId,
+                        name: mpState.profile.name,
+                        rank: mpState.profile.rank || "SURVIVOR",
+                        level: mpState.profile.level || 1,
+                        profileXp: mpState.profile.profileXp || 0,
+                        color: mpState.profile.color || "#38bdf8",
+                        icon: mpState.profile.icon || "DS"
+                    },
+                    stats: delta
+                });
+            }
         }
 
         function showEndOfMatchResultsScreen(won = false, winners = [], reportData = {}) {
@@ -30131,6 +30577,7 @@ function processBotItemPickups(bot) {
 
             matchReportStats.teamResult = won ? "Victory" : "Eliminated";
             const rewards = matchReportApplyRewards(won, matchReportStats.placement);
+            mpSubmitMatchLeaderboardStats(won, matchReportStats.placement);
 
             const winnerNames = (winners || [])
                 .map(w => matchReportEscapeHtml(w.name || w.playerId || "Winner"))
@@ -33523,11 +33970,6 @@ function resizeMinimapCanvas() {
                 gameOverScreen.classList.add('hidden');
             }
 
-            if (mpState.profile) {
-                mpState.profile.wins = (mpState.profile.wins || 0) + 1;
-                mpSaveProfile();
-            }
-
             const winners = (winningTeam?.actors || [player]).map(actor => ({
                 name: actor === player ? player.name : actor.name || actor.playerId || "Teammate",
                 playerId: actor.playerId || actor.id || actor.socketId || actor.name || "winner"
@@ -34726,6 +35168,131 @@ function resizeMinimapCanvas() {
             }
         }
 
+        function mpApplyLeaderboards(data = {}) {
+            mpState.leaderboards = {
+                kills: Array.isArray(data.kills) ? data.kills : [],
+                wins: Array.isArray(data.wins) ? data.wins : [],
+                overall: Array.isArray(data.overall) ? data.overall : []
+            };
+
+            if (menuScreenState.screen === "leaderboards") {
+                renderLeaderboardsScreen(mpState.leaderboardTab || "kills");
+            }
+        }
+
+        function renderLeaderboardsScreen(tab = mpState.leaderboardTab || "kills") {
+            const layer = ensureMenuPanelLayer();
+            layer.classList.remove("hidden");
+            menuScreenState.screen = "leaderboards";
+            mpState.leaderboardTab = ["kills", "wins", "overall"].includes(tab) ? tab : "kills";
+
+            if (mpSocket?.connected) {
+                mpSocket.emit("leaderboardRequest");
+            }
+
+            const boards = mpState.leaderboards || { kills: [], wins: [], overall: [] };
+            const activeRows = (boards[mpState.leaderboardTab] || []).slice(0, 100);
+            const tabLabel = mpState.leaderboardTab === "wins" ? "Most Wins" : mpState.leaderboardTab === "overall" ? "Overall Rating" : "Most Kills";
+
+            const stat = value => Number(value || 0).toLocaleString();
+            const safe = value => matchReportEscapeHtml(value || "");
+            const kdText = row => `${stat(row.kills)} / ${stat(row.deaths)}`;
+
+            const rowsHtml = activeRows.length ? activeRows.map((row, index) => `
+                <div class="grid grid-cols-[3.2rem_1.2fr_.8fr_.55fr_.7fr_.7fr_.7fr_.7fr_.7fr] gap-2 items-center rounded-lg border ${index < 3 ? "border-amber-400/45 bg-amber-400/10" : "border-slate-800 bg-slate-950/70"} px-3 py-2 text-xs">
+                    <div class="font-orbitron font-black ${index < 3 ? "text-amber-300" : "text-slate-400"}">#${row.position || index + 1}</div>
+                    <div class="min-w-0">
+                        <div class="font-orbitron font-black text-white truncate">${safe(row.name || row.playerId || "Survivor")}</div>
+                        <div class="text-[9px] text-slate-500 truncate">${safe(row.playerId || "")}</div>
+                    </div>
+                    <div class="font-orbitron font-black text-cyan-300">${safe(row.rank || "SURVIVOR")}</div>
+                    <div class="font-orbitron font-black text-emerald-300">Lv.${stat(row.level || 1)}</div>
+                    <div class="font-orbitron font-black text-red-300">${stat(row.kills)}</div>
+                    <div class="font-orbitron font-black text-slate-300">${stat(row.deaths)}</div>
+                    <div class="font-orbitron font-black text-amber-300">${stat(row.wins)}</div>
+                    <div class="font-orbitron font-black text-slate-400">${stat(row.losses)}</div>
+                    <div class="font-orbitron font-black text-sky-300">${stat(row.revives)}</div>
+                </div>
+            `).join("") : `
+                <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-8 text-center text-slate-500">
+                    No leaderboard stats yet. Finish an online match to submit your first report.
+                </div>
+            `;
+
+            const myProfile = mpState.profile || {};
+            const mySummary = `
+                <div class="grid grid-cols-5 gap-3">
+                    <div class="rounded-lg border border-red-400/25 bg-red-400/10 p-3"><div class="text-[9px] text-red-200 font-orbitron">KILLS</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.kills)}</div></div>
+                    <div class="rounded-lg border border-slate-500/25 bg-white/5 p-3"><div class="text-[9px] text-slate-300 font-orbitron">K/D</div><div class="text-2xl font-orbitron font-black text-white">${kdText(myProfile)}</div></div>
+                    <div class="rounded-lg border border-amber-400/25 bg-amber-400/10 p-3"><div class="text-[9px] text-amber-200 font-orbitron">WINS</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.wins)}</div></div>
+                    <div class="rounded-lg border border-slate-500/25 bg-white/5 p-3"><div class="text-[9px] text-slate-300 font-orbitron">LOSSES</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.losses)}</div></div>
+                    <div class="rounded-lg border border-sky-400/25 bg-sky-400/10 p-3"><div class="text-[9px] text-sky-200 font-orbitron">REVIVES</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.revives)}</div></div>
+                </div>
+            `;
+
+            layer.innerHTML = `
+                <div class="relative h-full max-w-7xl mx-auto flex flex-col gap-5 overflow-hidden">
+                    <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_20%_10%,rgba(34,197,94,.16),transparent_30%),radial-gradient(circle_at_78%_22%,rgba(245,158,11,.12),transparent_32%),radial-gradient(circle_at_50%_90%,rgba(56,189,248,.10),transparent_35%)]"></div>
+
+                    <div class="relative z-10 flex items-center justify-between">
+                        <div>
+                            <div class="text-xs text-emerald-300 font-orbitron font-black tracking-widest">ONLINE STANDINGS / TOP 100</div>
+                            <div class="text-4xl font-orbitron font-black text-white">LEADERBOARDS</div>
+                            <div class="text-sm text-slate-400 mt-1">Rank tier, profile level, kills, deaths, wins, losses, and revives from reported online match results.</div>
+                        </div>
+                        <button id="close-menu-panel" class="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-sm font-bold">BACK</button>
+                    </div>
+
+                    <div class="relative z-10 rounded-xl border border-slate-800 bg-slate-950/80 p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="font-orbitron font-black text-cyan-300 tracking-widest text-xs">YOUR PROFILE</div>
+                            <div class="text-[10px] font-orbitron text-slate-500">${mpState.connected ? "LIVE SERVER CONNECTED" : "OFFLINE - LOCAL TOTALS ONLY"}</div>
+                        </div>
+                        ${mySummary}
+                    </div>
+
+                    <div class="relative z-10 flex gap-2">
+                        ${[
+                            ["kills", "MOST KILLS"],
+                            ["wins", "MOST WINS"],
+                            ["overall", "OVERALL"]
+                        ].map(([id, label]) => `
+                            <button data-leaderboard-tab="${id}" class="px-4 py-2 rounded border font-orbitron font-black text-xs ${mpState.leaderboardTab === id ? "border-emerald-300 bg-emerald-400/15 text-emerald-200" : "border-slate-800 bg-slate-900 text-slate-400 hover:border-emerald-400"}">${label}</button>
+                        `).join("")}
+                    </div>
+
+                    <div class="relative z-10 rounded-xl border border-slate-800 bg-black/45 p-4 min-h-0 flex-1 overflow-hidden">
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="font-orbitron font-black text-white">${tabLabel}</div>
+                            <div class="text-[10px] text-slate-500 font-orbitron">Showing ${activeRows.length} / 100</div>
+                        </div>
+
+                        <div class="grid grid-cols-[3.2rem_1.2fr_.8fr_.55fr_.7fr_.7fr_.7fr_.7fr_.7fr] gap-2 px-3 pb-2 text-[9px] font-orbitron font-black text-slate-500 tracking-widest">
+                            <div>POS</div><div>PLAYER</div><div>RANK</div><div>LVL</div><div>KILLS</div><div>DEATHS</div><div>WINS</div><div>LOSSES</div><div>REVIVES</div>
+                        </div>
+
+                        <div class="space-y-2 overflow-y-auto pr-1 max-h-[calc(100%-2.5rem)]">
+                            ${rowsHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const closeBtn = layer.querySelector("#close-menu-panel");
+            if (closeBtn) closeBtn.addEventListener("click", closeMenuPanel);
+
+            layer.querySelectorAll("[data-leaderboard-tab]").forEach(btn => {
+                btn.addEventListener("click", () => renderLeaderboardsScreen(btn.dataset.leaderboardTab));
+            });
+
+            if (virtualInput?.mode === "gamepad") {
+                setTimeout(() => {
+                    const focusables = getInputFocusableElements(layer);
+                    if (focusables.length) setControllerFocus(focusables[0]);
+                }, 0);
+            }
+        }
+
         function renderDailyRewardsScreen() {
             normalizeDailyRewardState();
 
@@ -34912,6 +35479,7 @@ function resizeMinimapCanvas() {
 
                 return `
                     <div class="border border-slate-800 bg-slate-900/80 rounded-lg p-4">
+                        ${renderCardArtworkMarkup(card, "detail")}
                         <div class="text-xs font-orbitron text-cyan-300">${CATEGORY_LABELS[card.category]} | ${card.rarity}</div>
                         <div class="text-2xl font-orbitron font-black text-white">${card.name}</div>
                         <div class="text-sm text-slate-400 mt-1">${card.description || ""}</div>
