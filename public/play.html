@@ -15442,6 +15442,157 @@ function resetCombatFx() {
             refreshCombatCardUi();
         }
 
+        function escapeCardArtText(value = "") {
+            return `${value ?? ""}`.replace(/[&<>"']/g, char => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                "\"": "&quot;",
+                "'": "&#39;"
+            }[char]));
+        }
+
+        function cardArtDataUri(svg) {
+            return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        }
+
+        function getCardArtKind(card) {
+            if (!card) return "generic";
+            if (card.id === "aurelia_infernal_reaper" || card.family === "Reaperborn") return "reaper";
+            if (card.category === "magic") return "magic";
+            if (card.category === "trap") return "trap";
+
+            const family = card.family || "";
+            if (family === "Emberkin") return "ember";
+            if (family === "Ironhide") return "iron";
+            if (family === "Frostveil") return "ice";
+            if (family === "Voltbeast") return "electric";
+            if (family === "Thornwild") return "thorn";
+            if (family === "Plaguekin") return "frog";
+            if (family === "Umbra") return "umbra";
+            if (family === "Starborn") return "star";
+            if (family === "Dunesoul") return "sand";
+            if (family === "Tidecall") return "water";
+            if (family === "Graveborn") return "bone";
+            if (family === "Runebound") return "rune";
+            if (family === "Crystalbloom") return "crystal";
+            if (family === "Bloodforge") return "blood";
+            return "generic";
+        }
+
+        function buildCardArtworkSvg(card, variant = "slot") {
+            const color = card?.visualColor || "#38bdf8";
+            const kind = getCardArtKind(card);
+            const title = escapeCardArtText(card?.name || "Card");
+            const family = escapeCardArtText(card?.family || card?.category || "Card");
+            const typeLine = card?.category === "monster" ? `STAGE ${card.evolutionStage || 1}` : (card?.category || "CARD").toUpperCase();
+            const stage = Number(card?.evolutionStage || 1);
+            const scale = card?.category === "monster" ? (0.9 + Math.min(stage, 4) * 0.07).toFixed(2) : "1";
+            const bg2 = kind === "reaper" ? "#070012" : kind === "blood" ? "#2f0509" : kind === "trap" ? "#1e1035" : kind === "magic" ? "#081331" : "#020617";
+            const bodyFill = {
+                ember: "#7c2d12",
+                iron: "#475569",
+                ice: "#1e3a8a",
+                electric: "#713f12",
+                thorn: "#14532d",
+                frog: "#3f6212",
+                umbra: "#020617",
+                star: "#312e81",
+                sand: "#78350f",
+                water: "#164e63",
+                bone: "#57534e",
+                rune: "#312e81",
+                crystal: "#1e40af",
+                blood: "#7f1d1d"
+            }[kind] || "#1e293b";
+
+            const monsterExtras = {
+                ember: `<path d="M71 67 C79 45 97 42 92 72 C106 53 129 60 113 85" fill="#fb923c" opacity=".95"/><path d="M92 76 C102 59 116 65 107 86" fill="#fef3c7" opacity=".9"/>`,
+                iron: `<path d="M74 75 L104 61 L139 69 L160 94 L148 112 L105 111 L78 96Z" fill="none" stroke="#cbd5e1" stroke-width="7"/><path d="M93 83 H145 M104 99 H157" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>`,
+                ice: `<path d="M65 105 C87 62 132 57 170 89" fill="none" stroke="#bfdbfe" stroke-width="16" stroke-linecap="round"/><path d="M94 63 L103 42 L112 64 M124 60 L137 36 L142 68 M153 75 L175 57 L169 85" fill="#e0f2fe"/>`,
+                electric: `<path d="M86 49 L68 83 H91 L76 121 L128 69 H102 L116 49Z" fill="#facc15" stroke="#fef08a" stroke-width="3"/><path d="M151 72 L171 55 M151 91 L181 91 M148 111 L171 131" stroke="#fde047" stroke-width="6" stroke-linecap="round"/>`,
+                thorn: `<path d="M75 95 C95 54 140 53 164 95" fill="none" stroke="#84cc16" stroke-width="9" stroke-linecap="round"/><path d="M90 72 C78 54 72 44 72 44 M125 63 C139 47 145 37 145 37" stroke="#22c55e" stroke-width="5" stroke-linecap="round"/><ellipse cx="68" cy="45" rx="9" ry="15" fill="#86efac" transform="rotate(-35 68 45)"/>`,
+                frog: `<circle cx="85" cy="62" r="16" fill="#bef264"/><circle cx="142" cy="62" r="16" fill="#bef264"/><circle cx="85" cy="62" r="7" fill="#111827"/><circle cx="142" cy="62" r="7" fill="#111827"/><circle cx="111" cy="96" r="7" fill="#84cc16"/><circle cx="133" cy="101" r="5" fill="#84cc16"/>`,
+                umbra: `<path d="M64 120 C74 75 95 50 123 63 C151 75 159 111 183 123 C148 117 118 134 92 124Z" fill="#020617" stroke="#a78bfa" stroke-width="4"/><circle cx="107" cy="82" r="5" fill="#c084fc"/><circle cx="134" cy="84" r="5" fill="#c084fc"/>`,
+                star: `<path d="M120 35 L130 67 L164 67 L137 86 L148 118 L120 98 L92 118 L103 86 L76 67 L110 67Z" fill="#fef08a" opacity=".9"/><path d="M79 121 C101 84 145 84 166 121" fill="none" stroke="#c4b5fd" stroke-width="8" stroke-linecap="round"/>`,
+                sand: `<path d="M63 113 C88 83 132 83 173 113" fill="none" stroke="#f59e0b" stroke-width="14" stroke-linecap="round"/><path d="M152 85 C174 61 190 86 166 101" fill="none" stroke="#fbbf24" stroke-width="7" stroke-linecap="round"/><path d="M166 101 L181 111 L165 116Z" fill="#fcd34d"/>`,
+                water: `<path d="M56 107 C83 74 121 75 151 93 C167 103 177 101 190 88 C183 118 153 132 116 125 C88 120 73 114 56 107Z" fill="#0e7490" stroke="#67e8f9" stroke-width="4"/><path d="M69 87 C93 101 121 101 147 87" fill="none" stroke="#bae6fd" stroke-width="5" stroke-linecap="round"/>`,
+                bone: `<path d="M72 107 C92 68 133 62 165 98" fill="none" stroke="#e7e5e4" stroke-width="10" stroke-linecap="round"/><path d="M91 87 L83 113 M111 78 L106 116 M132 80 L139 116" stroke="#292524" stroke-width="4" stroke-linecap="round"/><circle cx="159" cy="92" r="14" fill="#f5f5f4" stroke="#292524" stroke-width="4"/>`,
+                rune: `<circle cx="120" cy="88" r="38" fill="none" stroke="#c4b5fd" stroke-width="5"/><path d="M120 48 V128 M82 88 H158 M95 63 L145 113 M145 63 L95 113" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/><text x="120" y="98" text-anchor="middle" font-family="serif" font-size="38" fill="#ddd6fe">R</text>`,
+                crystal: `<path d="M120 40 L145 79 L132 132 L103 132 L91 79Z" fill="#bfdbfe" stroke="#60a5fa" stroke-width="4"/><path d="M83 77 L103 132 L62 115Z M158 77 L132 132 L181 116Z" fill="#93c5fd" opacity=".85"/><path d="M120 40 L120 132" stroke="#eff6ff" stroke-width="3" opacity=".75"/>`,
+                blood: `<path d="M80 113 C93 74 139 60 166 96 C141 88 119 99 96 124Z" fill="#991b1b" stroke="#ef4444" stroke-width="5"/><path d="M127 43 C149 68 139 91 120 93 C105 82 108 61 127 43Z" fill="#dc2626"/><path d="M73 64 L98 79 M168 64 L143 79" stroke="#fecaca" stroke-width="5" stroke-linecap="round"/>`
+            }[kind] || `<path d="M76 91 C98 60 139 61 165 94" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"/>`;
+
+            const art = (() => {
+                if (kind === "reaper") {
+                    return `<path d="M58 132 C69 69 91 37 121 37 C151 37 171 74 183 132 C157 121 138 130 120 143 C101 129 82 121 58 132Z" fill="#020617" stroke="${color}" stroke-width="5"/>
+                        <path d="M92 72 C97 48 143 48 149 73 C138 63 103 63 92 72Z" fill="#111827" stroke="#334155" stroke-width="4"/>
+                        <circle cx="120" cy="78" r="16" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
+                        <circle cx="114" cy="75" r="4" fill="#020617"/><circle cx="126" cy="75" r="4" fill="#020617"/><path d="M113 88 H127" stroke="#020617" stroke-width="3"/>
+                        <path d="M83 94 C58 81 49 73 35 57 M35 57 C63 50 88 39 111 22" fill="none" stroke="#e5e7eb" stroke-width="7" stroke-linecap="round"/>
+                        <path d="M112 22 C90 24 63 34 35 57" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M148 94 C166 86 177 81 190 72" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M88 139 C109 126 132 126 154 139" stroke="${color}" stroke-width="6" stroke-linecap="round" opacity=".85"/>`;
+                }
+
+                if (kind === "magic") {
+                    return `<circle cx="120" cy="88" r="47" fill="none" stroke="${color}" stroke-width="5"/><circle cx="120" cy="88" r="27" fill="none" stroke="#e0f2fe" stroke-width="3"/><path d="M120 39 L164 115 H76Z" fill="none" stroke="${color}" stroke-width="4"/><path d="M80 88 H160 M120 41 V135" stroke="#bfdbfe" stroke-width="3" stroke-linecap="round"/><circle cx="120" cy="88" r="9" fill="#fefce8"/>`;
+                }
+
+                if (kind === "trap") {
+                    return `<path d="M72 125 L120 44 L168 125Z" fill="#1e1b4b" stroke="${color}" stroke-width="6"/><circle cx="120" cy="93" r="25" fill="#020617" stroke="#e9d5ff" stroke-width="4"/><path d="M83 125 L105 96 M157 125 L135 96 M120 44 V93" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/><circle cx="120" cy="93" r="8" fill="${color}"/>`;
+                }
+
+                return `<g transform="translate(120 96) scale(${scale}) translate(-120 -96)">
+                    <ellipse cx="120" cy="137" rx="66" ry="12" fill="#000" opacity=".35"/>
+                    <path d="M58 107 C65 78 91 58 121 62 C154 66 176 89 183 119 C158 111 135 114 109 125 C86 134 67 126 58 107Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                    <circle cx="95" cy="78" r="19" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                    <path d="M75 69 L58 49 L86 58 M114 65 L133 45 L126 73" fill="${bodyFill}" stroke="${color}" stroke-width="4"/>
+                    <circle cx="90" cy="77" r="4" fill="#f8fafc"/><circle cx="91" cy="77" r="2" fill="#020617"/>
+                    <path d="M172 109 C197 92 195 69 176 58" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+                    <path d="M85 117 L73 143 M127 119 L121 145 M151 113 L164 141" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+                    ${monsterExtras}
+                </g>`;
+            })();
+
+            return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="${title}">
+                <defs>
+                    <radialGradient id="cardBg" cx="50%" cy="30%" r="75%">
+                        <stop offset="0%" stop-color="${color}" stop-opacity=".68"/>
+                        <stop offset="48%" stop-color="${bg2}" stop-opacity=".94"/>
+                        <stop offset="100%" stop-color="#020617"/>
+                    </radialGradient>
+                    <filter id="cardGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <rect width="240" height="180" fill="url(#cardBg)"/>
+                <path d="M0 152 C40 130 76 146 118 130 C163 113 201 133 240 112 V180 H0Z" fill="#020617" opacity=".52"/>
+                <g opacity=".2" stroke="#fff" stroke-width="1">${Array.from({ length: 9 }, (_, i) => `<path d="M${i * 30 - 20} 0 L${i * 30 + 45} 180"/>`).join("")}</g>
+                <g filter="url(#cardGlow)">${art}</g>
+                <rect x="8" y="8" width="224" height="164" rx="8" fill="none" stroke="#ffffff" stroke-opacity=".16"/>
+                <rect x="0" y="0" width="240" height="34" fill="#020617" opacity=".62"/>
+                <text x="13" y="22" font-family="Orbitron, Arial, sans-serif" font-size="11" font-weight="900" fill="#ffffff">${family}</text>
+                <text x="227" y="22" text-anchor="end" font-family="Orbitron, Arial, sans-serif" font-size="10" font-weight="900" fill="${color}">${typeLine}</text>
+                <text x="120" y="166" text-anchor="middle" font-family="Orbitron, Arial, sans-serif" font-size="12" font-weight="900" fill="#f8fafc">${title}</text>
+            </svg>`;
+        }
+
+        function renderCardArtworkMarkup(card, variant = "slot") {
+            if (!card) return "";
+            const src = cardArtDataUri(buildCardArtworkSvg(card, variant));
+            const alt = escapeCardArtText(card.name || "Card artwork");
+            const slotClass = "absolute left-1 right-1 top-6 bottom-7 rounded-sm border border-white/10 overflow-hidden";
+            const miniClass = "relative z-10 mt-2 h-16 rounded border border-white/10 overflow-hidden bg-black/45";
+            const detailClass = "relative mb-4 h-52 rounded-lg border border-white/10 overflow-hidden bg-black/45";
+            const revealClass = "relative z-10 mt-4 h-24 rounded border border-white/10 overflow-hidden bg-black/35";
+            const cls = variant === "slot" ? slotClass : variant === "detail" ? detailClass : variant === "reveal" ? revealClass : miniClass;
+
+            return `
+                <div class="${cls}" style="box-shadow:inset 0 0 24px ${(card.visualColor || "#38bdf8")}33;">
+                    <img src="${src}" alt="${alt}" class="absolute inset-0 w-full h-full object-cover" draggable="false">
+                </div>
+            `;
+        }
+
         function getCardSlotMarkup(card, slotType, index = 0) {
             const selected = slotType === "monster" && index === combatLoadout.selectedMonsterIndex;
 
@@ -15517,12 +15668,7 @@ function resetCombatFx() {
 
                     <div class="absolute left-1 top-6 z-20 rounded-sm px-1 py-[1px] text-[6px] font-orbitron font-black text-black" style="background:${typeStyle.color}; box-shadow:0 0 10px ${typeStyle.color};">${typeStyle.label}</div>
 
-                    <div class="absolute left-1 right-1 top-6 bottom-7 rounded-sm border border-white/10 overflow-hidden" style="background:radial-gradient(circle at 50% 35%, ${card.visualColor}88, rgba(15,23,42,.92) 58%, #020617);">
-                        <div class="absolute inset-0 opacity-25" style="background:repeating-linear-gradient(135deg, transparent 0 7px, rgba(255,255,255,.13) 8px 9px);"></div>
-                        <div class="absolute inset-0 flex items-center justify-center text-3xl drop-shadow-lg">${card.iconSymbol}</div>
-                        <div class="absolute left-1 top-1 text-[7px] text-white/85 font-orbitron">${card.family || card.category}</div>
-                        <div class="absolute right-1 top-1 text-[7px] text-white/75 font-orbitron">E${card.evolutionStage ?? "-"}</div>
-                    </div>
+                    ${renderCardArtworkMarkup(card, "slot")}
 
                     <div class="absolute left-1 right-1 bottom-7 z-10 text-[7px] text-cyan-100 font-orbitron font-black text-center truncate">${card.name}</div>
                     ${selectedBadge}
@@ -30544,12 +30690,68 @@ function processBotItemPickups(bot) {
             }
         }
 
+        function escapeEmoteArtText(value = "") {
+            return `${value ?? ""}`.replace(/[&<>"']/g, char => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                "\"": "&quot;",
+                "'": "&#39;"
+            }[char]));
+        }
+
+        function emoteArtDataUri(svg) {
+            return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        }
+
+        function buildEmotePreviewSvg(emote) {
+            const color = emote?.color || "#fef08a";
+            const bg = emote?.bg || "#0f172a";
+            const type = emote?.draw || "sparkle";
+            const label = escapeEmoteArtText(emote?.label || "Emote");
+            const heart = (x, y, s, fill) => `<path transform="translate(${x} ${y}) scale(${s})" d="M0 16 C-30 -8 -55 18 -34 48 C-20 68 0 80 0 80 C0 80 20 68 34 48 C55 18 30 -8 0 16Z" fill="${fill}"/>`;
+            const face = fill => `<circle cx="64" cy="64" r="35" fill="${fill}" stroke="#111827" stroke-width="4"/>`;
+
+            const art = (() => {
+                if (type === "heart") return `${heart(64, 30, 0.75, color)}${heart(38, 22, 0.24, "#fecdd3")}${heart(88, 22, 0.2, "#fecdd3")}`;
+                if (type === "heartEyes") return `${face("#fde68a")}${heart(48, 45, 0.2, "#fb7185")}${heart(80, 45, 0.2, "#fb7185")}<path d="M49 78 Q64 91 79 78" fill="none" stroke="#7c2d12" stroke-width="5" stroke-linecap="round"/><ellipse cx="64" cy="82" rx="13" ry="4" fill="#fff7ed"/>`;
+                if (type === "devil") return `${face("#c084fc")}<path d="M39 42 L28 18 L55 34Z M89 42 L100 18 L73 34Z" fill="#a855f7"/><path d="M47 58 L58 63 M81 58 L70 63 M51 78 Q64 89 77 78" fill="none" stroke="#111827" stroke-width="5" stroke-linecap="round"/>`;
+                if (type === "angry") return `${face("#f87171")}<path d="M40 50 L58 58 M88 50 L70 58" stroke="#111827" stroke-width="6" stroke-linecap="round"/><ellipse cx="53" cy="62" rx="5" ry="7" fill="#111827"/><ellipse cx="75" cy="62" rx="5" ry="7" fill="#111827"/><path d="M52 84 Q64 73 76 84" fill="none" stroke="#111827" stroke-width="5" stroke-linecap="round"/>`;
+                if (type === "puke") return `${face("#d9f99d")}<path d="M49 56 L59 62 M79 56 L69 62" stroke="#14532d" stroke-width="5" stroke-linecap="round"/><rect x="55" y="72" width="18" height="34" rx="8" fill="#84cc16"/><path d="M58 102 C52 114 76 116 70 126" stroke="#65a30d" stroke-width="7" stroke-linecap="round"/>`;
+                if (type === "laugh") return `${face("#facc15")}<path d="M44 58 Q52 49 60 58 M68 58 Q76 49 84 58" fill="none" stroke="#111827" stroke-width="5" stroke-linecap="round"/><ellipse cx="64" cy="80" rx="14" ry="12" fill="#111827"/><path d="M35 70 C20 83 30 99 45 86 M93 70 C108 83 98 99 83 86" fill="#38bdf8"/>`;
+                if (type === "nerd") return `${face("#fde68a")}<rect x="41" y="51" width="20" height="17" fill="none" stroke="#111827" stroke-width="5"/><rect x="67" y="51" width="20" height="17" fill="none" stroke="#111827" stroke-width="5"/><path d="M61 59 L67 59 M52 84 L76 84" stroke="#111827" stroke-width="4" stroke-linecap="round"/>`;
+                if (type === "cry") return `${face("#bfdbfe")}<circle cx="52" cy="68" r="6" fill="#1d4ed8"/><circle cx="76" cy="68" r="6" fill="#1d4ed8"/><path d="M51 88 Q64 77 77 88" fill="none" stroke="#111827" stroke-width="5" stroke-linecap="round"/><path d="M50 74 C42 90 48 98 56 89 M78 74 C86 90 80 98 72 89" fill="#60a5fa"/>`;
+                if (type === "skull") return `<path d="M36 59 A28 28 0 0 1 92 59 L92 80 Q92 96 77 96 L51 96 Q36 96 36 80Z" fill="#f8fafc" stroke="#0f172a" stroke-width="5"/><circle cx="53" cy="62" r="8" fill="#020617"/><circle cx="75" cy="62" r="8" fill="#020617"/><path d="M58 83 H70 M62 73 L66 73" stroke="#020617" stroke-width="4" stroke-linecap="round"/>`;
+                if (type === "fire") return `<path d="M64 18 C95 51 84 104 64 110 C34 100 30 61 64 18Z" fill="#dc2626"/><path d="M64 34 C84 60 76 96 64 102 C46 94 45 65 64 34Z" fill="#fb923c"/><path d="M64 54 C75 72 70 91 64 96 C55 89 55 69 64 54Z" fill="#fef3c7"/>`;
+                if (type === "gg") return `<text x="64" y="74" text-anchor="middle" font-family="Orbitron, Arial, sans-serif" font-size="34" font-weight="900" fill="#dcfce7" stroke="#052e16" stroke-width="2">GG</text>`;
+                return `<g stroke="${color}" stroke-width="5" stroke-linecap="round">${[0,45,90,135,180,225,270,315].map(a => `<path d="M64 64 L${64 + Math.cos(a * Math.PI / 180) * 38} ${64 + Math.sin(a * Math.PI / 180) * 38}"/>`).join("")}</g><text x="64" y="76" text-anchor="middle" font-family="Orbitron, Arial, sans-serif" font-size="36" font-weight="900" fill="${color}">*</text>`;
+            })();
+
+            return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="${label}">
+                <rect width="128" height="128" rx="28" fill="${bg}"/>
+                <rect x="7" y="7" width="114" height="114" rx="25" fill="none" stroke="${color}" stroke-width="4"/>
+                <circle cx="64" cy="50" r="55" fill="${color}" opacity=".12"/>
+                ${art}
+            </svg>`;
+        }
+
+        function renderEmoteArtMarkup(emote, variant = "mini") {
+            const color = emote?.color || "#fef08a";
+            const cls = variant === "wheel"
+                ? "w-14 h-14 rounded-xl border overflow-hidden bg-slate-950/90"
+                : "w-16 h-16 rounded-xl border overflow-hidden bg-slate-950/90 shrink-0";
+            const src = emoteArtDataUri(buildEmotePreviewSvg(emote));
+            const alt = escapeEmoteArtText(emote?.label || "Emote");
+
+            return `<div class="${cls}" style="border-color:${color}; box-shadow:0 0 16px ${color}55;"><img src="${src}" alt="${alt}" class="w-full h-full object-cover" draggable="false"></div>`;
+        }
+
         function renderEmoteMiniPreview(emote, slotLabel = "") {
             return `
                 <div class="relative rounded-2xl border bg-slate-950/90 p-3 overflow-hidden" style="border-color:${emote.color}; box-shadow:0 0 22px ${emote.color}33;">
                     <div class="absolute inset-0 opacity-40" style="background:radial-gradient(circle at top, ${emote.color}44, transparent 65%);"></div>
                     <div class="relative flex items-center gap-3">
-                        <div class="w-14 h-14 rounded-xl flex items-center justify-center border text-xl font-orbitron font-black" style="border-color:${emote.color}; color:${emote.color}; background:${emote.bg};">${emote.icon}</div>
+                        ${renderEmoteArtMarkup(emote)}
                         <div>
                             <div class="text-[9px] text-slate-500 font-orbitron font-black tracking-widest">${slotLabel}</div>
                             <div class="text-sm text-white font-orbitron font-black">${emote.label}</div>
@@ -30688,7 +30890,7 @@ function processBotItemPickups(bot) {
                                 data-emote-id="${emote.id}"
                                 data-emote-index="${index}"
                                 title="${emote.label}">
-                                <div class="text-2xl leading-none font-orbitron font-black" style="color:${emote.color};">${emote.icon}</div>
+                                ${renderEmoteArtMarkup(emote, "wheel")}
                                 <div class="text-[8px] mt-1 font-orbitron font-black tracking-widest text-slate-100">${emote.label}</div>
                             </button>
                         `;
@@ -34244,13 +34446,13 @@ function resizeMinimapCanvas() {
             const canAddClass = availableQty > 0 ? "hover:border-cyan-300" : "opacity-60 hover:border-red-400";
 
             return `
-                <button type="button" data-card-id="${card.id}" class="binder-card group relative h-36 rounded-md border-2 bg-slate-950 p-2 text-left overflow-hidden hover:scale-[1.03] transition-all ${canAddClass}" style="border-color:${rarity.border}; box-shadow:0 0 16px ${rarity.glow};">
+                <button type="button" data-card-id="${card.id}" class="binder-card group relative h-44 rounded-md border-2 bg-slate-950 p-2 text-left overflow-hidden hover:scale-[1.03] transition-all ${canAddClass}" style="border-color:${rarity.border}; box-shadow:0 0 16px ${rarity.glow};">
                     <div class="absolute inset-0 opacity-30" style="background:${rarity.trim};"></div>
                     <div class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity" style="background:linear-gradient(120deg, transparent 0%, rgba(255,255,255,.35) 45%, transparent 60%);"></div>
                     <div class="relative z-10 flex justify-between text-[9px] font-orbitron font-black text-slate-100">
                         <span>${card.rarity}</span><span>W${card.weight}</span>
                     </div>
-                    <div class="relative z-10 mt-2 flex items-center justify-center h-14 text-4xl drop-shadow-lg" style="color:${card.visualColor};">${card.iconSymbol || "C"}</div>
+                    ${renderCardArtworkMarkup(card, "mini")}
                     <div class="relative z-10 text-[10px] font-orbitron font-black text-cyan-100 truncate">${card.name}</div>
                     <div class="relative z-10 text-[9px] text-slate-400">${stage}</div>
                     <div class="absolute bottom-1 right-1 z-10 text-[10px] bg-black/75 px-1 rounded text-white">x${ownedQty}</div>
@@ -34276,7 +34478,8 @@ function resizeMinimapCanvas() {
                     const card = getCardDefinition(cardId);
                     return card ? `
                         <button data-remove-loadout="${category}:${index}" class="rounded border border-slate-700 bg-slate-900/90 px-2 py-2 text-left hover:border-red-400">
-                            <div class="text-[10px] font-orbitron font-black" style="color:${card.visualColor};">${card.name}</div>
+                            ${renderCardArtworkMarkup(card, "mini")}
+                            <div class="mt-1 text-[10px] font-orbitron font-black" style="color:${card.visualColor};">${card.name}</div>
                             <div class="text-[9px] text-slate-500">${card.rarity} | W${card.weight}</div>
                         </button>
                     ` : "";
@@ -34295,6 +34498,7 @@ function resizeMinimapCanvas() {
 
             const detailHtml = selected ? `
                 <div class="border border-slate-800 bg-slate-900/80 rounded-lg p-4">
+                    ${renderCardArtworkMarkup(selected, "detail")}
                     <div class="text-xs font-orbitron text-cyan-300">${CATEGORY_LABELS[selected.category]} | ${selected.rarity}</div>
                     <div class="text-2xl font-orbitron font-black text-white">${selected.name}</div>
                     <div class="text-sm text-slate-400 mt-1">${selected.description || ""}</div>
@@ -34927,9 +35131,7 @@ function resizeMinimapCanvas() {
                             <span>W${card.weight}</span>
                         </div>
 
-                        <div class="relative z-10 mt-4 h-24 rounded border border-white/10 bg-black/35 flex items-center justify-center text-6xl drop-shadow-lg" style="color:${card.visualColor};">
-                            ${card.iconSymbol || "C"}
-                        </div>
+                        ${renderCardArtworkMarkup(card, "reveal")}
 
                         <div class="relative z-10 mt-3">
                             <div class="text-sm font-orbitron font-black text-cyan-100 leading-tight">${card.name}</div>
