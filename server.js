@@ -292,6 +292,22 @@ function broadcastOnlineList() {
   io.emit("onlinePlayers", [...players.values()].map(publicPlayer));
 }
 
+function getSpectatorCountsPayload() {
+  const counts = {};
+
+  for (const p of players.values()) {
+    const targetSocketId = p.spectatingSocketId;
+    if (!targetSocketId || targetSocketId === p.socketId || !players.has(targetSocketId)) continue;
+    counts[targetSocketId] = (counts[targetSocketId] || 0) + 1;
+  }
+
+  return counts;
+}
+
+function broadcastSpectatorCounts() {
+  io.emit("spectatorCounts", getSpectatorCountsPayload());
+}
+
 function safeStatInt(value, fallback = 0, max = 999999) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -1502,6 +1518,24 @@ socket.on("matchLocalDeath", data => {
     socket.emit("leaderboards", getLeaderboardPayload());
   });
 
+  socket.on("spectateTargetChanged", data => {
+    const p = getPlayer(socket.id);
+    if (!p) return;
+
+    const targetSocketId = String(data?.targetSocketId || "");
+    const target = targetSocketId ? getPlayer(targetSocketId) : null;
+
+    p.spectatingSocketId =
+      target &&
+      targetSocketId !== socket.id &&
+      p.matchId &&
+      target.matchId === p.matchId
+        ? targetSocketId
+        : null;
+
+    broadcastSpectatorCounts();
+  });
+
   socket.on("matchResultReport", data => {
     const result = applyLeaderboardMatchReport(socket.id, data);
     if (!result.ok) return;
@@ -1553,8 +1587,14 @@ socket.on("matchLocalDeath", data => {
       }
     }
 
+    if (p) p.spectatingSocketId = null;
+    for (const other of players.values()) {
+      if (other.spectatingSocketId === socket.id) other.spectatingSocketId = null;
+    }
+
     players.delete(socket.id);
     broadcastOnlineList();
+    broadcastSpectatorCounts();
   });
 });
 
