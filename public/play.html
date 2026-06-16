@@ -632,7 +632,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="mr-1">
-                        <span class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.83</span>
+                        <span class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.84</span>
                         <span class="font-orbitron font-black text-lg tracking-wider text-slate-100">DUEL.IO</span>
                     </div>
                     <button id="quest-menu-btn" class="quest-icon-btn" title="Quests" aria-label="Quests">
@@ -693,13 +693,13 @@
                 <!-- Currency: Gold -->
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-coins text-amber-400"></i>
-                    <span id="menu-gold-count" class="font-orbitron font-bold text-sm text-slate-200">12,450</span>
+                    <span id="menu-gold-count" class="font-orbitron font-bold text-sm text-slate-200">1,000</span>
                 </div>
 
                 <!-- Currency: Gems -->
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-gem text-cyan-400"></i>
-                    <span id="menu-gem-count" class="font-orbitron font-bold text-sm text-slate-200">480</span>
+                    <span id="menu-gem-count" class="font-orbitron font-bold text-sm text-slate-200">0</span>
                 </div>
 
                 <!-- Settings / Audio Toggle Buttons -->
@@ -2169,11 +2169,8 @@
         const lobbyTicker = document.getElementById('lobby-ticker');
         const systemTickers = [
             "Primal Fire elements raging in volcanic rifts.",
-            "Ranked match queue optimized.",
-            "Water deck variant 'Tidal Wave' meta rising.",
             "Daily login bonuses have refreshed.",
-            "Special Element Booster Event coming soon!",
-            "Chrono Deck archetype unlocked for testing."
+            "Special Element Booster Event coming soon!"
         ];
 
         function triggerNotification(message) {
@@ -3567,12 +3564,12 @@
 
             player.name = keepName;
 
-            playerCollection.gold = 0;
+            playerCollection.gold = 1000;
             playerCollection.gems = 0;
             playerCollection.owned = {};
             playerCollection.boosterTickets = {};
             playerCollection.eventTickets = 0;
-            playerCollection.starterSeeded = true;
+            playerCollection.starterSeeded = false;
 
             battleLoadout.monster = [];
             battleLoadout.magic = [];
@@ -16054,33 +16051,248 @@ function resetCombatFx() {
                 blood: "#7f1d1d"
             }[kind] || "#1e293b";
 
-            const monsterExtras = {
-                ember: `<path d="M71 67 C79 45 97 42 92 72 C106 53 129 60 113 85" fill="#fb923c" opacity=".95"/><path d="M92 76 C102 59 116 65 107 86" fill="#fef3c7" opacity=".9"/>`,
-                iron: `<path d="M74 75 L104 61 L139 69 L160 94 L148 112 L105 111 L78 96Z" fill="none" stroke="#cbd5e1" stroke-width="7"/><path d="M93 83 H145 M104 99 H157" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>`,
-                ice: `<path d="M65 105 C87 62 132 57 170 89" fill="none" stroke="#bfdbfe" stroke-width="16" stroke-linecap="round"/><path d="M94 63 L103 42 L112 64 M124 60 L137 36 L142 68 M153 75 L175 57 L169 85" fill="#e0f2fe"/>`,
-                electric: `<path d="M86 49 L68 83 H91 L76 121 L128 69 H102 L116 49Z" fill="#facc15" stroke="#fef08a" stroke-width="3"/><path d="M151 72 L171 55 M151 91 L181 91 M148 111 L171 131" stroke="#fde047" stroke-width="6" stroke-linecap="round"/>`,
-                thorn: `<path d="M75 95 C95 54 140 53 164 95" fill="none" stroke="#84cc16" stroke-width="9" stroke-linecap="round"/><path d="M90 72 C78 54 72 44 72 44 M125 63 C139 47 145 37 145 37" stroke="#22c55e" stroke-width="5" stroke-linecap="round"/><ellipse cx="68" cy="45" rx="9" ry="15" fill="#86efac" transform="rotate(-35 68 45)"/>`,
-                frog: `<circle cx="85" cy="62" r="16" fill="#bef264"/><circle cx="142" cy="62" r="16" fill="#bef264"/><circle cx="85" cy="62" r="7" fill="#111827"/><circle cx="142" cy="62" r="7" fill="#111827"/><circle cx="111" cy="96" r="7" fill="#84cc16"/><circle cx="133" cy="101" r="5" fill="#84cc16"/>`,
-                umbra: `<path d="M64 120 C74 75 95 50 123 63 C151 75 159 111 183 123 C148 117 118 134 92 124Z" fill="#020617" stroke="#a78bfa" stroke-width="4"/><circle cx="107" cy="82" r="5" fill="#c084fc"/><circle cx="134" cy="84" r="5" fill="#c084fc"/>`,
-                star: `<path d="M120 35 L130 67 L164 67 L137 86 L148 118 L120 98 L92 118 L103 86 L76 67 L110 67Z" fill="#fef08a" opacity=".9"/><path d="M79 121 C101 84 145 84 166 121" fill="none" stroke="#c4b5fd" stroke-width="8" stroke-linecap="round"/>`,
-                sand: `<path d="M63 113 C88 83 132 83 173 113" fill="none" stroke="#f59e0b" stroke-width="14" stroke-linecap="round"/><path d="M152 85 C174 61 190 86 166 101" fill="none" stroke="#fbbf24" stroke-width="7" stroke-linecap="round"/><path d="M166 101 L181 111 L165 116Z" fill="#fcd34d"/>`,
-                water: `<path d="M56 107 C83 74 121 75 151 93 C167 103 177 101 190 88 C183 118 153 132 116 125 C88 120 73 114 56 107Z" fill="#0e7490" stroke="#67e8f9" stroke-width="4"/><path d="M69 87 C93 101 121 101 147 87" fill="none" stroke="#bae6fd" stroke-width="5" stroke-linecap="round"/>`,
-                bone: `<path d="M72 107 C92 68 133 62 165 98" fill="none" stroke="#e7e5e4" stroke-width="10" stroke-linecap="round"/><path d="M91 87 L83 113 M111 78 L106 116 M132 80 L139 116" stroke="#292524" stroke-width="4" stroke-linecap="round"/><circle cx="159" cy="92" r="14" fill="#f5f5f4" stroke="#292524" stroke-width="4"/>`,
-                rune: `<circle cx="120" cy="88" r="38" fill="none" stroke="#c4b5fd" stroke-width="5"/><path d="M120 48 V128 M82 88 H158 M95 63 L145 113 M145 63 L95 113" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/><text x="120" y="98" text-anchor="middle" font-family="serif" font-size="38" fill="#ddd6fe">R</text>`,
-                crystal: `<path d="M120 40 L145 79 L132 132 L103 132 L91 79Z" fill="#bfdbfe" stroke="#60a5fa" stroke-width="4"/><path d="M83 77 L103 132 L62 115Z M158 77 L132 132 L181 116Z" fill="#93c5fd" opacity=".85"/><path d="M120 40 L120 132" stroke="#eff6ff" stroke-width="3" opacity=".75"/>`,
-                blood: `<path d="M80 113 C93 74 139 60 166 96 C141 88 119 99 96 124Z" fill="#991b1b" stroke="#ef4444" stroke-width="5"/><path d="M127 43 C149 68 139 91 120 93 C105 82 108 61 127 43Z" fill="#dc2626"/><path d="M73 64 L98 79 M168 64 L143 79" stroke="#fecaca" stroke-width="5" stroke-linecap="round"/>`
-            }[kind] || `<path d="M76 91 C98 60 139 61 165 94" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"/>`;
+            const cardId = String(card?.id || "").toLowerCase();
+            const cardName = String(card?.name || "").toLowerCase();
+            const creatureKey = `${cardId} ${cardName}`;
+            const artScale = card?.category === "monster" ? (0.9 + Math.min(stage, 4) * 0.08).toFixed(2) : scale;
+            const rareGlow = String(card?.rarity || "").toLowerCase().includes("mythic") ? ".95" : String(card?.rarity || "").toLowerCase().includes("legendary") ? ".82" : ".66";
+            const creatureShadow = `<ellipse cx="120" cy="139" rx="68" ry="13" fill="#000" opacity=".38"/>`;
+            const creatureFrame = `<path d="M36 127 C62 88 82 51 120 48 C158 51 179 88 204 127" fill="none" stroke="${color}" stroke-width="3" opacity=".22"/><circle cx="55" cy="57" r="3" fill="#fff" opacity=".5"/><circle cx="188" cy="70" r="2.5" fill="#fff" opacity=".42"/><circle cx="176" cy="39" r="2" fill="${color}" opacity="${rareGlow}"/>`;
+
+            const creatureArt = (() => {
+                if (kind === "ember") {
+                    if (/phoenix|drake|dragon/.test(creatureKey)) {
+                        return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                            <path d="M73 110 C88 72 128 62 161 92 C144 91 129 99 119 121 C104 101 88 101 73 110Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                            <path d="M103 75 C82 53 70 45 46 40 C57 70 72 92 99 98Z" fill="#fb923c" stroke="#fed7aa" stroke-width="4"/>
+                            <path d="M137 75 C158 53 173 45 196 41 C184 72 169 92 141 98Z" fill="#fb923c" stroke="#fed7aa" stroke-width="4"/>
+                            <path d="M130 68 C147 55 160 58 168 72 C154 73 146 80 139 92Z" fill="#7c2d12" stroke="#fdba74" stroke-width="4"/>
+                            <path d="M164 77 L183 68 L171 87" fill="#fef3c7" stroke="#fb923c" stroke-width="3"/>
+                            <path d="M90 117 C70 128 58 121 47 103 C68 107 83 99 99 89" fill="none" stroke="#f97316" stroke-width="8" stroke-linecap="round"/>
+                            <path d="M92 66 C99 39 121 36 114 72 C130 52 153 62 136 88" fill="#f97316" opacity=".95"/>
+                            <circle cx="151" cy="73" r="4" fill="#fff7ed"/><circle cx="152" cy="73" r="2" fill="#111827"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M55 111 C70 78 102 64 138 76 C165 84 180 105 185 123 C156 111 125 112 94 128 C75 135 60 127 55 111Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                        <path d="M75 79 L62 48 L93 66 M113 67 L135 42 L132 76" fill="${bodyFill}" stroke="#fdba74" stroke-width="4"/>
+                        <path d="M71 83 C86 59 112 61 124 82 C111 78 95 80 83 95Z" fill="#431407" opacity=".75"/>
+                        <path d="M159 98 C191 76 198 51 183 35 C177 62 160 72 141 82" fill="none" stroke="#fb923c" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M76 63 C77 42 93 39 92 65 C104 44 126 51 114 77 C131 59 151 70 132 93" fill="#f97316" opacity=".96"/>
+                        <path d="M84 121 L72 145 M121 121 L118 146 M151 116 L165 140" stroke="#fed7aa" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="92" cy="80" r="4" fill="#fff7ed"/><circle cx="93" cy="80" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "iron") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M58 112 C70 80 100 62 137 70 C164 76 181 99 185 124 C157 116 129 117 95 128 C77 134 63 128 58 112Z" fill="${bodyFill}" stroke="#cbd5e1" stroke-width="5"/>
+                        <path d="M76 82 C82 58 113 54 128 76 L116 100 L82 98Z" fill="#334155" stroke="#e2e8f0" stroke-width="5"/>
+                        <path d="M74 74 C51 53 45 39 48 26 C68 39 79 52 88 71 M125 73 C141 48 156 37 177 31 C171 55 155 68 128 82" fill="none" stroke="#e2e8f0" stroke-width="7" stroke-linecap="round"/>
+                        <path d="M95 87 H156 M105 103 H172 M77 111 L56 128 M154 88 L177 75" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>
+                        <rect x="108" y="76" width="35" height="28" rx="5" fill="#64748b" stroke="#f8fafc" stroke-width="3"/>
+                        <circle cx="92" cy="80" r="4" fill="#f8fafc"/><circle cx="93" cy="80" r="2" fill="#020617"/>
+                    </g>`;
+                }
+
+                if (kind === "ice") {
+                    return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                        <path d="M49 118 C78 78 117 72 148 88 C174 101 190 91 196 69 C205 111 174 139 132 127 C100 119 78 119 49 118Z" fill="#1e3a8a" stroke="#bfdbfe" stroke-width="5"/>
+                        <path d="M91 79 L101 48 L113 78 M124 75 L139 38 L148 83 M156 92 L185 73 L172 103 M72 99 L49 80 L59 111" fill="#e0f2fe" stroke="#60a5fa" stroke-width="3"/>
+                        <path d="M72 109 C103 87 141 92 173 113" fill="none" stroke="#eff6ff" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+                        <circle cx="171" cy="85" r="4" fill="#f8fafc"/><circle cx="172" cy="85" r="2" fill="#082f49"/>
+                    </g>`;
+                }
+
+                if (kind === "electric") {
+                    if (/wasp|hornet|bee/.test(creatureKey)) {
+                        return `<g transform="translate(120 96) scale(${artScale}) translate(-120 -96)">${creatureFrame}${creatureShadow}
+                            <ellipse cx="99" cy="83" rx="33" ry="20" fill="#e0f2fe" stroke="#fde047" stroke-width="4" opacity=".78" transform="rotate(-24 99 83)"/>
+                            <ellipse cx="137" cy="83" rx="33" ry="20" fill="#e0f2fe" stroke="#fde047" stroke-width="4" opacity=".78" transform="rotate(24 137 83)"/>
+                            <path d="M72 101 C95 65 139 65 165 101 C145 120 92 120 72 101Z" fill="#713f12" stroke="#facc15" stroke-width="5"/>
+                            <path d="M94 79 L112 118 M121 72 L139 119 M149 83 L132 116" stroke="#fde047" stroke-width="6" stroke-linecap="round"/>
+                            <path d="M164 101 L194 111 L164 119Z" fill="#fef08a" stroke="#facc15" stroke-width="3"/>
+                            <circle cx="86" cy="91" r="4" fill="#fefce8"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                        <path d="M58 113 C75 79 111 64 145 76 C168 84 181 103 186 126 C158 114 130 116 99 128 C76 137 62 128 58 113Z" fill="#713f12" stroke="#fde047" stroke-width="5"/>
+                        <path d="M84 76 L70 44 L101 64 M120 70 L145 44 L137 78" fill="#854d0e" stroke="#fef08a" stroke-width="4"/>
+                        <path d="M151 91 L180 64 L166 93 H190 L151 134 L163 103 H141Z" fill="#facc15" stroke="#fef08a" stroke-width="3"/>
+                        <path d="M82 120 L66 145 M121 121 L115 146 M153 116 L171 140" stroke="#fef08a" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="94" cy="82" r="4" fill="#fff7ed"/><circle cx="95" cy="82" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "thorn") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M59 114 C77 78 111 63 146 78 C168 87 181 108 185 128 C155 114 123 116 95 130 C76 138 63 130 59 114Z" fill="#14532d" stroke="#86efac" stroke-width="5"/>
+                        <path d="M81 77 C79 52 67 42 53 34 M105 70 C115 47 129 35 148 26 M123 76 C146 54 162 47 184 47" stroke="#22c55e" stroke-width="6" stroke-linecap="round"/>
+                        <ellipse cx="51" cy="33" rx="8" ry="15" fill="#86efac" transform="rotate(-38 51 33)"/>
+                        <ellipse cx="150" cy="25" rx="8" ry="16" fill="#bbf7d0" transform="rotate(35 150 25)"/>
+                        <path d="M74 93 L51 83 L76 73 M156 99 L188 86 L169 112" fill="#84cc16" stroke="#dcfce7" stroke-width="3"/>
+                        <path d="M82 121 L67 145 M123 123 L119 148 M151 117 L169 139" stroke="#bbf7d0" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="94" cy="82" r="4" fill="#ecfccb"/><circle cx="95" cy="82" r="2" fill="#052e16"/>
+                    </g>`;
+                }
+
+                if (kind === "frog") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <ellipse cx="120" cy="106" rx="58" ry="38" fill="#3f6212" stroke="#bef264" stroke-width="5"/>
+                        <circle cx="86" cy="72" r="19" fill="#84cc16" stroke="#d9f99d" stroke-width="4"/>
+                        <circle cx="147" cy="72" r="19" fill="#84cc16" stroke="#d9f99d" stroke-width="4"/>
+                        <circle cx="86" cy="72" r="7" fill="#111827"/><circle cx="147" cy="72" r="7" fill="#111827"/>
+                        <path d="M93 111 C111 124 134 124 151 111" fill="none" stroke="#fefce8" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M148 111 C179 101 184 87 165 79" fill="none" stroke="#fb7185" stroke-width="5" stroke-linecap="round"/>
+                        <circle cx="101" cy="96" r="5" fill="#84cc16"/><circle cx="132" cy="100" r="6" fill="#65a30d"/><circle cx="118" cy="84" r="4" fill="#bef264"/>
+                    </g>`;
+                }
+
+                if (kind === "umbra") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M62 123 C73 78 101 50 129 64 C151 75 158 107 184 122 C150 116 121 136 94 127Z" fill="#020617" stroke="#a78bfa" stroke-width="5"/>
+                        <path d="M89 79 C72 55 59 42 40 38 C46 72 62 94 91 102Z" fill="#18122f" stroke="#c084fc" stroke-width="4"/>
+                        <path d="M135 79 C153 55 169 43 190 39 C183 72 166 94 136 102Z" fill="#18122f" stroke="#c084fc" stroke-width="4"/>
+                        <path d="M78 92 C97 70 126 71 143 94 C119 86 98 87 78 92Z" fill="#0f172a"/>
+                        <circle cx="107" cy="83" r="5" fill="#d8b4fe"/><circle cx="135" cy="84" r="5" fill="#d8b4fe"/>
+                        <path d="M82 126 C66 147 44 141 37 123 M159 122 C181 144 199 133 205 114" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+                    </g>`;
+                }
+
+                if (kind === "star") {
+                    return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                        <path d="M72 119 C90 81 128 64 160 91 C145 96 134 108 124 128 C105 107 88 108 72 119Z" fill="#312e81" stroke="#c4b5fd" stroke-width="5"/>
+                        <path d="M93 78 C76 51 63 39 42 33 C49 66 65 89 93 101Z" fill="#4f46e5" stroke="#ddd6fe" stroke-width="4"/>
+                        <path d="M142 79 C160 52 176 39 198 33 C188 68 171 90 142 101Z" fill="#4f46e5" stroke="#ddd6fe" stroke-width="4"/>
+                        <path d="M121 36 L130 64 L160 64 L136 81 L146 111 L121 93 L96 111 L106 81 L82 64 L112 64Z" fill="#fef08a" opacity=".9"/>
+                        <path d="M92 119 L77 144 M124 123 L122 150 M151 113 L170 137" stroke="#e0e7ff" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="144" cy="78" r="4" fill="#fefce8"/><circle cx="145" cy="78" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "sand") {
+                    if (/scarab|beetle/.test(creatureKey)) {
+                        return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                            <ellipse cx="120" cy="98" rx="45" ry="34" fill="#78350f" stroke="#fbbf24" stroke-width="5"/>
+                            <path d="M120 64 V132 M83 94 H157 M92 78 C106 91 134 91 148 78 M92 118 C107 105 134 105 148 118" stroke="#fde68a" stroke-width="4" stroke-linecap="round"/>
+                            <path d="M82 88 L49 71 M82 105 L46 107 M91 123 L62 143 M158 88 L191 71 M158 105 L194 107 M149 123 L178 143" stroke="#f59e0b" stroke-width="6" stroke-linecap="round"/>
+                            <path d="M105 57 L120 30 L135 57" fill="#fcd34d" stroke="#fef3c7" stroke-width="3"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M61 119 C81 82 115 68 149 84 C170 94 181 112 186 132 C153 116 121 118 94 132 C75 140 65 133 61 119Z" fill="#78350f" stroke="#fbbf24" stroke-width="5"/>
+                        <path d="M86 80 L72 49 L103 66 M121 72 L145 45 L139 78" fill="#92400e" stroke="#fde68a" stroke-width="4"/>
+                        <path d="M151 86 C178 59 199 84 173 103" fill="none" stroke="#fbbf24" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M173 103 L191 111 L173 119Z" fill="#fcd34d" stroke="#fef3c7" stroke-width="3"/>
+                        <path d="M86 121 L71 145 M124 122 L121 148 M152 118 L169 140" stroke="#fde68a" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="95" cy="82" r="4" fill="#fef3c7"/><circle cx="96" cy="82" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "water") {
+                    if (/slime|bubble/.test(creatureKey)) {
+                        return `<g transform="translate(120 101) scale(${artScale}) translate(-120 -101)">${creatureFrame}${creatureShadow}
+                            <path d="M65 121 C72 82 99 61 127 67 C158 74 179 98 181 126 C155 134 90 136 65 121Z" fill="#0e7490" stroke="#67e8f9" stroke-width="5"/>
+                            <circle cx="91" cy="80" r="13" fill="#bae6fd" opacity=".75"/><circle cx="150" cy="91" r="9" fill="#cffafe" opacity=".72"/><circle cx="125" cy="64" r="6" fill="#e0f2fe" opacity=".82"/>
+                            <circle cx="103" cy="101" r="5" fill="#082f49"/><circle cx="140" cy="101" r="5" fill="#082f49"/>
+                            <path d="M105 119 C119 129 137 128 150 118" fill="none" stroke="#ecfeff" stroke-width="4" stroke-linecap="round"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M47 113 C80 73 124 70 153 93 C170 106 184 99 199 84 C194 122 160 140 119 128 C90 120 69 119 47 113Z" fill="#164e63" stroke="#67e8f9" stroke-width="5"/>
+                        <path d="M73 89 C101 105 132 105 162 88" fill="none" stroke="#bae6fd" stroke-width="5" stroke-linecap="round"/>
+                        <path d="M155 88 L190 69 L177 103" fill="#0e7490" stroke="#cffafe" stroke-width="4"/>
+                        <path d="M79 112 L58 133 M116 123 L112 149 M151 115 L173 136" stroke="#a5f3fc" stroke-width="6" stroke-linecap="round"/>
+                        <circle cx="166" cy="86" r="4" fill="#ecfeff"/><circle cx="167" cy="86" r="2" fill="#082f49"/>
+                    </g>`;
+                }
+
+                if (kind === "bone") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M61 116 C78 79 113 63 149 79 C169 88 181 106 186 128 C158 116 129 118 97 130 C78 137 65 131 61 116Z" fill="#57534e" stroke="#e7e5e4" stroke-width="5"/>
+                        <path d="M82 84 C91 61 122 60 134 81 L123 101 L89 99Z" fill="#f5f5f4" stroke="#292524" stroke-width="4"/>
+                        <circle cx="97" cy="82" r="5" fill="#111827"/><circle cx="119" cy="82" r="5" fill="#111827"/>
+                        <path d="M90 97 H126 M74 112 H153 M91 96 L78 125 M114 100 L113 130 M137 96 L153 126" stroke="#292524" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M153 89 C179 69 198 83 188 106 C176 96 166 96 153 106Z" fill="#e7e5e4" stroke="#292524" stroke-width="4"/>
+                        <path d="M78 126 L62 146 M121 128 L118 150 M153 120 L172 141" stroke="#e7e5e4" stroke-width="7" stroke-linecap="round"/>
+                    </g>`;
+                }
+
+                if (kind === "rune") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M73 119 C83 82 105 58 127 68 C149 77 156 104 176 121 C147 115 123 132 98 127Z" fill="#312e81" stroke="#c4b5fd" stroke-width="5"/>
+                        <path d="M86 78 C67 61 55 52 39 48 C45 72 61 93 89 102Z" fill="#ddd6fe" stroke="#a78bfa" stroke-width="4"/>
+                        <path d="M138 77 C156 60 171 52 191 48 C183 75 164 94 137 102Z" fill="#ddd6fe" stroke="#a78bfa" stroke-width="4"/>
+                        <circle cx="120" cy="93" r="31" fill="none" stroke="#ddd6fe" stroke-width="4"/>
+                        <path d="M120 62 V124 M91 93 H149 M99 72 L141 114 M141 72 L99 114" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/>
+                        <text x="120" y="103" text-anchor="middle" font-family="serif" font-size="34" fill="#f5f3ff">R</text>
+                    </g>`;
+                }
+
+                if (kind === "crystal") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M64 120 C79 82 113 63 148 83 C169 94 181 113 184 131 C155 118 125 120 96 133 C77 141 67 134 64 120Z" fill="#1e40af" stroke="#bfdbfe" stroke-width="5"/>
+                        <path d="M91 74 L105 35 L121 75 M124 76 L146 39 L151 88 M72 99 L47 79 L60 112 M157 100 L190 83 L171 116" fill="#bfdbfe" stroke="#60a5fa" stroke-width="3"/>
+                        <path d="M101 89 L122 62 L142 90 L132 126 L108 126Z" fill="#dbeafe" stroke="#93c5fd" stroke-width="4" opacity=".9"/>
+                        <path d="M122 62 V126 M101 89 H142" stroke="#eff6ff" stroke-width="3" opacity=".85"/>
+                        <circle cx="94" cy="84" r="4" fill="#eff6ff"/><circle cx="95" cy="84" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "blood") {
+                    if (/bat/.test(creatureKey)) {
+                        return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                            <path d="M118 82 C93 55 68 47 40 54 C55 74 62 98 67 124 C86 105 100 96 118 98Z" fill="#450a0a" stroke="#fca5a5" stroke-width="4"/>
+                            <path d="M122 82 C148 55 174 47 201 54 C186 74 179 98 174 124 C155 105 140 96 122 98Z" fill="#450a0a" stroke="#fca5a5" stroke-width="4"/>
+                            <path d="M92 101 C102 75 136 75 148 101 C137 121 104 122 92 101Z" fill="#7f1d1d" stroke="#ef4444" stroke-width="5"/>
+                            <path d="M108 78 L100 55 L119 72 M132 78 L145 55 L140 82" fill="#991b1b" stroke="#fecaca" stroke-width="3"/>
+                            <circle cx="112" cy="91" r="4" fill="#fecaca"/><circle cx="132" cy="91" r="4" fill="#fecaca"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M58 116 C74 78 112 62 149 80 C170 91 183 111 188 131 C158 115 126 118 96 132 C76 140 62 132 58 116Z" fill="#7f1d1d" stroke="#ef4444" stroke-width="5"/>
+                        <path d="M80 78 L63 49 L96 66 M119 70 L145 45 L137 79" fill="#991b1b" stroke="#fecaca" stroke-width="4"/>
+                        <path d="M152 92 L188 76 L170 105 L194 118 L160 120" fill="#991b1b" stroke="#fca5a5" stroke-width="4"/>
+                        <path d="M117 42 C143 69 135 92 117 96 C99 84 101 60 117 42Z" fill="#dc2626" stroke="#fecaca" stroke-width="3"/>
+                        <path d="M85 122 L69 146 M123 124 L120 150 M154 117 L172 141" stroke="#fecaca" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="94" cy="82" r="4" fill="#fee2e2"/><circle cx="95" cy="82" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                    <path d="M58 112 C72 78 104 62 138 73 C166 82 181 104 186 126 C157 114 128 116 98 130 C78 138 63 130 58 112Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                    <path d="M78 78 L59 49 L92 65 M116 68 L140 43 L134 77" fill="${bodyFill}" stroke="${color}" stroke-width="4"/>
+                    <path d="M159 102 C192 84 198 61 180 48" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M84 121 L69 146 M123 122 L119 148 M153 116 L171 140" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+                    <circle cx="94" cy="82" r="4" fill="#f8fafc"/><circle cx="95" cy="82" r="2" fill="#020617"/>
+                </g>`;
+            })();
 
             const art = (() => {
                 if (kind === "reaper") {
-                    return `<path d="M58 132 C69 69 91 37 121 37 C151 37 171 74 183 132 C157 121 138 130 120 143 C101 129 82 121 58 132Z" fill="#020617" stroke="${color}" stroke-width="5"/>
-                        <path d="M92 72 C97 48 143 48 149 73 C138 63 103 63 92 72Z" fill="#111827" stroke="#334155" stroke-width="4"/>
-                        <circle cx="120" cy="78" r="16" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
-                        <circle cx="114" cy="75" r="4" fill="#020617"/><circle cx="126" cy="75" r="4" fill="#020617"/><path d="M113 88 H127" stroke="#020617" stroke-width="3"/>
-                        <path d="M83 94 C58 81 49 73 35 57 M35 57 C63 50 88 39 111 22" fill="none" stroke="#e5e7eb" stroke-width="7" stroke-linecap="round"/>
-                        <path d="M112 22 C90 24 63 34 35 57" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
-                        <path d="M148 94 C166 86 177 81 190 72" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
-                        <path d="M88 139 C109 126 132 126 154 139" stroke="${color}" stroke-width="6" stroke-linecap="round" opacity=".85"/>`;
+                    return `<g transform="translate(120 96) scale(${scale}) translate(-120 -96)">
+                        <ellipse cx="120" cy="142" rx="70" ry="15" fill="#000" opacity=".44"/>
+                        <path d="M58 139 C64 83 88 39 119 35 C152 36 175 83 184 139 C159 127 139 132 120 149 C101 132 82 127 58 139Z" fill="#020617" stroke="${color}" stroke-width="5"/>
+                        <path d="M75 137 L88 111 L97 145 L111 116 L121 150 L135 116 L147 145 L156 111 L171 137 C151 128 133 134 120 148 C104 134 88 128 75 137Z" fill="#0f172a" opacity=".95"/>
+                        <path d="M86 75 C91 45 108 31 122 31 C138 31 154 47 158 76 C142 62 103 62 86 75Z" fill="#050816" stroke="#475569" stroke-width="5"/>
+                        <path d="M97 75 C102 58 137 58 144 76 C138 94 104 94 97 75Z" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
+                        <path d="M109 76 C112 72 117 72 119 77 C115 81 111 81 109 76Z M126 77 C129 72 134 72 137 77 C133 82 129 82 126 77Z" fill="#020617"/>
+                        <path d="M116 88 H129 M112 94 C118 98 127 98 134 94" stroke="#020617" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M105 105 H137 M111 113 H132 M116 121 H128" stroke="#e5e7eb" stroke-width="4" stroke-linecap="round" opacity=".75"/>
+                        <path d="M92 96 C71 83 57 71 39 54" fill="none" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M39 54 C64 48 90 36 116 19 C101 31 84 48 71 68" fill="none" stroke="#e5e7eb" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M116 19 C86 22 57 34 39 54" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M145 96 C163 86 178 78 195 66" fill="none" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M180 76 C191 75 202 81 210 92" stroke="#e5e7eb" stroke-width="4" stroke-linecap="round" opacity=".75"/>
+                        <path d="M72 123 C91 113 105 116 120 130 C136 116 153 113 173 124" fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" opacity=".92"/>
+                        <path d="M55 119 C39 103 42 88 61 80 M185 121 C205 105 200 88 180 80" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" opacity=".45"/>
+                        <circle cx="96" cy="47" r="3" fill="${color}" opacity=".8"/><circle cx="151" cy="51" r="2.5" fill="#fff" opacity=".65"/>
+                    </g>`;
                 }
 
                 if (kind === "magic") {
@@ -16091,16 +16303,7 @@ function resetCombatFx() {
                     return `<path d="M72 125 L120 44 L168 125Z" fill="#1e1b4b" stroke="${color}" stroke-width="6"/><circle cx="120" cy="93" r="25" fill="#020617" stroke="#e9d5ff" stroke-width="4"/><path d="M83 125 L105 96 M157 125 L135 96 M120 44 V93" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/><circle cx="120" cy="93" r="8" fill="${color}"/>`;
                 }
 
-                return `<g transform="translate(120 96) scale(${scale}) translate(-120 -96)">
-                    <ellipse cx="120" cy="137" rx="66" ry="12" fill="#000" opacity=".35"/>
-                    <path d="M58 107 C65 78 91 58 121 62 C154 66 176 89 183 119 C158 111 135 114 109 125 C86 134 67 126 58 107Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
-                    <circle cx="95" cy="78" r="19" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
-                    <path d="M75 69 L58 49 L86 58 M114 65 L133 45 L126 73" fill="${bodyFill}" stroke="${color}" stroke-width="4"/>
-                    <circle cx="90" cy="77" r="4" fill="#f8fafc"/><circle cx="91" cy="77" r="2" fill="#020617"/>
-                    <path d="M172 109 C197 92 195 69 176 58" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
-                    <path d="M85 117 L73 143 M127 119 L121 145 M151 113 L164 141" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
-                    ${monsterExtras}
-                </g>`;
+                return creatureArt;
             })();
 
             return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="${title}">
@@ -17965,8 +18168,8 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
         ];
 
         const playerCollection = {
-            gold: 12450,
-            gems: 480,
+            gold: 1000,
+            gems: 0,
             owned: {},
             boosterTickets: {},
             eventTickets: 0,
@@ -18602,7 +18805,8 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             rarityFilter: "All",
             search: "",
             selectedCardId: null,
-            warning: ""
+            warning: "",
+            codexMode: false
         };
 
         const BOOSTER_PACKS = [
@@ -18810,7 +19014,7 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
         function getFilteredBinderCards() {
             return CARD_POOL.filter(card => {
                 const owned = playerCollection.owned[card.id] || 0;
-                if (owned <= 0) return false;
+                if (!menuScreenState.codexMode && owned <= 0) return false;
                 if (menuScreenState.binderTab !== "All" && card.category !== menuScreenState.binderTab.toLowerCase()) return false;
                 if (menuScreenState.familyFilter !== "All" && (card.family || card.category) !== menuScreenState.familyFilter) return false;
                 if (menuScreenState.rarityFilter !== "All" && card.rarity !== menuScreenState.rarityFilter) return false;
@@ -35060,25 +35264,82 @@ function resizeMinimapCanvas() {
         function cardMiniPanel(card, extra = "") {
             const rarity = RARITY_STYLES[card.rarity] || RARITY_STYLES.Common;
             const ownedQty = playerCollection.owned[card.id] || 0;
+            const discovered = ownedQty > 0;
             const loadoutCopies = getLoadoutCountForCard(card.id);
             const availableQty = Math.max(0, ownedQty - loadoutCopies);
             const stage = card.category === "monster" ? `Stage ${card.evolutionStage || 1}` : CATEGORY_LABELS[card.category];
-            const canAddClass = availableQty > 0 ? "hover:border-cyan-300" : "opacity-60 hover:border-red-400";
+            const canAddClass = menuScreenState.codexMode
+                ? "hover:border-fuchsia-300"
+                : availableQty > 0 ? "hover:border-cyan-300" : "opacity-60 hover:border-red-400";
+            const artMarkup = discovered
+                ? renderCardArtworkMarkup(card, "mini")
+                : `<div class="relative z-10 my-2 h-20 rounded bg-black/60 border border-slate-800 flex items-center justify-center overflow-hidden">
+                    <div class="absolute inset-2 rounded-sm bg-slate-900/80 blur-[1px]"></div>
+                    <div class="relative text-4xl font-orbitron font-black text-slate-700">?</div>
+                   </div>`;
 
             return `
-                <button type="button" data-card-id="${card.id}" class="binder-card group relative h-44 rounded-md border-2 bg-slate-950 p-2 text-left overflow-hidden hover:scale-[1.03] transition-all ${canAddClass}" style="border-color:${rarity.border}; box-shadow:0 0 16px ${rarity.glow};">
-                    <div class="absolute inset-0 opacity-30" style="background:${rarity.trim};"></div>
+                <button type="button" data-card-id="${card.id}" class="binder-card group relative h-44 rounded-md border-2 bg-slate-950 p-2 text-left overflow-hidden hover:scale-[1.03] transition-all ${canAddClass}" style="border-color:${discovered ? rarity.border : "rgba(51,65,85,.95)"}; box-shadow:${discovered ? `0 0 16px ${rarity.glow}` : "none"};">
+                    <div class="absolute inset-0 opacity-30" style="background:${discovered ? rarity.trim : "linear-gradient(145deg, #020617, #111827)"};"></div>
                     <div class="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity" style="background:linear-gradient(120deg, transparent 0%, rgba(255,255,255,.35) 45%, transparent 60%);"></div>
                     <div class="relative z-10 flex justify-between text-[9px] font-orbitron font-black text-slate-100">
-                        <span>${card.rarity}</span><span>W${card.weight}</span>
+                        <span>${discovered ? card.rarity : "LOCKED"}</span><span>${discovered ? `W${card.weight}` : CATEGORY_LABELS[card.category]}</span>
                     </div>
-                    ${renderCardArtworkMarkup(card, "mini")}
-                    <div class="relative z-10 text-[10px] font-orbitron font-black text-cyan-100 truncate">${card.name}</div>
-                    <div class="relative z-10 text-[9px] text-slate-400">${stage}</div>
+                    ${artMarkup}
+                    <div class="relative z-10 text-[10px] font-orbitron font-black ${discovered ? "text-cyan-100" : "text-slate-500"} truncate">${discovered ? card.name : "Undiscovered Card"}</div>
+                    <div class="relative z-10 text-[9px] text-slate-400">${discovered ? stage : card.rarity}</div>
                     <div class="absolute bottom-1 right-1 z-10 text-[10px] bg-black/75 px-1 rounded text-white">x${ownedQty}</div>
-                    <div class="absolute bottom-1 left-1 z-10 text-[9px] font-orbitron font-black ${availableQty > 0 ? "text-cyan-300" : "text-red-300"}">${availableQty > 0 ? "+ ADD" : "NO COPY"}</div>
+                    <div class="absolute bottom-1 left-1 z-10 text-[9px] font-orbitron font-black ${discovered ? "text-cyan-300" : "text-slate-500"}">${menuScreenState.codexMode ? (discovered ? "OWNED" : "LOCKED") : (availableQty > 0 ? "+ ADD" : "NO COPY")}</div>
                     ${extra}
                 </button>
+            `;
+        }
+
+        function renderCodexCardDetail(card) {
+            if (!card) return `<div class="text-slate-500">No card selected.</div>`;
+
+            const ownedQty = playerCollection.owned[card.id] || 0;
+            const discovered = ownedQty > 0;
+            const rarity = RARITY_STYLES[card.rarity] || RARITY_STYLES.Common;
+            const type = CATEGORY_LABELS[card.category] || card.category || "Card";
+            const identity = discovered ? card.name : "Undiscovered Card";
+            const art = discovered
+                ? renderCardArtworkMarkup(card, "detail")
+                : `<div class="h-56 rounded-lg border-2 border-slate-800 bg-black/70 flex items-center justify-center overflow-hidden">
+                    <div class="text-8xl font-orbitron font-black text-slate-800">?</div>
+                   </div>`;
+
+            return `
+                <div class="border border-slate-800 bg-slate-900/80 rounded-lg p-4">
+                    ${art}
+                    <div class="mt-3 flex items-center justify-between gap-2">
+                        <div class="text-xs font-orbitron text-cyan-300">${type} | ${card.rarity}</div>
+                        <div class="text-[10px] font-orbitron font-black px-2 py-1 rounded border ${discovered ? "border-emerald-400 text-emerald-300 bg-emerald-500/10" : "border-slate-700 text-slate-500 bg-black/30"}">${discovered ? `OWNED x${ownedQty}` : "LOCKED"}</div>
+                    </div>
+                    <div class="text-2xl font-orbitron font-black text-white">${identity}</div>
+                    <div class="text-sm text-slate-400 mt-1">${discovered ? (card.description || "No codex notes logged.") : "Find this card in packs, crates, or match loot to reveal its full entry."}</div>
+                    <div class="grid grid-cols-2 gap-2 text-xs text-slate-300 mt-3">
+                        <div>Family: <span class="text-white">${discovered ? (card.family || "-") : "???"}</span></div>
+                        <div>Stage: <span class="text-white">${discovered ? (card.evolutionStage || "-") : "???"}</span></div>
+                        <div>Effect: <span class="text-white">${discovered ? (card.attackType || card.effectType || card.triggerType || "-") : "???"}</span></div>
+                        <div>Weight: <span class="text-white">${discovered ? card.weight : "???"}</span></div>
+                        <div>Damage: <span class="text-white">${discovered ? (card.damage ?? "-") : "???"}</span></div>
+                        <div>Cooldown: <span class="text-white">${discovered ? (card.cooldown ?? "-") : "???"}</span></div>
+                        <div>Range: <span class="text-white">${discovered ? (card.range ?? "-") : "???"}</span></div>
+                        <div>Durability/Uses: <span class="text-white">${discovered ? (card.durabilityMax ?? card.uses ?? card.usesRemaining ?? "-") : "???"}</span></div>
+                    </div>
+                    <div class="mt-4 text-[10px] font-orbitron font-black text-slate-400">Evolution / Related Line</div>
+                    <div class="mt-2 flex gap-2 overflow-x-auto">
+                        ${getEvolutionLineCards(card).map(entry => {
+                            const owned = playerCollection.owned[entry.id] > 0;
+                            return `<div class="min-w-24 rounded border px-2 py-2 text-center ${owned ? "border-cyan-500 bg-cyan-500/10 text-cyan-100" : "border-slate-800 bg-black/40 text-slate-600"}">${owned ? entry.name : "???"}<br><span class="text-[9px]">${entry.rarity}</span></div>`;
+                        }).join("")}
+                    </div>
+                    <div class="mt-4 rounded border border-slate-800 bg-black/30 p-3 text-[11px] text-slate-400">
+                        <span class="font-orbitron font-black text-slate-300">Codex Note:</span>
+                        ${discovered ? `${card.rarity} ${type} card. Keep duplicates for loadout flexibility, future crafting, trading, or battle pass objectives.` : "Locked entries still show rarity and category so players can track what they are missing."}
+                    </div>
+                </div>
             `;
         }
 
@@ -35116,29 +35377,7 @@ function resizeMinimapCanvas() {
                 `;
             }).join("");
 
-            const detailHtml = selected ? `
-                <div class="border border-slate-800 bg-slate-900/80 rounded-lg p-4">
-                    ${renderCardArtworkMarkup(selected, "detail")}
-                    <div class="text-xs font-orbitron text-cyan-300">${CATEGORY_LABELS[selected.category]} | ${selected.rarity}</div>
-                    <div class="text-2xl font-orbitron font-black text-white">${selected.name}</div>
-                    <div class="text-sm text-slate-400 mt-1">${selected.description || ""}</div>
-                    <div class="grid grid-cols-2 gap-2 text-xs text-slate-300 mt-3">
-                        <div>Family: <span class="text-white">${selected.family || "-"}</span></div>
-                        <div>Stage: <span class="text-white">${selected.evolutionStage || "-"}</span></div>
-                        <div>Attack: <span class="text-white">${selected.attackType || selected.effectType || selected.triggerType || "-"}</span></div>
-                        <div>Weight: <span class="text-white">${selected.weight}</span></div>
-                        <div>Damage: <span class="text-white">${selected.damage ?? "-"}</span></div>
-                        <div>Cooldown: <span class="text-white">${selected.cooldown ?? "-"}</span></div>
-                    </div>
-                    <div class="mt-4 text-[10px] font-orbitron font-black text-slate-400">Evolution Line</div>
-                    <div class="mt-2 flex gap-2 overflow-x-auto">
-                        ${getEvolutionLineCards(selected).map(card => {
-                            const owned = playerCollection.owned[card.id] > 0;
-                            return `<div class="min-w-24 rounded border px-2 py-2 text-center ${owned ? "border-cyan-500 bg-cyan-500/10 text-cyan-100" : "border-slate-800 bg-black/40 text-slate-600"}">${card.name}<br><span class="text-[9px]">Stage ${card.evolutionStage || 1}</span></div>`;
-                        }).join("")}
-                    </div>
-                </div>
-            ` : `<div class="text-slate-500">No card selected.</div>`;
+            const detailHtml = renderCodexCardDetail(selected);
 
             layer.innerHTML = `
                 <div class="h-full max-w-7xl mx-auto flex flex-col gap-4">
@@ -35158,8 +35397,9 @@ function resizeMinimapCanvas() {
                             ${loadoutSlots}
                         </div>
                         <div class="col-span-5 flex flex-col min-h-0">
-                            <div class="grid grid-cols-4 gap-2 mb-3">
+                            <div class="grid grid-cols-5 gap-2 mb-3">
                                 ${["All", "Monster", "Magic", "Trap"].map(tab => `<button data-binder-tab="${tab}" class="px-2 py-2 rounded border ${menuScreenState.binderTab === tab ? "border-cyan-400 bg-cyan-500/20 text-cyan-100" : "border-slate-800 bg-slate-900 text-slate-400"} text-xs font-orbitron font-black">${tab}</button>`).join("")}
+                                <button id="binder-codex-toggle" class="px-2 py-2 rounded border ${menuScreenState.codexMode ? "border-fuchsia-400 bg-fuchsia-500/20 text-fuchsia-100" : "border-slate-800 bg-slate-900 text-slate-400"} text-xs font-orbitron font-black">CODEX</button>
                             </div>
                             <div class="grid grid-cols-3 gap-2 mb-3">
                                 <input id="binder-search" value="${menuScreenState.search}" placeholder="Search cards" class="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white">
@@ -35626,7 +35866,7 @@ function resizeMinimapCanvas() {
                         ${BOOSTER_PACKS.map(pack => {
                             const art = packArt[pack.id] || packArt.starter_rift;
                             return `
-                                <button data-buy-pack="${pack.id}" class="group relative min-h-80 rounded-lg border bg-black/80 p-4 text-left overflow-hidden hover:scale-[1.03] transition-all" style="border-color:${art.accent}; box-shadow:0 0 24px ${art.glow};">
+                                <button data-preview-pack="${pack.id}" class="group relative min-h-80 rounded-lg border bg-black/80 p-4 text-left overflow-hidden hover:scale-[1.03] transition-all" style="border-color:${art.accent}; box-shadow:0 0 24px ${art.glow};">
                                     <div class="absolute inset-0 opacity-25" style="background:radial-gradient(circle at 50% 15%, ${art.accent}, transparent 38%), linear-gradient(180deg, ${art.dark}, #020617 70%);"></div>
                                     <div class="relative mx-auto h-44 w-32 rounded-md border-2 pack-foil overflow-hidden shadow-2xl" style="border-color:${art.accent}; background:linear-gradient(145deg, ${art.dark}, #020617 55%, ${art.accent}); animation:dsPackFloat 3.2s infinite ease-in-out;">
                                         <div class="absolute inset-2 rounded border border-white/20"></div>
@@ -35689,12 +35929,22 @@ function resizeMinimapCanvas() {
                     const card = getCardDefinition(btn.dataset.cardId);
                     menuScreenState.selectedCardId = btn.dataset.cardId;
                     const detail = layer.querySelector("#loadout-detail-panel");
-                    if (detail) detail.innerHTML = renderQuickCardDetail(card);
+                    if (detail) detail.innerHTML = renderCodexCardDetail(card);
                 });
 
                 btn.addEventListener("click", event => {
                     event.preventDefault();
                     event.stopPropagation();
+
+                    menuScreenState.selectedCardId = btn.dataset.cardId;
+
+                    if (menuScreenState.codexMode) {
+                        const detail = layer.querySelector("#loadout-detail-panel");
+                        if (detail) detail.innerHTML = renderCodexCardDetail(getCardDefinition(btn.dataset.cardId));
+                        playHoverSound();
+                        return;
+                    }
+
                     if (tryAddCardToBattleLoadout(btn.dataset.cardId)) playPickupSound();
                 });
             });
@@ -35716,6 +35966,14 @@ function resizeMinimapCanvas() {
                 });
             });
 
+            const codexToggle = layer.querySelector("#binder-codex-toggle");
+            if (codexToggle) {
+                codexToggle.addEventListener("click", () => {
+                    menuScreenState.codexMode = !menuScreenState.codexMode;
+                    renderLoadoutScreen();
+                });
+            }
+
             const search = layer.querySelector("#binder-search");
             if (search) search.addEventListener("change", event => {
                 menuScreenState.search = event.target.value;
@@ -35734,8 +35992,8 @@ function resizeMinimapCanvas() {
                 renderLoadoutScreen();
             });
 
-            layer.querySelectorAll("[data-buy-pack]").forEach(btn => {
-                btn.addEventListener("click", () => buyBoosterPack(btn.dataset.buyPack));
+            layer.querySelectorAll("[data-preview-pack]").forEach(btn => {
+                btn.addEventListener("click", () => showPackPurchaseConfirm(btn.dataset.previewPack));
             });
         }
 
@@ -35766,6 +36024,52 @@ function resizeMinimapCanvas() {
 
             if (!candidates.length) candidates = CARD_POOL.filter(card => card.category === "monster" || card.category === "magic" || card.category === "trap");
             return candidates[Math.floor(Math.random() * candidates.length)];
+        }
+
+        function showPackPurchaseConfirm(packId) {
+            const pack = BOOSTER_PACKS.find(entry => entry.id === packId);
+            if (!pack) return;
+
+            const layer = ensureMenuPanelLayer();
+            const existing = document.getElementById("pack-confirm-modal");
+            if (existing) existing.remove();
+
+            playerCollection.boosterTickets = playerCollection.boosterTickets || {};
+            const ticketCount = playerCollection.boosterTickets[pack.id] || 0;
+            const usingTicket = ticketCount > 0;
+            const canBuy = usingTicket || (playerCollection[pack.costType] || 0) >= pack.cost;
+            const costLabel = usingTicket ? `Use 1 ${pack.name} Ticket` : `${pack.cost.toLocaleString()} ${pack.costType.toUpperCase()}`;
+
+            const modal = document.createElement("div");
+            modal.id = "pack-confirm-modal";
+            modal.className = "absolute inset-0 z-[80] bg-black/72 backdrop-blur-sm flex items-center justify-center p-6";
+            modal.innerHTML = `
+                <div class="w-full max-w-md rounded-xl border border-amber-400/50 bg-slate-950 shadow-2xl p-5 text-center">
+                    <div class="text-xs font-orbitron font-black tracking-[.28em] text-amber-300">CONFIRM BOOSTER</div>
+                    <div class="mt-2 text-2xl font-orbitron font-black text-white">${pack.name}</div>
+                    <div class="mt-2 text-sm text-slate-400">${pack.description}</div>
+                    <div class="mt-4 rounded-lg border border-slate-800 bg-black/40 p-3 text-sm">
+                        <div class="text-slate-500">Cost</div>
+                        <div class="${usingTicket ? "text-emerald-300" : pack.costType === "gems" ? "text-cyan-300" : "text-amber-300"} font-orbitron font-black">${costLabel}</div>
+                    </div>
+                    <div class="mt-4 flex justify-center gap-3">
+                        <button id="cancel-pack-purchase" class="px-5 py-3 rounded bg-slate-800 hover:bg-slate-700 text-white font-orbitron font-black">CANCEL</button>
+                        <button id="confirm-pack-purchase" class="px-5 py-3 rounded ${canBuy ? "bg-amber-400 hover:bg-amber-300 text-black" : "bg-slate-800 text-slate-500 cursor-not-allowed"} font-orbitron font-black" ${canBuy ? "" : "disabled"}>${usingTicket ? "USE TICKET" : "BUY PACK"}</button>
+                    </div>
+                </div>
+            `;
+
+            layer.appendChild(modal);
+
+            document.getElementById("cancel-pack-purchase")?.addEventListener("click", () => modal.remove());
+            document.getElementById("confirm-pack-purchase")?.addEventListener("click", () => {
+                modal.remove();
+                buyBoosterPack(pack.id);
+            });
+
+            if (!canBuy) {
+                triggerNotification(`Not enough ${pack.costType.toUpperCase()} for ${pack.name}.`);
+            }
         }
 
         function buyBoosterPack(packId) {
@@ -35982,7 +36286,7 @@ function resizeMinimapCanvas() {
                 });
 
                 const another = layer.querySelector("#open-another-pack");
-                if (another) another.addEventListener("click", () => buyBoosterPack(pack.id));
+                if (another) another.addEventListener("click", () => showPackPurchaseConfirm(pack.id));
 
                 const shop = layer.querySelector("#back-to-shop");
                 if (shop) shop.addEventListener("click", renderShopScreen);
