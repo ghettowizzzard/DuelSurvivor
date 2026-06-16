@@ -632,7 +632,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="mr-1">
-                        <span class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.84</span>
+                        <span class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.85</span>
                         <span class="font-orbitron font-black text-lg tracking-wider text-slate-100">DUEL.IO</span>
                     </div>
                     <button id="quest-menu-btn" class="quest-icon-btn" title="Quests" aria-label="Quests">
@@ -1122,6 +1122,9 @@
             <div id="overlay-icon" class="text-6xl text-cyan-400 animate-bounce"></div>
             <h2 id="overlay-title" class="font-orbitron font-black text-3xl tracking-widest text-slate-100 uppercase"></h2>
             <p id="overlay-desc" class="text-cyan-400 font-semibold tracking-wider text-sm animate-pulse"></p>
+            <button id="overlay-cancel-btn" type="button" class="hidden pointer-events-auto px-6 py-3 rounded-lg border border-red-400/50 bg-red-950/80 hover:bg-red-900 text-red-200 hover:text-white font-orbitron font-black tracking-widest text-xs transition-all">
+                CANCEL SEARCH
+            </button>
         </div>
     </div>
 
@@ -2371,16 +2374,157 @@
 
             const cx = menuCanvas.width / 2;
             const cy = menuCanvas.height / 2;
-            const bRadius = 50 + Math.sin(menuWaveOffset) * 10;
+            const planetRadius = 78 + Math.sin(menuWaveOffset * 1.25) * 4;
+            const crackPulse = 0.72 + Math.sin(menuWaveOffset * 3.1) * 0.28;
+
             mctx.save();
             mctx.globalCompositeOperation = 'screen';
-            const grad = mctx.createRadialGradient(cx, cy, 2, cx, cy, bRadius * 1.5);
-            grad.addColorStop(0, '#ffffff');
-            grad.addColorStop(0.2, '#fef08a');
-            grad.addColorStop(0.5, '#38bdf8');
-            grad.addColorStop(1, 'transparent');
-            mctx.fillStyle = grad;
-            mctx.beginPath(); mctx.arc(cx, cy, bRadius * 1.8, 0, Math.PI * 2); mctx.fill();
+
+            const outerGlow = mctx.createRadialGradient(cx, cy, planetRadius * 0.45, cx, cy, planetRadius * 2.25);
+            outerGlow.addColorStop(0, 'rgba(56, 189, 248, 0.52)');
+            outerGlow.addColorStop(0.38, 'rgba(239, 68, 68, 0.28)');
+            outerGlow.addColorStop(1, 'rgba(14, 165, 233, 0)');
+            mctx.fillStyle = outerGlow;
+            mctx.beginPath();
+            mctx.arc(cx, cy, planetRadius * 2.25, 0, Math.PI * 2);
+            mctx.fill();
+
+            mctx.save();
+            mctx.beginPath();
+            mctx.arc(cx, cy, planetRadius, 0, Math.PI * 2);
+            mctx.clip();
+
+            const ocean = mctx.createRadialGradient(cx - planetRadius * 0.35, cy - planetRadius * 0.45, 4, cx, cy, planetRadius * 1.25);
+            ocean.addColorStop(0, '#bae6fd');
+            ocean.addColorStop(0.24, '#38bdf8');
+            ocean.addColorStop(0.58, '#075985');
+            ocean.addColorStop(1, '#020617');
+            mctx.fillStyle = ocean;
+            mctx.fillRect(cx - planetRadius, cy - planetRadius, planetRadius * 2, planetRadius * 2);
+
+            mctx.strokeStyle = '#bbf7d0';
+            mctx.lineWidth = 1.5;
+
+            mctx.fillStyle = '#166534';
+            mctx.beginPath();
+            mctx.moveTo(cx - 60, cy - 38);
+            mctx.bezierCurveTo(cx - 44, cy - 60, cx - 19, cy - 55, cx - 18, cy - 35);
+            mctx.bezierCurveTo(cx - 34, cy - 27, cx - 31, cy - 12, cx - 45, cy - 9);
+            mctx.bezierCurveTo(cx - 62, cy - 14, cx - 72, cy - 27, cx - 60, cy - 38);
+            mctx.fill(); mctx.stroke();
+
+            mctx.fillStyle = '#15803d';
+            mctx.beginPath();
+            mctx.moveTo(cx - 28, cy - 6);
+            mctx.bezierCurveTo(cx - 8, cy + 4, cx - 10, cy + 28, cx - 24, cy + 55);
+            mctx.bezierCurveTo(cx - 40, cy + 42, cx - 50, cy + 21, cx - 43, cy + 4);
+            mctx.bezierCurveTo(cx - 39, cy - 4, cx - 34, cy - 7, cx - 28, cy - 6);
+            mctx.fill(); mctx.stroke();
+
+            mctx.fillStyle = '#65a30d';
+            mctx.beginPath();
+            mctx.moveTo(cx + 3, cy - 43);
+            mctx.bezierCurveTo(cx + 23, cy - 58, cx + 62, cy - 46, cx + 70, cy - 22);
+            mctx.bezierCurveTo(cx + 48, cy - 19, cx + 43, cy - 5, cx + 21, cy - 5);
+            mctx.bezierCurveTo(cx + 6, cy - 13, cx - 4, cy - 26, cx + 3, cy - 43);
+            mctx.fill(); mctx.stroke();
+
+            mctx.fillStyle = '#854d0e';
+            mctx.beginPath();
+            mctx.moveTo(cx + 17, cy - 3);
+            mctx.bezierCurveTo(cx + 40, cy + 1, cx + 52, cy + 24, cx + 38, cy + 55);
+            mctx.bezierCurveTo(cx + 15, cy + 47, cx + 5, cy + 22, cx + 9, cy + 5);
+            mctx.bezierCurveTo(cx + 11, cy -1, cx + 14, cy -3, cx + 17, cy -3);
+            mctx.fill(); mctx.stroke();
+
+            mctx.fillStyle = '#84cc16';
+            mctx.beginPath();
+            mctx.moveTo(cx + 49, cy + 32);
+            mctx.bezierCurveTo(cx + 66, cy + 28, cx + 74, cy + 38, cx + 64, cy + 49);
+            mctx.bezierCurveTo(cx + 54, cy + 52, cx + 45, cy + 44, cx + 49, cy + 32);
+            mctx.fill(); mctx.stroke();
+
+            mctx.fillStyle = 'rgba(241,245,249,0.88)';
+            mctx.beginPath();
+            mctx.ellipse(cx, cy - planetRadius + 9, planetRadius * 0.56, 9, 0, 0, Math.PI * 2);
+            mctx.fill();
+            mctx.beginPath();
+            mctx.ellipse(cx, cy + planetRadius - 8, planetRadius * 0.42, 7, 0, 0, Math.PI * 2);
+            mctx.fill();
+
+            mctx.strokeStyle = '#67e8f9';
+            mctx.lineWidth = 2.2;
+            mctx.beginPath();
+            mctx.moveTo(cx - 43, cy - 9);
+            mctx.bezierCurveTo(cx - 29, cy - 16, cx - 15, cy - 8, cx - 8, cy + 4);
+            mctx.moveTo(cx + 23, cy - 23);
+            mctx.bezierCurveTo(cx + 37, cy - 9, cx + 33, cy + 9, cx + 44, cy + 20);
+            mctx.stroke();
+
+            mctx.strokeStyle = `rgba(251, 146, 60, ${crackPulse})`;
+            mctx.lineWidth = 4.5;
+            mctx.beginPath();
+            mctx.moveTo(cx - 6, cy - planetRadius);
+            mctx.lineTo(cx + 5, cy - 38);
+            mctx.lineTo(cx - 8, cy - 14);
+            mctx.lineTo(cx + 8, cy + 11);
+            mctx.lineTo(cx - 2, cy + 37);
+            mctx.lineTo(cx + 9, cy + planetRadius);
+            mctx.stroke();
+
+            mctx.strokeStyle = `rgba(239, 68, 68, ${0.55 + crackPulse * 0.3})`;
+            mctx.lineWidth = 2.5;
+            mctx.beginPath();
+            mctx.moveTo(cx - 31, cy - 39);
+            mctx.lineTo(cx - 8, cy - 14);
+            mctx.lineTo(cx - 34, cy + 4);
+            mctx.moveTo(cx + 8, cy + 11);
+            mctx.lineTo(cx + 39, cy + 1);
+            mctx.moveTo(cx - 2, cy + 37);
+            mctx.lineTo(cx - 29, cy + 55);
+            mctx.stroke();
+
+            const nightShade = mctx.createLinearGradient(cx - planetRadius, cy, cx + planetRadius, cy);
+            nightShade.addColorStop(0, 'rgba(255,255,255,0.14)');
+            nightShade.addColorStop(0.52, 'rgba(0,0,0,0)');
+            nightShade.addColorStop(1, 'rgba(0,0,0,0.56)');
+            mctx.fillStyle = nightShade;
+            mctx.fillRect(cx - planetRadius, cy - planetRadius, planetRadius * 2, planetRadius * 2);
+
+            mctx.strokeStyle = 'rgba(224,242,254,0.22)';
+            mctx.lineWidth = 1;
+            for (let i = -2; i <= 2; i++) {
+                mctx.beginPath();
+                mctx.ellipse(cx, cy + i * 18, planetRadius * 0.95, planetRadius * (0.18 + Math.abs(i) * 0.03), 0, 0, Math.PI * 2);
+                mctx.stroke();
+            }
+
+            for (let i = -2; i <= 2; i++) {
+                mctx.beginPath();
+                mctx.ellipse(cx + i * 13, cy, planetRadius * (0.18 + Math.abs(i) * 0.03), planetRadius * 0.96, 0.08, 0, Math.PI * 2);
+                mctx.stroke();
+            }
+
+            mctx.restore();
+
+            mctx.strokeStyle = 'rgba(186, 230, 253, 0.75)';
+            mctx.lineWidth = 2;
+            mctx.beginPath();
+            mctx.arc(cx, cy, planetRadius, 0, Math.PI * 2);
+            mctx.stroke();
+
+            for (let i = 0; i < 16; i++) {
+                const a = menuWaveOffset * 0.9 + i * 0.74;
+                const d = planetRadius * (1.28 + (i % 5) * 0.11);
+                const px = cx + Math.cos(a) * d;
+                const py = cy + Math.sin(a * 1.17) * d * 0.62;
+                const size = 2 + (i % 4);
+                mctx.fillStyle = i % 3 === 0 ? '#fb923c' : i % 3 === 1 ? '#334155' : '#94a3b8';
+                mctx.beginPath();
+                mctx.rect(px - size / 2, py - size / 2, size, size);
+                mctx.fill();
+            }
+
             mctx.restore();
 
             for (let i = 0; i < menuDebrisList.length; i++) {
@@ -3161,6 +3305,10 @@
 
                 if (action.type === "playerEmote") {
                     receiveRemotePlayerEmote(action);
+                }
+
+                if (action.type === "airdropRoute") {
+                    receiveAirdropRoute(action);
                 }
             });
 
@@ -15243,6 +15391,7 @@ const bots = [];
             storm.timer = 75;
             storm.targetRadius = Math.max(storm.minRadius, storm.targetRadius - storm.phaseShrinkAmount);
             storm.shrinkSpeed = Math.min(1.35, storm.shrinkSpeed + 0.08);
+            airdropOnStormPhaseAdvanced();
 
                             gainAether(40, "Survive Storm Phase");
                 questTrackEvent("storm_survived", 1);
@@ -18135,6 +18284,9 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             godfall: [
                 { rarity: "Rare", chance: 40 }, { rarity: "Epic", chance: 38 }, { rarity: "Legendary", chance: 17 }, { rarity: "Mythic", chance: 5 }
             ],
+            airdrop: [
+                { rarity: "Uncommon", chance: 18 }, { rarity: "Rare", chance: 42 }, { rarity: "Epic", chance: 28 }, { rarity: "Legendary", chance: 9 }, { rarity: "Mythic", chance: 3 }
+            ],
             lens: [
                 { rarity: "Common", chance: 62 }, { rarity: "Uncommon", chance: 29 }, { rarity: "Rare", chance: 8 }, { rarity: "Epic", chance: 1 }
             ],
@@ -18156,7 +18308,8 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             prism: { label: "PRISM", rarityKey: "rare", hp: 42, size: 50, cardDropChance: 1, universalChance: 0.05, wildChance: 0.04, categoryBias: null, loadoutChance: 45, binderChance: 35, universalCardChance: 16, fillColor: "#581c87", strokeColor: "#f0abfc", glowColor: "#f0abfc" },
             godfall: { label: "GOD", rarityKey: "rare", hp: 55, size: 54, cardDropChance: 1, universalChance: 0.02, wildChance: 0.16, categoryBias: null, loadoutChance: 32, binderChance: 36, universalCardChance: 16, fillColor: "#713f12", strokeColor: "#fef08a", glowColor: "#fef08a" },
             lens: { label: "LENS", rarityKey: "common", hp: 24, size: 44, cardDropChance: 0.45, universalChance: 0.8, wildChance: 0, categoryBias: null, loadoutChance: 55, binderChance: 15, universalCardChance: 30, fillColor: "#0e7490", strokeColor: "#67e8f9", glowColor: "#22d3ee" },
-            healing: { label: "HEAL", rarityKey: "common", hp: 24, size: 44, cardDropChance: 0.45, universalChance: 0.85, wildChance: 0, categoryBias: null, loadoutChance: 55, binderChance: 15, universalCardChance: 30, fillColor: "#166534", strokeColor: "#86efac", glowColor: "#22c55e" }
+            healing: { label: "HEAL", rarityKey: "common", hp: 24, size: 44, cardDropChance: 0.45, universalChance: 0.85, wildChance: 0, categoryBias: null, loadoutChance: 55, binderChance: 15, universalCardChance: 30, fillColor: "#166534", strokeColor: "#86efac", glowColor: "#22c55e" },
+            airdrop: { label: "DROP", rarityKey: "rare", hp: 145, size: 74, cardDropChance: 1, universalChance: 0.35, wildChance: 0.08, categoryBias: null, loadoutChance: 26, binderChance: 44, universalCardChance: 24, fillColor: "#334155", strokeColor: "#fbbf24", glowColor: "#facc15" }
         };
 
         function getCrateTypeConfig(crateType = "wood") {
@@ -19346,6 +19499,542 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             }
         }
 
+        const AIRDROP_CONFIG = {
+            minRouteMs: 240000,
+            maxRouteMs: 480000,
+            planeTravelMs: 18000,
+            minFallMs: 6000,
+            maxFallMs: 12000,
+            alertMarkerMs: 12000,
+            dropCount: 2
+        };
+
+        const airdropState = {
+            routes: [],
+            packages: [],
+            nextAllowedAt: Infinity,
+            stormPhasesUntilNext: 2,
+            routeSerial: 0,
+            lastEngineSoundAt: 0
+        };
+
+        function resetAirdropSystem(time = performance.now()) {
+            airdropState.routes = [];
+            airdropState.packages = [];
+            airdropState.routeSerial = 0;
+            airdropScheduleNextWindow(time);
+        }
+
+        function airdropScheduleNextWindow(time = performance.now()) {
+            airdropState.nextAllowedAt = time + airdropRandomRange(AIRDROP_CONFIG.minRouteMs, AIRDROP_CONFIG.maxRouteMs);
+            airdropState.stormPhasesUntilNext = 1 + Math.floor(Math.random() * 3);
+        }
+
+        function airdropRandomRange(min, max) {
+            return min + Math.random() * (max - min);
+        }
+
+        function airdropCanControlWorld() {
+            return currentGameState === GAME_STATES.MATCH && (!mpIsOnlineMatch() || mpIsWorldAuthority());
+        }
+
+        function airdropOnStormPhaseAdvanced() {
+            if (!airdropCanControlWorld()) return;
+
+            airdropState.stormPhasesUntilNext = Math.max(0, airdropState.stormPhasesUntilNext - 1);
+
+            const now = performance.now();
+            const activeDrop = airdropState.routes.length > 0 || airdropState.packages.some(pkg => !pkg.landed);
+
+            if (activeDrop || airdropState.stormPhasesUntilNext > 0 || now < airdropState.nextAllowedAt) return;
+
+            startAirdropRoute(null, { broadcast: true });
+            airdropScheduleNextWindow(now);
+        }
+
+        function pickAirdropDropPoint(index = 0) {
+            const useOutsideCircle = Math.random() < 0.14;
+            const safeRadius = Math.max(420, Math.min(storm.currentRadius || 2200, storm.targetRadius || storm.currentRadius || 2200) - 240);
+            const angle = Math.random() * Math.PI * 2 + index * 2.2;
+            const radius = useOutsideCircle
+                ? safeRadius + 220 + Math.random() * 520
+                : Math.sqrt(Math.random()) * safeRadius * 0.88;
+
+            let x = storm.centerX + Math.cos(angle) * radius;
+            let y = storm.centerY + Math.sin(angle) * radius;
+
+            if (typeof randomIslandPoint === "function" && (!Number.isFinite(x) || !Number.isFinite(y))) {
+                const fallback = randomIslandPoint({ minEdge: 0.18, avoidWater: true, margin: 700 });
+                x = fallback?.x || worldWidth / 2;
+                y = fallback?.y || worldHeight / 2;
+            }
+
+            x = dsClamp(x, 420, worldWidth - 420);
+            y = dsClamp(y, 420, worldHeight - 420);
+
+            const safe = findNearbySafeSpawnPoint(x, y, {
+                floor: "surface",
+                radius: 52,
+                minEdge: 0.16,
+                avoidWater: true,
+                avoidRiver: true,
+                volcanoPadding: 240,
+                maxSearchRadius: 520,
+                ringStep: 30
+            });
+
+            return safe || { x, y, floor: "surface" };
+        }
+
+        function createLocalAirdropRoute(time = performance.now()) {
+            const targets = [];
+
+            for (let i = 0; i < AIRDROP_CONFIG.dropCount; i++) {
+                const p = pickAirdropDropPoint(i);
+                targets.push({
+                    id: `airdrop-${Date.now()}-${airdropState.routeSerial}-${i}`,
+                    x: p.x,
+                    y: p.y,
+                    floor: "surface",
+                    fallMs: Math.round(airdropRandomRange(AIRDROP_CONFIG.minFallMs, AIRDROP_CONFIG.maxFallMs)),
+                    spawned: false,
+                    landed: false
+                });
+            }
+
+            const midX = targets.reduce((sum, t) => sum + t.x, 0) / targets.length;
+            const midY = targets.reduce((sum, t) => sum + t.y, 0) / targets.length;
+            const routeAngle = (Math.random() < 0.5 ? Math.PI / 4 : -Math.PI / 4) + (Math.random() < 0.5 ? 0 : Math.PI);
+            const dirX = Math.cos(routeAngle);
+            const dirY = Math.sin(routeAngle);
+            const travelDistance = Math.max(worldWidth, worldHeight) + 1800;
+            const startX = midX - dirX * travelDistance * 0.5;
+            const startY = midY - dirY * travelDistance * 0.5;
+            const endX = midX + dirX * travelDistance * 0.5;
+            const endY = midY + dirY * travelDistance * 0.5;
+
+            for (const target of targets) {
+                const projection = ((target.x - startX) * dirX + (target.y - startY) * dirY) / travelDistance;
+                target.dropT = dsClamp(projection, 0.24, 0.78);
+                target.dropAt = time + target.dropT * AIRDROP_CONFIG.planeTravelMs;
+            }
+
+            targets.sort((a, b) => a.dropT - b.dropT);
+
+            return {
+                id: `airdrop-route-${Date.now()}-${airdropState.routeSerial++}`,
+                startAt: time,
+                endAt: time + AIRDROP_CONFIG.planeTravelMs,
+                startX,
+                startY,
+                endX,
+                endY,
+                targets
+            };
+        }
+
+        function startAirdropRoute(routeData = null, options = {}) {
+            const now = performance.now();
+            const travelMs = Number(routeData?.travelMs || AIRDROP_CONFIG.planeTravelMs);
+
+            const route = routeData ? {
+                id: routeData.routeId || `airdrop-route-remote-${Date.now()}`,
+                startAt: now,
+                endAt: now + travelMs,
+                startX: Number(routeData.startX || 0),
+                startY: Number(routeData.startY || 0),
+                endX: Number(routeData.endX || worldWidth),
+                endY: Number(routeData.endY || worldHeight),
+                targets: Array.isArray(routeData.targets) ? routeData.targets.map((target, index) => ({
+                    id: target.id || `airdrop-remote-${Date.now()}-${index}`,
+                    x: Number(target.x || worldWidth / 2),
+                    y: Number(target.y || worldHeight / 2),
+                    floor: "surface",
+                    fallMs: Number(target.fallMs || AIRDROP_CONFIG.minFallMs),
+                    dropT: dsClamp(Number(target.dropT ?? (0.35 + index * 0.25)), 0.2, 0.86),
+                    dropAt: now + dsClamp(Number(target.dropT ?? (0.35 + index * 0.25)), 0.2, 0.86) * travelMs,
+                    spawned: false,
+                    landed: false
+                })) : []
+            } : createLocalAirdropRoute(now);
+
+            airdropState.routes.push(route);
+            playAirdropAlertSound(player.x, player.y);
+            triggerNotification("AIRDROP INBOUND! Watch for falling care packages.");
+
+            if (options.broadcast) {
+                airdropBroadcastRoute(route);
+            }
+        }
+
+        function airdropBroadcastRoute(route) {
+            if (!mpIsOnlineMatch() || !mpSocket?.connected || !mpIsWorldAuthority()) return;
+
+            mpSocket.emit("matchAction", {
+                type: "airdropRoute",
+                routeId: route.id,
+                startX: route.startX,
+                startY: route.startY,
+                endX: route.endX,
+                endY: route.endY,
+                travelMs: AIRDROP_CONFIG.planeTravelMs,
+                targets: route.targets.map(target => ({
+                    id: target.id,
+                    x: target.x,
+                    y: target.y,
+                    fallMs: target.fallMs,
+                    dropT: target.dropT
+                }))
+            });
+        }
+
+        function receiveAirdropRoute(action) {
+            if (!action || currentGameState !== GAME_STATES.MATCH) return;
+            startAirdropRoute(action, { broadcast: false });
+        }
+
+        function getAirdropPlanePosition(route, time) {
+            const t = dsClamp((time - route.startAt) / Math.max(1, route.endAt - route.startAt), 0, 1);
+
+            return {
+                x: route.startX + (route.endX - route.startX) * t,
+                y: route.startY + (route.endY - route.startY) * t,
+                angle: Math.atan2(route.endY - route.startY, route.endX - route.startX)
+            };
+        }
+
+        function updateAirdropSystem(dt, time) {
+            if (currentGameState !== GAME_STATES.MATCH) return;
+
+            for (const route of airdropState.routes) {
+                const plane = getAirdropPlanePosition(route, time);
+                const distToPlane = Math.hypot(plane.x - player.x, plane.y - player.y);
+
+                if (distToPlane < 2200 && time - airdropState.lastEngineSoundAt > 1250) {
+                    airdropState.lastEngineSoundAt = time;
+                    dsPlayNoise({ duration: 0.65, gain: 0.08, filterType: "lowpass", frequency: 260, q: 0.7, x: plane.x, y: plane.y, maxDistance: 2300 });
+                    dsPlayTone({ freq: 64, endFreq: 58, type: "sawtooth", duration: 0.55, gain: 0.045, x: plane.x, y: plane.y, maxDistance: 2300 });
+                }
+
+                for (const target of route.targets) {
+                    if (target.spawned || time < target.dropAt) continue;
+                    target.spawned = true;
+                    spawnFallingAirdropPackage(target, time);
+                }
+            }
+
+            airdropState.routes = airdropState.routes.filter(route => time < route.endAt + 3500);
+
+            for (const pkg of airdropState.packages) {
+                if (!pkg.landed && time >= pkg.landAt) {
+                    landAirdropPackage(pkg);
+                }
+            }
+
+            airdropState.packages = airdropState.packages.filter(pkg => !pkg.landed);
+        }
+
+        function spawnFallingAirdropPackage(target, time = performance.now()) {
+            airdropState.packages.push({
+                id: target.id,
+                x: target.x,
+                y: target.y,
+                floor: "surface",
+                startAt: time,
+                landAt: time + target.fallMs,
+                fallMs: target.fallMs,
+                markerUntil: time + Math.min(AIRDROP_CONFIG.alertMarkerMs, target.fallMs),
+                landed: false
+            });
+
+            spawnMagicRing(target.x, target.y, "#facc15", 120, 0.55);
+            playAirdropAlertSound(target.x, target.y);
+        }
+
+        function landAirdropPackage(pkg) {
+            pkg.landed = true;
+
+            const size = CRATE_TYPE_CONFIG.airdrop.size;
+            const crate = createDestructibleCrate(pkg.x - size / 2, pkg.y - size / 2, size, size, "rare", "airdrop");
+            crate.id = pkg.id;
+            crate.isAirdropCrate = true;
+            crate.floor = "surface";
+            crate.hp = CRATE_TYPE_CONFIG.airdrop.hp;
+            crate.maxHp = CRATE_TYPE_CONFIG.airdrop.hp;
+            crate.glowColor = CRATE_TYPE_CONFIG.airdrop.glowColor;
+
+            crates.push(crate);
+
+            spawnMagicRing(pkg.x, pkg.y, "#facc15", 150, 0.65);
+            spawnMagicParticleBurst(pkg.x, pkg.y, "prism", "#facc15", 22);
+            triggerNotification("Care package landed. Find it on the minimap.");
+        }
+
+        function playAirdropAlertSound(x = player?.x || 0, y = player?.y || 0) {
+            playSelectSound();
+            dsPlayTone({ freq: 740, endFreq: 980, type: "triangle", duration: 0.18, gain: 0.08, x, y, maxDistance: 999999 });
+            dsPlayTone({ freq: 370, endFreq: 260, type: "sawtooth", duration: 0.28, gain: 0.055, delay: 0.12, x, y, maxDistance: 999999 });
+            dsPlayNoise({ duration: 0.18, gain: 0.07, filterType: "bandpass", frequency: 1100, q: 2, delay: 0.06, x, y, maxDistance: 999999 });
+        }
+
+        function spawnAirdropLootDrops(x, y, sourceObject = null) {
+            const source = sourceObject || { x, y, floor: "surface", crateType: "airdrop", objectType: "crate" };
+            const creatureDrops = 2 + (Math.random() < 0.65 ? 1 : 0);
+            const utilityDrops = 1 + (Math.random() < 0.55 ? 1 : 0);
+
+            for (let i = 0; i < creatureDrops; i++) {
+                spawnAirdropCardDrop(x, y, ["monster"], i, source);
+            }
+
+            for (let i = 0; i < utilityDrops; i++) {
+                spawnAirdropCardDrop(x, y, ["magic", "trap"], i + creatureDrops, source);
+            }
+
+            const armorDrops = 2 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < armorDrops; i++) {
+                spawnArmorPieceDrop(x + Math.cos(i) * 34, y + Math.sin(i) * 34, i, source);
+            }
+
+            const healDrops = 1 + Math.floor(Math.random() * 2);
+            for (let i = 0; i < healDrops; i++) {
+                const point = findSafeLootDropPoint(x, y, source, i + 9);
+                items.push({
+                    id: `airdrop-heal-${Date.now()}-${Math.random()}`,
+                    x: point.x,
+                    y: point.y,
+                    radius: 12,
+                    type: "heal",
+                    name: "Emergency Med Kit",
+                    healAmount: 34,
+                    floor: "surface"
+                });
+            }
+
+            if (Math.random() < 0.35) {
+                spawnSightLensDrop(x, y, source, 14);
+            }
+
+            spawnMagicParticleBurst(x, y, "prism", "#facc15", 26);
+        }
+
+        function spawnAirdropCardDrop(x, y, categoryBias, index, sourceObject) {
+            const rarityEntry = pickWeightedEntry(CARD_DROP_RARITY_TABLES.airdrop);
+            const rarity = rarityEntry?.rarity || "Rare";
+
+            let candidates = getEligibleLootCards(sourceObject, rarity, "airdrop", categoryBias);
+
+            if (!candidates.length && Array.isArray(categoryBias)) {
+                candidates = CARD_POOL.filter(card => categoryBias.includes(card.category));
+            }
+
+            if (!candidates.length) return;
+
+            const card = pickWeightedLootCardFromCandidates(candidates, "airdrop");
+            if (!card) return;
+
+            const point = findSafeLootDropPoint(x, y, sourceObject, index);
+            const durabilityMax = Math.max(1, Math.round(card.durability || 1));
+            const cardState = {
+                cardId: card.id,
+                durabilityCurrent: durabilityMax,
+                durabilityMax,
+                discoveredAt: Date.now(),
+                source: "airdrop"
+            };
+
+            items.push({
+                id: `airdrop-card-${Date.now()}-${Math.random()}`,
+                x: point.x,
+                y: point.y,
+                radius: 13,
+                type: "card",
+                name: card.name,
+                cardId: card.id,
+                cardName: card.name,
+                cardState,
+                rarity: card.rarity,
+                category: card.category,
+                visualColor: getCardTypeColor(card),
+                iconSymbol: getCardTypeSymbol(card),
+                floor: "surface"
+            });
+        }
+
+        function drawAirdropSystem(time) {
+            if (currentFloor !== "surface") return;
+
+            for (const route of airdropState.routes) {
+                const plane = getAirdropPlanePosition(route, time);
+                if (perfPointVisible(plane.x, plane.y, 900)) {
+                    drawAirdropPlaneShadow(plane.x, plane.y, plane.angle, time);
+                }
+            }
+
+            for (const pkg of airdropState.packages) {
+                if (!pkg.landed && perfPointVisible(pkg.x, pkg.y, 700)) {
+                    drawFallingAirdropPackage(pkg, time);
+                }
+            }
+        }
+
+        function drawAirdropPlaneShadow(x, y, angle, time) {
+            const pulse = 0.9 + Math.sin(time * 0.006) * 0.08;
+
+            gctx.save();
+            gctx.translate(x, y);
+            gctx.rotate(angle);
+            gctx.globalAlpha = 0.32;
+            gctx.fillStyle = "#020617";
+            gctx.scale(pulse, pulse);
+            gctx.beginPath();
+            gctx.ellipse(0, 0, 155, 38, 0, 0, Math.PI * 2);
+            gctx.fill();
+            gctx.fillRect(-38, -128, 76, 256);
+            gctx.fillRect(-132, -18, 264, 36);
+            gctx.fillRect(86, -74, 58, 26);
+            gctx.fillRect(86, 48, 58, 26);
+            gctx.restore();
+        }
+
+        function drawFallingAirdropPackage(pkg, time) {
+            const t = dsClamp((time - pkg.startAt) / Math.max(1, pkg.fallMs), 0, 1);
+            const height = (1 - t) * 390 + 26;
+            const crateY = pkg.y - height * 0.22;
+            const parachuteY = crateY - 66;
+
+            gctx.save();
+
+            gctx.globalAlpha = 0.16 + t * 0.18;
+            gctx.fillStyle = "#020617";
+            gctx.beginPath();
+            gctx.ellipse(pkg.x, pkg.y + 8, 44 + (1 - t) * 22, 17 + (1 - t) * 8, 0, 0, Math.PI * 2);
+            gctx.fill();
+
+            gctx.globalAlpha = 1;
+            gctx.strokeStyle = "rgba(254, 240, 138, 0.72)";
+            gctx.lineWidth = 2;
+            gctx.beginPath();
+            gctx.moveTo(pkg.x - 35, parachuteY + 18);
+            gctx.lineTo(pkg.x - 20, crateY - 20);
+            gctx.moveTo(pkg.x + 35, parachuteY + 18);
+            gctx.lineTo(pkg.x + 20, crateY - 20);
+            gctx.moveTo(pkg.x, parachuteY + 26);
+            gctx.lineTo(pkg.x, crateY - 22);
+            gctx.stroke();
+
+            gctx.fillStyle = "#ef4444";
+            gctx.strokeStyle = "#fecaca";
+            gctx.lineWidth = 3;
+            gctx.beginPath();
+            gctx.arc(pkg.x, parachuteY, 48, Math.PI, 0);
+            gctx.closePath();
+            gctx.fill();
+            gctx.stroke();
+
+            gctx.fillStyle = "#f8fafc";
+            gctx.globalAlpha = 0.82;
+            gctx.beginPath();
+            gctx.moveTo(pkg.x, parachuteY - 48);
+            gctx.lineTo(pkg.x + 15, parachuteY + 3);
+            gctx.lineTo(pkg.x - 15, parachuteY + 3);
+            gctx.closePath();
+            gctx.fill();
+
+            gctx.globalAlpha = 1;
+            gctx.fillStyle = "#334155";
+            gctx.strokeStyle = "#fbbf24";
+            gctx.lineWidth = 4;
+            gctx.fillRect(pkg.x - 28, crateY - 22, 56, 44);
+            gctx.strokeRect(pkg.x - 28, crateY - 22, 56, 44);
+
+            gctx.fillStyle = "#facc15";
+            gctx.fillRect(pkg.x - 5, crateY - 22, 10, 44);
+            gctx.fillRect(pkg.x - 28, crateY - 5, 56, 10);
+
+            gctx.restore();
+        }
+
+        function drawAirdropScreenIndicators(time) {
+            const visiblePackages = airdropState.packages.filter(pkg => !pkg.landed && time < pkg.markerUntil);
+            if (!visiblePackages.length) return;
+
+            const scale = perfGetCameraScale();
+            const centerX = gameCanvas.width / 2;
+            const centerY = gameCanvas.height / 2;
+
+            gctx.save();
+            gctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            for (const pkg of visiblePackages) {
+                const sx = centerX + (pkg.x - player.x) * scale;
+                const sy = centerY + (pkg.y - player.y) * scale;
+                const edgeX = dsClamp(sx, 34, gameCanvas.width - 34);
+                const edgeY = dsClamp(sy, 52, gameCanvas.height - 52);
+                const angle = Math.atan2(sy - centerY, sx - centerX);
+                const pulse = 0.8 + Math.sin(time * 0.012) * 0.2;
+
+                gctx.save();
+                gctx.translate(edgeX, edgeY);
+                gctx.rotate(angle);
+                gctx.fillStyle = "#facc15";
+                gctx.strokeStyle = "#020617";
+                gctx.lineWidth = 4;
+                gctx.beginPath();
+                gctx.moveTo(20 * pulse, 0);
+                gctx.lineTo(-13, -12);
+                gctx.lineTo(-8, 0);
+                gctx.lineTo(-13, 12);
+                gctx.closePath();
+                gctx.stroke();
+                gctx.fill();
+                gctx.restore();
+
+                gctx.font = "900 11px Orbitron, sans-serif";
+                gctx.textAlign = "center";
+                gctx.fillStyle = "#020617";
+                gctx.fillText("AIRDROP", edgeX + 1, edgeY - 23);
+                gctx.fillStyle = "#fef3c7";
+                gctx.fillText("AIRDROP", edgeX, edgeY - 24);
+            }
+
+            gctx.restore();
+        }
+
+        function drawAirdropMinimapMarkers(toMiniX, toMiniY, inLocalMini) {
+            for (const pkg of airdropState.packages) {
+                if (pkg.landed || !inLocalMini(pkg.x, pkg.y)) continue;
+
+                const mx = toMiniX(pkg.x);
+                const my = toMiniY(pkg.y);
+
+                mmapCtx.save();
+                mmapCtx.fillStyle = "#facc15";
+                mmapCtx.strokeStyle = "#020617";
+                mmapCtx.lineWidth = 2;
+                mmapCtx.beginPath();
+                mmapCtx.arc(mx, my, 5, 0, Math.PI * 2);
+                mmapCtx.fill();
+                mmapCtx.stroke();
+                mmapCtx.restore();
+            }
+
+            for (const crate of crates) {
+                if (!crate?.isAirdropCrate || crate.destroyed || !inLocalMini(crate.x, crate.y)) continue;
+
+                const b = getCrateBounds(crate);
+                const mx = toMiniX(b.cx);
+                const my = toMiniY(b.cy);
+
+                mmapCtx.save();
+                mmapCtx.fillStyle = "#fbbf24";
+                mmapCtx.strokeStyle = "#020617";
+                mmapCtx.lineWidth = 2;
+                mmapCtx.fillRect(mx - 4, my - 4, 8, 8);
+                mmapCtx.strokeRect(mx - 4, my - 4, 8, 8);
+                mmapCtx.restore();
+            }
+        }
+
         function spawnTestLootDrop(x, y) {
             const roll = Math.random();
 
@@ -19461,7 +20150,11 @@ function destroyWorldObject(object, sourceActor = player) {
                     0.45
                 );
 
-                spawnCardLootDrop(center.x, center.y, object);
+                if (object.isAirdropCrate || object.crateType === "airdrop") {
+                    spawnAirdropLootDrops(center.x, center.y, object);
+                } else {
+                    spawnCardLootDrop(center.x, center.y, object);
+                }
 
                 if (sourceActor === player && player.runtimeStats?.goldRush && Math.random() < 0.2) {
                     items.push({
@@ -23683,6 +24376,8 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
             storm.finalCollapse = false;
             storm.lastDamageTime = performance.now();
 
+            resetAirdropSystem(performance.now());
+
             // Setup actual Match HUD values
             document.getElementById('game-status-pill').textContent = "MATCH ACTIVE";
             document.getElementById('game-status-pill').className = "px-2.5 py-1 rounded bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-orbitron font-black tracking-widest uppercase";
@@ -25881,7 +26576,49 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
 
         function drawSurvivioGrid() {
             if (currentGameState === GAME_STATES.MATCH) {
+                if (currentFloor !== "surface") return;
+
                 drawIslandTerrain();
+
+                const bounds = getCameraWorldBounds(160);
+                const gridSize = 100;
+                const startX = Math.floor(bounds.x1 / gridSize) * gridSize;
+                const startY = Math.floor(bounds.y1 / gridSize) * gridSize;
+                const endX = Math.ceil(bounds.x2 / gridSize) * gridSize;
+                const endY = Math.ceil(bounds.y2 / gridSize) * gridSize;
+
+                gctx.save();
+                gctx.lineWidth = 1;
+                gctx.globalCompositeOperation = "source-over";
+
+                for (let x = startX; x <= endX; x += gridSize) {
+                    const major = Math.abs(Math.round(x / gridSize)) % 4 === 0;
+                    gctx.strokeStyle = major ? "rgba(186,230,253,0.16)" : "rgba(15,23,42,0.18)";
+                    gctx.beginPath();
+                    gctx.moveTo(x, bounds.y1);
+                    gctx.lineTo(x, bounds.y2);
+                    gctx.stroke();
+                }
+
+                for (let y = startY; y <= endY; y += gridSize) {
+                    const major = Math.abs(Math.round(y / gridSize)) % 4 === 0;
+                    gctx.strokeStyle = major ? "rgba(186,230,253,0.16)" : "rgba(15,23,42,0.18)";
+                    gctx.beginPath();
+                    gctx.moveTo(bounds.x1, y);
+                    gctx.lineTo(bounds.x2, y);
+                    gctx.stroke();
+                }
+
+                gctx.strokeStyle = "rgba(56,189,248,0.06)";
+                gctx.lineWidth = 2;
+                for (let x = startX; x <= endX; x += gridSize * 4) {
+                    gctx.beginPath();
+                    gctx.moveTo(x, bounds.y1);
+                    gctx.lineTo(x, bounds.y2);
+                    gctx.stroke();
+                }
+
+                gctx.restore();
                 return;
             }
 
@@ -27492,6 +28229,7 @@ function mpDrawRemotePlayers() {
             updateFloatingLootPhysics(dt, time);
             updateVolcanoDisaster(dt, time);
             updateWeatherDisasters(dt, time);
+            updateAirdropSystem(dt, time);
 
             if (perfSettings.effectsLevel > 0 && perfShouldRunInterval("environmentLighting", time, perfSettings.effectsLevel >= 2 ? 33 : 90)) {
                 updateEnvironmentLighting(dt, time);
@@ -27746,6 +28484,7 @@ function mpDrawRemotePlayers() {
             drawLavaStreams(time);
             drawVolcanoLandmark();
             drawWeatherDisasters(time);
+            drawAirdropSystem(time);
 
             // Render Items
             for (let i = 0; i < items.length; i++) {
@@ -28115,6 +28854,7 @@ function mpDrawRemotePlayers() {
             gctx.restore();
 
             drawScreenPostProcessing();
+            drawAirdropScreenIndicators(time);
 
             mpDrawTeammatePointers();
 
@@ -33843,6 +34583,8 @@ function resizeMinimapCanvas() {
                 mmapCtx.restore();
             }
 
+            drawAirdropMinimapMarkers(toMiniX, toMiniY, inLocalMini);
+
             // Nearby loot dots.
             if (perfSettings.preset !== "low") for (let i = 0; i < items.length; i++) {
                 const item = items[i];
@@ -36335,6 +37077,7 @@ function resizeMinimapCanvas() {
         const overlayIcon = document.getElementById('overlay-icon');
         const overlayTitle = document.getElementById('overlay-title');
         const overlayDesc = document.getElementById('overlay-desc');
+        const overlayCancelBtn = document.getElementById('overlay-cancel-btn');
 
         const MATCH_SEARCH_CONFIG = {
             emptyMinMs: 5000,
@@ -36356,6 +37099,27 @@ function resizeMinimapCanvas() {
                 clearInterval(matchSearchIntervalId);
                 matchSearchIntervalId = null;
             }
+
+            if (overlayCancelBtn) {
+                overlayCancelBtn.classList.add("hidden");
+                overlayCancelBtn.disabled = true;
+            }
+        }
+
+        function cancelMatchSearch() {
+            if (!matchSearchActive) return;
+
+            clearMatchSearchTimers();
+
+            overlay.classList.add('pointer-events-none');
+            overlay.classList.remove('opacity-100');
+            overlayDesc.textContent = "Match search cancelled.";
+
+            triggerNotification("Match search cancelled.");
+        }
+
+        if (overlayCancelBtn) {
+            overlayCancelBtn.addEventListener("click", cancelMatchSearch);
         }
 
         function getMatchSearchOnlineCandidateCount() {
@@ -36412,6 +37176,11 @@ function resizeMinimapCanvas() {
                     : "fa-solid fa-user-shield";
 
             matchSearchActive = true;
+
+            if (overlayCancelBtn) {
+                overlayCancelBtn.classList.remove("hidden");
+                overlayCancelBtn.disabled = false;
+            }
 
             overlayIcon.innerHTML = `<i class="${iconClass}"></i>`;
             overlayTitle.textContent = "SEARCHING FOR MATCH";
