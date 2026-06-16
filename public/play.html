@@ -829,19 +829,41 @@
 
                                 <div class="relative z-10 border border-amber-500/30 h-32 my-2 rounded-lg overflow-hidden flex items-center justify-center bg-black/50 backdrop-blur-xs">
                                     <div class="absolute inset-0 bg-[radial-gradient(circle_at_50%_25%,rgba(239,68,68,.45),transparent_38%),radial-gradient(circle_at_50%_80%,rgba(168,85,247,.24),transparent_48%)]"></div>
-                                    <svg class="relative z-10 w-full h-full" viewBox="0 0 240 180" aria-label="Aurelia, Infernal Reaper artwork">
-                                        <path d="M0 150 C42 130 80 146 122 130 C164 114 202 130 240 112 V180 H0Z" fill="#020617" opacity=".62"/>
-                                        <path d="M58 132 C69 69 91 37 121 37 C151 37 171 74 183 132 C157 121 138 130 120 143 C101 129 82 121 58 132Z" fill="#020617" stroke="#ef4444" stroke-width="5"/>
-                                        <path d="M92 72 C97 48 143 48 149 73 C138 63 103 63 92 72Z" fill="#111827" stroke="#334155" stroke-width="4"/>
-                                        <circle cx="120" cy="78" r="16" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
-                                        <circle cx="114" cy="75" r="4" fill="#020617"/>
-                                        <circle cx="126" cy="75" r="4" fill="#020617"/>
-                                        <path d="M113 88 H127" stroke="#020617" stroke-width="3" stroke-linecap="round"/>
-                                        <path d="M83 94 C58 81 49 73 35 57 M35 57 C63 50 88 39 111 22" fill="none" stroke="#e5e7eb" stroke-width="7" stroke-linecap="round"/>
-                                        <path d="M112 22 C90 24 63 34 35 57" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
-                                        <path d="M148 94 C166 86 177 81 190 72" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
-                                        <path d="M88 139 C109 126 132 126 154 139" stroke="#f87171" stroke-width="6" stroke-linecap="round" opacity=".9"/>
-                                        <path d="M104 108 C113 119 128 119 138 108" fill="none" stroke="#7f1d1d" stroke-width="5" stroke-linecap="round"/>
+                                    <svg class="relative z-10 w-full h-full" viewBox="0 0 240 180" aria-label="Aurelia, Infernal Reaper upgraded artwork">
+                                        <defs>
+                                            <radialGradient id="aureliaMenuBg" cx="50%" cy="24%" r="75%">
+                                                <stop offset="0%" stop-color="#ef4444" stop-opacity=".58"/>
+                                                <stop offset="45%" stop-color="#230312" stop-opacity=".9"/>
+                                                <stop offset="100%" stop-color="#020617"/>
+                                            </radialGradient>
+                                            <linearGradient id="aureliaBlade" x1="22" y1="10" x2="112" y2="68" gradientUnits="userSpaceOnUse">
+                                                <stop offset="0%" stop-color="#ffffff"/>
+                                                <stop offset="45%" stop-color="#cbd5e1"/>
+                                                <stop offset="100%" stop-color="#64748b"/>
+                                            </linearGradient>
+                                            <filter id="aureliaMenuGlow">
+                                                <feGaussianBlur stdDeviation="3" result="blur"/>
+                                                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                                            </filter>
+                                        </defs>
+                                        <rect width="240" height="180" fill="url(#aureliaMenuBg)"/>
+                                        <path d="M0 150 C42 130 80 146 122 130 C164 114 202 130 240 112 V180 H0Z" fill="#020617" opacity=".72"/>
+                                        <path d="M22 42 C49 35 78 22 116 7 C100 22 79 47 65 74 C51 61 38 51 22 42Z" fill="url(#aureliaBlade)" filter="url(#aureliaMenuGlow)"/>
+                                        <path d="M31 45 C55 39 82 27 111 13" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+                                        <path d="M72 93 C53 80 40 68 25 49" fill="none" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                                        <path d="M58 140 C64 84 87 39 119 35 C153 36 176 84 184 140 C159 126 139 134 120 150 C101 134 82 126 58 140Z" fill="#020617" stroke="#ef4444" stroke-width="5" filter="url(#aureliaMenuGlow)"/>
+                                        <path d="M74 138 L88 108 L98 145 L112 114 L121 151 L135 114 L147 145 L156 108 L172 138 C151 128 134 134 120 149 C105 134 89 128 74 138Z" fill="#111827"/>
+                                        <path d="M85 76 C91 45 108 30 122 30 C139 30 155 48 159 77 C142 62 103 62 85 76Z" fill="#050816" stroke="#475569" stroke-width="5"/>
+                                        <path d="M97 75 C102 58 138 58 145 77 C139 94 104 94 97 75Z" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
+                                        <path d="M109 76 C112 72 117 72 119 77 C115 82 111 82 109 76Z M126 77 C129 72 134 72 137 77 C133 82 129 82 126 77Z" fill="#020617"/>
+                                        <path d="M116 88 H129 M112 94 C118 99 128 99 134 94" stroke="#020617" stroke-width="3" stroke-linecap="round"/>
+                                        <path d="M105 105 H138 M111 114 H133 M116 123 H128" stroke="#e5e7eb" stroke-width="4" stroke-linecap="round" opacity=".82"/>
+                                        <path d="M145 96 C165 86 181 77 198 65" fill="none" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                                        <path d="M181 75 C193 75 204 81 211 93" stroke="#e5e7eb" stroke-width="4" stroke-linecap="round" opacity=".8"/>
+                                        <path d="M72 123 C91 112 106 116 120 130 C136 116 153 112 174 124" fill="none" stroke="#f87171" stroke-width="6" stroke-linecap="round" opacity=".95"/>
+                                        <path d="M54 119 C38 103 42 87 61 80 M185 121 C205 105 200 88 180 80" fill="none" stroke="#ef4444" stroke-width="4" stroke-linecap="round" opacity=".55"/>
+                                        <circle cx="96" cy="47" r="3" fill="#fca5a5" opacity=".85"/>
+                                        <circle cx="151" cy="51" r="2.5" fill="#ffffff" opacity=".65"/>
                                     </svg>
                                 </div>
 
@@ -36314,6 +36336,148 @@ function resizeMinimapCanvas() {
         const overlayTitle = document.getElementById('overlay-title');
         const overlayDesc = document.getElementById('overlay-desc');
 
+        const MATCH_SEARCH_CONFIG = {
+            emptyMinMs: 5000,
+            emptyMaxMs: 8500,
+            activeMinMs: 15000,
+            activeMaxMs: 45000,
+            quickServerMinMs: 6500,
+            quickServerMaxMs: 14500,
+            rankedMaxMs: 120000
+        };
+
+        let matchSearchIntervalId = null;
+        let matchSearchActive = false;
+
+        function clearMatchSearchTimers() {
+            matchSearchActive = false;
+
+            if (matchSearchIntervalId) {
+                clearInterval(matchSearchIntervalId);
+                matchSearchIntervalId = null;
+            }
+        }
+
+        function getMatchSearchOnlineCandidateCount() {
+            const selfId = String(mpState.profile?.playerId || "");
+            const online = Array.isArray(mpState.onlinePlayers) ? mpState.onlinePlayers : [];
+
+            return online.filter(p => {
+                if (!p) return false;
+                if (selfId && String(p.playerId || "") === selfId) return false;
+                return true;
+            }).length;
+        }
+
+        function formatMatchSearchTime(ms) {
+            const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = String(totalSeconds % 60).padStart(2, "0");
+            return `${minutes}:${seconds}`;
+        }
+
+        function rollMatchSearchDurationMs(action = "solo") {
+            const candidates = getMatchSearchOnlineCandidateCount();
+            const ranked = String(action || "").includes("ranked");
+
+            if (!mpState.connected || candidates <= 0) {
+                return MATCH_SEARCH_CONFIG.emptyMinMs + Math.random() * (MATCH_SEARCH_CONFIG.emptyMaxMs - MATCH_SEARCH_CONFIG.emptyMinMs);
+            }
+
+            const quickChance = Math.min(0.72, 0.18 + candidates * 0.07);
+
+            if (!ranked && Math.random() < quickChance) {
+                return MATCH_SEARCH_CONFIG.quickServerMinMs + Math.random() * (MATCH_SEARCH_CONFIG.quickServerMaxMs - MATCH_SEARCH_CONFIG.quickServerMinMs);
+            }
+
+            const pressure = Math.max(0, Math.min(1, candidates / 16));
+            const activeMax = ranked ? MATCH_SEARCH_CONFIG.rankedMaxMs : MATCH_SEARCH_CONFIG.activeMaxMs;
+            const adjustedMax = activeMax - pressure * 12000;
+            const min = MATCH_SEARCH_CONFIG.activeMinMs;
+
+            return min + Math.random() * Math.max(1000, adjustedMax - min);
+        }
+
+        function beginMatchSearch(action, mode) {
+            clearMatchSearchTimers();
+
+            const startedAt = performance.now();
+            let targetMs = rollMatchSearchDurationMs(action);
+            let initialCandidates = getMatchSearchOnlineCandidateCount();
+            const actionLabel = action === "team" ? "SQUAD" : String(action || "solo").toUpperCase();
+            const iconClass = action === "team"
+                ? "fa-solid fa-people-group"
+                : action === "duo"
+                    ? "fa-solid fa-users"
+                    : "fa-solid fa-user-shield";
+
+            matchSearchActive = true;
+
+            overlayIcon.innerHTML = `<i class="${iconClass}"></i>`;
+            overlayTitle.textContent = "SEARCHING FOR MATCH";
+            overlay.classList.remove('pointer-events-none');
+            overlay.classList.add('opacity-100');
+
+            function finishMatchSearch() {
+                if (!matchSearchActive) return;
+
+                clearMatchSearchTimers();
+
+                overlayTitle.textContent = "MATCH FOUND";
+                overlayDesc.innerHTML = `<span class="text-emerald-300 font-orbitron font-black">FOUND ${actionLabel} LOBBY</span><br><span class="text-slate-300">Opening queue staging ground...</span>`;
+
+                setTimeout(() => {
+                    mpState.matchId = null;
+                    mpState.matchSeed = null;
+                    mpState.teammates = [];
+                    mpState.teamSize = action === "team" ? 4 : action === "duo" ? 2 : 1;
+                    mpState.botFillSlots = action === "team" ? 3 : action === "duo" ? 1 : 0;
+
+                    mpTransitionToQueue(mode);
+                }, 550);
+            }
+
+            function updateSearchUi() {
+                if (!matchSearchActive) return;
+
+                const now = performance.now();
+                const elapsed = now - startedAt;
+                const liveCandidates = getMatchSearchOnlineCandidateCount();
+
+                if (liveCandidates > initialCandidates && elapsed > 4200) {
+                    targetMs = Math.min(targetMs, elapsed + 1600);
+                    initialCandidates = liveCandidates;
+                }
+
+                if (liveCandidates >= 5 && elapsed > MATCH_SEARCH_CONFIG.quickServerMinMs) {
+                    targetMs = Math.min(targetMs, elapsed + 1200);
+                }
+
+                const status = liveCandidates > 0
+                    ? `${liveCandidates} real survivor${liveCandidates === 1 ? "" : "s"} detected. Checking compatible lobbies.`
+                    : "No open survivor pools detected. Preparing NPC-heavy lobby.";
+
+                const scanLabel = elapsed < 2500
+                    ? "Contacting Duel.io servers"
+                    : elapsed < targetMs * 0.7
+                        ? "Searching survivor pools"
+                        : "Locking queue slot";
+
+                overlayDesc.innerHTML = `
+                    <span class="text-cyan-300 font-orbitron font-black">TIME ${formatMatchSearchTime(elapsed)}</span>
+                    <span class="text-slate-500"> / </span>
+                    <span class="text-amber-300 font-orbitron font-black">${scanLabel}</span>
+                    <br>
+                    <span class="text-slate-300">${status}</span>
+                `;
+
+                if (elapsed >= targetMs) finishMatchSearch();
+            }
+
+            updateSearchUi();
+            matchSearchIntervalId = setInterval(updateSearchUi, 250);
+        }
+
         menuButtons.forEach(btn => {
             btn.addEventListener('mouseenter', () => {
                 playHoverSound();
@@ -36403,21 +36567,8 @@ function resizeMinimapCanvas() {
                         return;
                     }
 
-                    setTimeout(() => {
-                        mpState.matchId = null;
-                        mpState.matchSeed = null;
-                        mpState.teammates = [];
-                        mpState.teamSize = action === "team" ? 4 : action === "duo" ? 2 : 1;
-                        mpState.botFillSlots = action === "team" ? 3 : action === "duo" ? 1 : 0;
-
-                        if (action === "duo") {
-                            mpTransitionToQueue("duo-bot");
-                        } else if (action === "team") {
-                            mpTransitionToQueue("team-bot");
-                        } else {
-                            mpTransitionToQueue(action);
-                        }
-                    }, 1400);
+                    const queuedMode = action === "duo" ? "duo-bot" : action === "team" ? "team-bot" : action;
+                    beginMatchSearch(action, queuedMode);
                 } else {
                     setTimeout(() => {
                         overlay.classList.add('pointer-events-none');
