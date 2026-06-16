@@ -1489,7 +1489,7 @@ socket.on("matchLocalDeath", data => {
     p.deaths = 0;
     p.losses = 0;
     p.revives = 0;
-    p.gold = 0;
+    p.gold = 1000;
     p.gems = 0;
 
     let entry = leaderboardProfiles.get(playerId);
