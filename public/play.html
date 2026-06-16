@@ -886,7 +886,7 @@
             <div class="flex items-center space-x-4">
                 <span id="game-status-pill" class="px-2.5 py-1 rounded bg-amber-500/20 border border-amber-500/40 text-amber-400 text-xs font-orbitron font-black tracking-widest uppercase">WAITING FOR DUELISTS</span>
                 <div class="text-xs text-slate-400">
-                    <span class="text-slate-500">PLAYERS:</span> <strong id="lobby-player-count" class="text-slate-200">1 / 60</strong>
+                    <span class="text-slate-500">PLAYERS:</span> <strong id="lobby-player-count" class="text-slate-200">1 / 100</strong>
                 </div>
             </div>
 
@@ -897,6 +897,8 @@
 
             <div class="flex items-center space-x-4">
                 <div id="match-kill-hud" class="bg-slate-900 border border-red-500/40 px-3 py-1 rounded-md text-xs font-bold text-slate-300 shadow-[0_0_16px_rgba(239,68,68,.12)]">
+                    <span class="text-slate-500"><i class="fa-solid fa-eye"></i></span>
+                    <span id="match-spectator-count" class="text-sky-300 font-orbitron font-black text-sm mr-3">0</span>
                     <span class="text-slate-500">KILLS:</span>
                     <span id="match-kill-count" class="text-red-300 font-orbitron font-black text-sm">0</span>
                     <span id="match-team-kill-wrap" class="hidden ml-2">
@@ -1296,7 +1298,7 @@
                 ? cardOrType.toLowerCase()
                 : `${cardOrType?.id || ""} ${cardOrType?.name || ""} ${cardOrType?.family || ""} ${cardOrType?.particleType || ""}`.toLowerCase();
 
-            if (raw.includes("ice") || raw.includes("water") || raw.includes("frost") || raw.includes("tidal")) {
+            if (raw.includes("ice") || raw.includes("water") || raw.includes("frost") || raw.includes("tidal") || raw.includes("crystal") || raw.includes("glass") || raw.includes("prism") || raw.includes("aurora")) {
                 return { element: "water", low: 110, mid: 220, high: 880, noise: 720, filter: "lowpass" };
             }
 
@@ -1308,7 +1310,7 @@
                 return { element: "earth", low: 62, mid: 124, high: 360, noise: 280, filter: "bandpass" };
             }
 
-            if (raw.includes("void") || raw.includes("shadow") || raw.includes("dark") || raw.includes("moth")) {
+            if (raw.includes("void") || raw.includes("shadow") || raw.includes("dark") || raw.includes("moth") || raw.includes("blood") || raw.includes("bone") || raw.includes("grave") || raw.includes("rust")) {
                 return { element: "void", low: 48, mid: 96, high: 520, noise: 180, filter: "lowpass" };
             }
 
@@ -2982,7 +2984,12 @@
                             radius: existing.radius || 16,
                             alive: p.alive !== false,
                             hp: p.hp ?? existing.hp ?? 100,
-                            health: p.hp ?? existing.hp ?? 100,
+                            health: p.health ?? p.hp ?? existing.hp ?? 100,
+                            maxHp: p.maxHp ?? p.state?.maxHp ?? existing.maxHp ?? 100,
+                            shieldHp: Math.max(0, Number(p.shieldHp ?? p.state?.shieldHp ?? existing.shieldHp ?? 0)),
+                            shieldMax: Math.max(0, Number(p.shieldMax ?? p.state?.shieldMax ?? existing.shieldMax ?? 0)),
+                            armorHp: Math.max(0, Number(p.armorHp ?? p.state?.armorHp ?? existing.armorHp ?? 0)),
+                            armorMax: Math.max(1, Number(p.armorMax ?? p.state?.armorMax ?? existing.armorMax ?? 100)),
                             x: p.x ?? existing.x ?? player.x,
                             y: p.y ?? existing.y ?? player.y,
                             angle: p.angle ?? existing.angle ?? 0,
@@ -3056,24 +3063,21 @@
             mpSocket.on("matchDamageTaken", data => {
                 if (!data) return;
 
-                const incomingDamage = Math.max(0, Math.round(Number(data.rawDamage ?? data.amount ?? 0)));
-                if (incomingDamage <= 0) return;
+                const result = mpApplyResolvedDamageTaken(data);
+                if (!result) return;
 
-                const beforeHp = getTargetHp(player);
-                const beforeArmor = getActorArmorHp(player);
+                const sourceName = result.sourceName || "Enemy";
 
-                dealDamage(player, incomingDamage, null, data.damageType || "online");
-
-                const resolvedHpDamage = Math.max(0, Math.round(beforeHp - getTargetHp(player)));
-                const resolvedArmorDamage = Math.max(0, Math.round(beforeArmor - getActorArmorHp(player)));
-                const sourceName = data.sourceName || "Enemy";
-
-                if (resolvedArmorDamage > 0 && resolvedHpDamage > 0) {
-                    mpNotify(`${sourceName} hit you for ${resolvedHpDamage} HP and ${resolvedArmorDamage} Armor.`);
-                } else if (resolvedArmorDamage > 0) {
-                    mpNotify(`${sourceName} damaged your Armor for ${resolvedArmorDamage}.`);
-                } else if (resolvedHpDamage > 0) {
-                    mpNotify(`${sourceName} hit you for ${resolvedHpDamage}.`);
+                if (result.shieldDamage > 0 && result.armorDamage > 0 && result.hpDamage > 0) {
+                    mpNotify(`${sourceName} hit you for ${result.hpDamage} HP, ${result.armorDamage} Armor, and ${result.shieldDamage} Shield.`);
+                } else if (result.armorDamage > 0 && result.hpDamage > 0) {
+                    mpNotify(`${sourceName} hit you for ${result.hpDamage} HP and ${result.armorDamage} Armor.`);
+                } else if (result.shieldDamage > 0) {
+                    mpNotify(`${sourceName} damaged your Shield for ${result.shieldDamage}.`);
+                } else if (result.armorDamage > 0) {
+                    mpNotify(`${sourceName} damaged your Armor for ${result.armorDamage}.`);
+                } else if (result.hpDamage > 0) {
+                    mpNotify(`${sourceName} hit you for ${result.hpDamage}.`);
                 } else {
                     mpNotify(`${sourceName} hit your defenses.`);
                 }
@@ -3317,9 +3321,17 @@
             const panel = document.createElement("div");
             panel.id = "mp-friends-panel";
             panel.className = "mp-panel";
+            panel.addEventListener("click", event => event.stopPropagation());
             document.body.appendChild(panel);
 
             mpRenderFriendsPanel();
+
+            if (virtualInput?.mode === "gamepad") {
+                setTimeout(() => {
+                    const focusables = getInputFocusableElements(panel);
+                    if (focusables.length) setControllerFocus(focusables[0]);
+                }, 0);
+            }
         }
 
         function mpRenderFriendsPanel() {
@@ -6068,6 +6080,7 @@ const bots = [];
         const activeEmotePops = [];
         const killFeedEntries = [];
         let killFeedDirty = true;
+        const activeSpectators = [];
 
         const matchReportStats = {
             active: false,
@@ -6210,6 +6223,13 @@ const bots = [];
             independentActive: false,
             lastParticleTime: 0,
             lastSoundTime: 0
+        };
+
+        const sandStormVisualCellCache = {
+            key: "",
+            cells: [],
+            pointChecks: new Map(),
+            maxPointChecks: 8000
         };
 
         const dayNightState = {
@@ -7654,6 +7674,84 @@ const bots = [];
                 artPrompt: "Premium anime TCG card art of an archive dragon made of living paper, ink scales, glowing rune wings, epic stage 4 Runebound construct with sweeping magic beam."
             },
             {
+                id: "crystal_hare", name: "Crystal Hare", category: "monster", family: "Crystalbloom", rarity: "Common", weight: RARITY_WEIGHTS.Common,
+                evolutionLine: "crystal_hare_line", evolutionStage: 1, evolvesFrom: null, evolvesTo: "prism_lynx",
+                damage: 15, speed: 700, range: 270, width: 16, knockback: 5, cooldown: 1.85, durabilityMax: 18, durabilityCurrent: 18,
+                statusEffect: { type: "frost", chance: 0.28, strength: 0.28, duration: 1.7 }, attackType: "Dash", lightBurstOnHit: true,
+                description: "A fast glassy rabbit dash with light Frost pressure. Low damage, great poke speed.",
+                visualColor: "#93c5fd", particleType: "ice", iconSymbol: "CH",
+                artPrompt: "Premium anime TCG card art of a crystalline hare made of blue glass petals, prism ears, icy paws, elegant small mystic creature, high-detail 2.5D render."
+            },
+            {
+                id: "prism_lynx", name: "Prism Lynx", category: "monster", family: "Crystalbloom", rarity: "Uncommon", weight: RARITY_WEIGHTS.Uncommon,
+                evolutionLine: "crystal_hare_line", evolutionStage: 2, evolvesFrom: "crystal_hare", evolvesTo: "mirror_stag",
+                damage: 20, speed: 560, range: 455, width: 23, knockback: 7, cooldown: 2.45, durabilityMax: 25, durabilityCurrent: 25,
+                hitInterval: 0.34, statusEffect: { type: "blind", chance: 0.35, duration: 1.25 }, attackType: "Boomerang", lightBurstOnHit: true,
+                description: "A returning prism-cat slash that can briefly Blind enemies while zoning narrow paths.",
+                visualColor: "#c4b5fd", particleType: "prism", iconSymbol: "PL",
+                artPrompt: "Premium anime TCG card art of a sleek prism lynx, glass fur, rainbow refractions, sharp luminous claws, boomerang arc motion, premium fantasy creature."
+            },
+            {
+                id: "mirror_stag", name: "Mirror Stag", category: "monster", family: "Crystalbloom", rarity: "Rare", weight: RARITY_WEIGHTS.Rare,
+                evolutionLine: "crystal_hare_line", evolutionStage: 3, evolvesFrom: "prism_lynx", evolvesTo: "aurora_chimera",
+                damage: 31, speed: 650, range: 555, width: 30, knockback: 12, cooldown: 3.1, durabilityMax: 34, durabilityCurrent: 34,
+                statusEffect: { type: "frost", chance: 0.7, strength: 0.42, duration: 2.6 }, secondaryStatusEffect: { type: "weaken", chance: 0.35, duration: 2.2, damageMultiplier: 0.82 },
+                attackType: "Pierce", healOnHit: 3, lightBurstOnHit: true,
+                description: "A piercing mirror-antler charge that chills enemies and lightly heals on clean hits.",
+                visualColor: "#bfdbfe", particleType: "prism", iconSymbol: "MG",
+                artPrompt: "Premium anime TCG card art of a mirror stag with crystal antlers, refracted aurora light, polished glass armor, rare elegant battlefield beast."
+            },
+            {
+                id: "aurora_chimera", name: "Aurora Chimera", category: "monster", family: "Crystalbloom", rarity: "Epic", weight: RARITY_WEIGHTS.Epic,
+                evolutionLine: "crystal_hare_line", evolutionStage: 4, evolvesFrom: "mirror_stag", evolvesTo: null,
+                damage: 39, speed: 520, range: 390, width: 50, knockback: 18, cooldown: 4.2, durabilityMax: 46, durabilityCurrent: 46,
+                statusEffect: { type: "frost", chance: 0.85, strength: 0.55, duration: 3.2 }, secondaryStatusEffect: { type: "blind", chance: 0.55, duration: 1.7 },
+                attackType: "Cone", coneHalfAngle: Math.PI / 4.6, healOnHit: 5, lightBurstOnHit: true,
+                description: "A wide aurora cone that chills, blinds, and rewards close-range timing without one-shotting.",
+                visualColor: "#a78bfa", particleType: "prism", iconSymbol: "AC",
+                artPrompt: "Premium anime TCG card art of an aurora chimera, lion-dragon-goat silhouette, crystal mane, northern lights wings, epic luminous monster design."
+            },
+            {
+                id: "rust_bat", name: "Rust Bat", category: "monster", family: "Bloodforge", rarity: "Common", weight: RARITY_WEIGHTS.Common,
+                evolutionLine: "rust_bat_line", evolutionStage: 1, evolvesFrom: null, evolvesTo: "sanguine_jackal",
+                damage: 13, speed: 720, range: 260, width: 15, knockback: 4, cooldown: 1.55, durabilityMax: 18, durabilityCurrent: 18,
+                statusEffect: { type: "bleed", chance: 0.48, duration: 2.6, tickDamage: 1, tickRate: 0.7 }, attackType: "Dash",
+                description: "A quick rust-wing bite with low damage but reliable Bleed pressure.",
+                visualColor: "#b91c1c", particleType: "bone", iconSymbol: "RB",
+                artPrompt: "Premium anime TCG card art of a rust-red metal bat, serrated wings, glowing blood ember eyes, small fast vampire-forged creature."
+            },
+            {
+                id: "sanguine_jackal", name: "Sanguine Jackal", category: "monster", family: "Bloodforge", rarity: "Uncommon", weight: RARITY_WEIGHTS.Uncommon,
+                evolutionLine: "rust_bat_line", evolutionStage: 2, evolvesFrom: "rust_bat", evolvesTo: "bloodglass_manticore",
+                damage: 24, speed: 620, range: 335, width: 24, knockback: 10, cooldown: 2.45, durabilityMax: 27, durabilityCurrent: 27,
+                statusEffect: { type: "bleed", chance: 0.8, duration: 3.2, tickDamage: 2, tickRate: 0.72 }, secondaryStatusEffect: { type: "poison", chance: 0.28, duration: 2.4, tickDamage: 2, tickRate: 1.05 },
+                attackType: "Dash",
+                description: "A blood-forged jackal dash that stacks Bleed pressure and sometimes leaves venom in the wound.",
+                visualColor: "#dc2626", particleType: "poison", iconSymbol: "SJ",
+                artPrompt: "Premium anime TCG card art of a sanguine jackal with black iron ribs, red glass fangs, blood-smoke trail, aggressive uncommon beast."
+            },
+            {
+                id: "bloodglass_manticore", name: "Bloodglass Manticore", category: "monster", family: "Bloodforge", rarity: "Rare", weight: RARITY_WEIGHTS.Rare,
+                evolutionLine: "rust_bat_line", evolutionStage: 3, evolvesFrom: "sanguine_jackal", evolvesTo: "blood_anvil_colossus",
+                damage: 35, speed: 650, range: 540, width: 31, knockback: 16, cooldown: 3.2, durabilityMax: 36, durabilityCurrent: 36,
+                statusEffect: { type: "bleed", chance: 1, duration: 4.0, tickDamage: 3, tickRate: 0.75 }, secondaryStatusEffect: { type: "weaken", chance: 0.45, duration: 2.6, damageMultiplier: 0.78 },
+                attackType: "Pierce", boneBurstOnHit: true,
+                description: "A piercing bloodglass tail strike. Strong duelist pressure, but balanced by moderate cooldown.",
+                visualColor: "#ef4444", particleType: "bone", iconSymbol: "BM",
+                artPrompt: "Premium anime TCG card art of a bloodglass manticore, crimson crystal scorpion tail, black iron mane, rare lethal fantasy monster."
+            },
+            {
+                id: "blood_anvil_colossus", name: "Blood Anvil Colossus", category: "monster", family: "Bloodforge", rarity: "Epic", weight: RARITY_WEIGHTS.Epic,
+                evolutionLine: "rust_bat_line", evolutionStage: 4, evolvesFrom: "bloodglass_manticore", evolvesTo: null,
+                damage: 47, speed: 410, range: 360, width: 56, knockback: 38, cooldown: 4.45, durabilityMax: 52, durabilityCurrent: 52,
+                impactRadius: 120, leapDuration: 0.66, poisonCloudOnImpact: true, poisonCloudRadius: 118, poisonCloudDamage: 9,
+                poisonCloudStatusEffect: { type: "bleed", chance: 1, duration: 3.6, tickDamage: 3, tickRate: 0.78 },
+                statusEffect: { type: "weaken", chance: 0.75, duration: 3.0, damageMultiplier: 0.75 }, attackType: "Leap", boneBurstOnHit: true,
+                description: "A heavy blood-iron leap that weakens on impact and leaves a short bleeding rupture zone.",
+                visualColor: "#991b1b", particleType: "bone", iconSymbol: "BA",
+                artPrompt: "Premium anime TCG card art of a massive blood anvil colossus, crimson forge plates, molten red cracks, black iron horns, epic boss creature."
+            },
+            {
                 id: "healing_veil",
                 name: "Healing Veil",
                 category: "magic",
@@ -7903,6 +8001,37 @@ const bots = [];
                 artPrompt: "Premium anime TCG magic card art, legendary phoenix feather falling into firelight, golden resurrection aura, dramatic high-rarity recovery spell."
             },
             {
+                id: "ember_lance", name: "Ember Lance", category: "magic", rarity: "Common", weight: RARITY_WEIGHTS.Common,
+                effectType: "FireProjectile", uses: 3, cooldown: 4.6, damage: 15, radius: 54, projectileRadius: 8, speed: 720, range: 570,
+                statusEffect: { type: "burn", chance: 0.75, duration: 2.0, tickDamage: 2, tickRate: 0.7 },
+                description: "A fast low-cost fire lance. Reliable poke, not a burst finisher.",
+                visualColor: "#fb923c", particleType: "flame", iconSymbol: "EL",
+                artPrompt: "Premium anime TCG magic card art of a thin ember lance, molten spearhead, orange rune trail, crisp offensive spell design."
+            },
+            {
+                id: "venom_comet", name: "Venom Comet", category: "magic", rarity: "Uncommon", weight: RARITY_WEIGHTS.Uncommon,
+                effectType: "MagicProjectile", uses: 2, cooldown: 7, damage: 18, radius: 78, projectileRadius: 12, speed: 470, range: 520,
+                statusEffect: { type: "poison", chance: 1, duration: 4.0, tickDamage: 3, tickRate: 1.0 },
+                description: "A slower toxic comet with a larger splash and strong poison pressure.",
+                visualColor: "#84cc16", particleType: "poison", iconSymbol: "VC",
+                artPrompt: "Premium anime TCG magic card art of a glowing green venom comet, toxic glass core, swamp vapor tail, premium spell card."
+            },
+            {
+                id: "aurora_ward", name: "Aurora Ward", category: "magic", rarity: "Rare", weight: RARITY_WEIGHTS.Rare,
+                effectType: "TemporaryShield", uses: 2, cooldown: 11, duration: 7, shieldAmount: 44,
+                description: "A polished defensive shield with higher uptime cost. Best before risky crate fights or revives.",
+                visualColor: "#93c5fd", particleType: "shield", iconSymbol: "AW",
+                artPrompt: "Premium anime TCG magic card art of an aurora shield wall, blue-violet glass plates, northern light ribbons, rare defensive spell."
+            },
+            {
+                id: "thorn_chain_barrage", name: "Thorn Chain Barrage", category: "magic", rarity: "Epic", weight: RARITY_WEIGHTS.Epic,
+                effectType: "ChainSpikes", uses: 2, cooldown: 13, damage: 16, radius: 32, speed: 660, range: 500, spread: 0.34, pullAmount: 20,
+                statusEffect: { type: "root", chance: 0.72, duration: 1.35 },
+                description: "Three thorn chains that pull and root. Strong control, modest damage, and a real cooldown.",
+                visualColor: "#22c55e", particleType: "thorn", iconSymbol: "TC",
+                artPrompt: "Premium anime TCG magic card art of thorn-covered chain hooks bursting from a green rune seal, epic control spell."
+            },
+            {
                 id: "revenge_thorn", name: "Revenge Thorn", category: "trap", rarity: "Common", weight: RARITY_WEIGHTS.Common,
                 triggerType: "OnHit", effectType: "DamageCloseAttacker", uses: 3, cooldown: 1.5, triggerRange: 170, damage: 12,
                 description: "When hit, damages a close attacker with a thorn burst.", visualColor: "#22c55e", particleType: "thorn", iconSymbol: "RT"
@@ -7966,6 +8095,30 @@ const bots = [];
                 id: "last_laugh", name: "Last Laugh", category: "trap", rarity: "Epic", weight: RARITY_WEIGHTS.Epic,
                 triggerType: "LowHP", effectType: "LowHpExplosion", uses: 1, cooldown: 16, hpThreshold: 0.22, radius: 135, damage: 24, knockback: 34,
                 description: "At very low HP, creates a knockback explosion.", visualColor: "#f97316", particleType: "flame", iconSymbol: "LL"
+            },
+            {
+                id: "glass_tripwire", name: "Glass Tripwire", category: "trap", rarity: "Common", weight: RARITY_WEIGHTS.Common,
+                triggerType: "EnemyClose", effectType: "SlowNearbyEnemy", uses: 2, cooldown: 5.2, triggerRange: 92, duration: 2.4,
+                description: "A wider close-range slow trap. Good early defense, low damage pressure.", visualColor: "#93c5fd", particleType: "ice", iconSymbol: "GT",
+                artPrompt: "Premium anime TCG trap card art of nearly invisible blue glass wire, frost shards, crystalline trigger rune."
+            },
+            {
+                id: "volt_tripwire", name: "Volt Tripwire", category: "trap", rarity: "Uncommon", weight: RARITY_WEIGHTS.Uncommon,
+                triggerType: "EnemyClose", effectType: "ShockNearbyEnemy", uses: 2, cooldown: 6.5, triggerRange: 84, duration: 1.15, damage: 10,
+                description: "A close shock trap for stopping aggressive rushes.", visualColor: "#facc15", particleType: "electric", iconSymbol: "VT",
+                artPrompt: "Premium anime TCG trap card art of yellow electric tripwire coils, blue sparks, compact arena-control sigil."
+            },
+            {
+                id: "grave_rebuke", name: "Grave Rebuke", category: "trap", rarity: "Rare", weight: RARITY_WEIGHTS.Rare,
+                triggerType: "OnHit", effectType: "ReflectMonsterAttack", uses: 2, cooldown: 9, reflectRatio: 0.48,
+                description: "Reflects a stronger slice of an incoming hit. Defensive, but limited by uses and cooldown.", visualColor: "#e5e7eb", particleType: "bone", iconSymbol: "GR",
+                artPrompt: "Premium anime TCG trap card art of a bone mirror seal, gravefire rim, white skeletal sigil reflecting a monster claw."
+            },
+            {
+                id: "blood_mire_sigil", name: "Blood Mire Sigil", category: "trap", rarity: "Epic", weight: RARITY_WEIGHTS.Epic,
+                triggerType: "OnHit", effectType: "CurseCloseAttacker", uses: 2, cooldown: 10, triggerRange: 190,
+                description: "Poisons and weakens a close attacker after they hit you. Strong anti-melee punishment.", visualColor: "#dc2626", particleType: "poison", iconSymbol: "BMS",
+                artPrompt: "Premium anime TCG trap card art of a crimson swamp rune, blood-red mire hands, black thorn circle, epic curse trap."
             },
             {
                 id: "angel_seal", name: "Angel Seal", category: "trap", rarity: "Legendary", weight: RARITY_WEIGHTS.Legendary,
@@ -9301,7 +9454,8 @@ const bots = [];
                 return 1 - (1 - islandTerrain.waterSlowMultiplier) * info.streamWaterT;
             }
 
-            if (isPointInsideSandStorm(x, y)) {
+            const floor = actor ? objectFloor(actor) : currentFloor;
+            if (isPointInsideSandStorm(x, y, floor)) {
                 return SANDSTORM_SPEED_MULTIPLIER;
             }
 
@@ -9996,6 +10150,7 @@ const bots = [];
             sandStormDisaster.independentActive = false;
             sandStormDisaster.lastParticleTime = 0;
             sandStormDisaster.lastSoundTime = 0;
+            clearSandStormVisualCellCache();
         }
 
         function resetVolcanoDisaster() {
@@ -10273,16 +10428,83 @@ const bots = [];
             return getBiomeAt(x, y) === "sand";
         }
 
-        function isPointInsideSandStorm(x, y) {
-            if (!sandStormDisaster.active || currentFloor !== "surface") return false;
+        function clearSandStormVisualCellCache() {
+            sandStormVisualCellCache.key = "";
+            sandStormVisualCellCache.cells.length = 0;
+            sandStormVisualCellCache.pointChecks.clear();
+        }
+
+        function isCachedSandStormVisualSandPoint(x, y, sampleSize = 48) {
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+
+            const size = Math.max(16, Math.round(sampleSize));
+            const qx = Math.round(x / size);
+            const qy = Math.round(y / size);
+            const key = `${size}:${qx}:${qy}`;
+
+            if (sandStormVisualCellCache.pointChecks.has(key)) {
+                return sandStormVisualCellCache.pointChecks.get(key);
+            }
+
+            if (sandStormVisualCellCache.pointChecks.size > sandStormVisualCellCache.maxPointChecks) {
+                sandStormVisualCellCache.pointChecks.clear();
+            }
+
+            const valid = isSandStormSandPoint(qx * size, qy * size);
+            sandStormVisualCellCache.pointChecks.set(key, valid);
+            return valid;
+        }
+
+        function getSandStormHazeVisualCells(startX, startY, x2, y2, hazeStep, radius) {
+            const endX = Math.ceil(x2 / hazeStep) * hazeStep;
+            const endY = Math.ceil(y2 / hazeStep) * hazeStep;
+            const stormBucketSize = hazeStep * 0.75;
+            const stormBucketX = Math.round(sandStormDisaster.x / stormBucketSize);
+            const stormBucketY = Math.round(sandStormDisaster.y / stormBucketSize);
+            const key = [
+                hazeStep, startX, startY, endX, endY,
+                Math.round(radius / 32),
+                stormBucketX, stormBucketY,
+                perfSettings.effectsLevel
+            ].join(":");
+
+            if (sandStormVisualCellCache.key === key) return sandStormVisualCellCache.cells;
+
+            const cells = [];
+            const sandSampleSize = Math.max(24, hazeStep * 0.45);
+            const radiusBuffer = hazeStep * 1.15;
+
+            for (let y = startY; y < endY; y += hazeStep) {
+                for (let x = startX; x < endX; x += hazeStep) {
+                    const baseX = x + hazeStep * 0.5;
+                    const baseY = y + hazeStep * 0.5;
+                    const dist = Math.hypot(baseX - sandStormDisaster.x, baseY - sandStormDisaster.y);
+
+                    if (dist <= radius + radiusBuffer && isCachedSandStormVisualSandPoint(baseX, baseY, sandSampleSize)) {
+                        cells.push({ x, y });
+                    }
+                }
+            }
+
+            sandStormVisualCellCache.key = key;
+            sandStormVisualCellCache.cells = cells;
+            return cells;
+        }
+
+        function isPointInsideSandStorm(x, y, floor = currentFloor) {
+            if (!sandStormDisaster.active || floor !== "surface") return false;
             if (!isSandStormSandPoint(x, y)) return false;
 
             return Math.hypot(x - sandStormDisaster.x, y - sandStormDisaster.y) <= sandStormDisaster.radius;
         }
 
         function getActorSandStormVisionMultiplier(actor) {
-            if (!actor || objectFloor(actor) !== "surface") return 1;
-            return isPointInsideSandStorm(actor.x, actor.y) ? SANDSTORM_VISION_MULTIPLIER : 1;
+            if (!actor) return 1;
+
+            const floor = objectFloor(actor);
+            if (floor !== "surface") return 1;
+
+            return isPointInsideSandStorm(actor.x, actor.y, floor) ? SANDSTORM_VISION_MULTIPLIER : 1;
         }
 
         function getActorEffectiveSightRadius(actor) {
@@ -10618,6 +10840,7 @@ const bots = [];
             sandStormDisaster.wavePhase = Math.random() * Math.PI * 2;
             sandStormDisaster.lastParticleTime = 0;
             sandStormDisaster.lastSoundTime = 0;
+            clearSandStormVisualCellCache();
 
             const driftAngle = Math.random() * Math.PI * 2;
             sandStormDisaster.vx = Math.cos(driftAngle) * 28;
@@ -11699,7 +11922,7 @@ const bots = [];
                 sandStormDisaster.lastSoundTime = time;
                 dsPlayNoise({
                     duration: 0.62,
-                    gain: isPointInsideSandStorm(player.x, player.y) ? 0.1 : 0.045,
+                    gain: isPointInsideSandStorm(player.x, player.y, objectFloor(player)) ? 0.1 : 0.045,
                     filterType: "bandpass",
                     frequency: 320 + Math.sin(sandStormDisaster.wavePhase) * 130,
                     q: 0.62,
@@ -14595,7 +14818,8 @@ const bots = [];
 
         const BOT_FAVORITE_CARD_FAMILIES = [
             "Emberkin", "Ironhide", "Frostveil", "Voltbeast", "Thornwild", "Plaguekin",
-            "Umbra", "Starborn", "Dunesoul", "Tidecall", "Graveborn", "Runebound"
+            "Umbra", "Starborn", "Dunesoul", "Tidecall", "Graveborn", "Runebound",
+            "Crystalbloom", "Bloodforge"
         ];
 
         let botNameCursor = Math.floor(Math.random() * botNamesPool.length);
@@ -14636,12 +14860,12 @@ const bots = [];
 
         function pickBotFavoriteCardFamily(personality = "balanced") {
             const familyBias = {
-                aggressive: ["Emberkin", "Voltbeast", "Graveborn"],
-                coward: ["Ironhide", "Tidecall", "Starborn"],
-                looter: ["Dunesoul", "Runebound", "Tidecall"],
-                hunter: ["Voltbeast", "Frostveil", "Umbra"],
-                support: ["Starborn", "Tidecall", "Runebound"],
-                camper: ["Thornwild", "Plaguekin", "Umbra"],
+                aggressive: ["Emberkin", "Voltbeast", "Graveborn", "Bloodforge"],
+                coward: ["Ironhide", "Tidecall", "Starborn", "Crystalbloom"],
+                looter: ["Dunesoul", "Runebound", "Tidecall", "Crystalbloom"],
+                hunter: ["Voltbeast", "Frostveil", "Umbra", "Bloodforge"],
+                support: ["Starborn", "Tidecall", "Runebound", "Crystalbloom"],
+                camper: ["Thornwild", "Plaguekin", "Umbra", "Crystalbloom"],
                 balanced: BOT_FAVORITE_CARD_FAMILIES
             };
 
@@ -16526,6 +16750,8 @@ if (statusEl) {
                 if (bot.personality === "aggressive" && (cardDef.damage || 0) >= 34) score += 20;
                 if (bot.personality === "hunter" && (cardDef.range || 0) >= 470) score += 18;
                 if (bot.personality === "coward" && (cardDef.knockback || 0) >= 24) score += 14;
+                if (cardDef.family === "Crystalbloom" && ["support", "camper", "coward"].includes(bot.personality)) score += 18;
+                if (cardDef.family === "Bloodforge" && ["aggressive", "hunter"].includes(bot.personality)) score += 18;
             }
 
             if (cardDef.category === "magic") {
@@ -17374,6 +17600,11 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             playerCollection.gems += def.reward.gems || 0;
 
             saveCollectionState();
+            saveQuestStateOnly();
+            updateQuestMenuBadge();
+            renderQuestDropdown();
+            refreshQuestTrackerHud();
+
             triggerNotification(`Quest Reward: +${(def.reward.cash || 0).toLocaleString()} Cash${def.reward.gems ? ` +${def.reward.gems} Gems` : ""}`);
         }
 
@@ -17482,11 +17713,19 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
                 panel = document.createElement("div");
                 panel.id = "quest-dropdown";
                 panel.className = "quest-dropdown";
+                panel.addEventListener("click", event => event.stopPropagation());
                 document.body.appendChild(panel);
             }
 
             questState.dropdownOpen = true;
             renderQuestDropdown();
+
+            if (virtualInput?.mode === "gamepad") {
+                setTimeout(() => {
+                    const focusables = getInputFocusableElements(panel);
+                    if (focusables.length) setControllerFocus(focusables[0]);
+                }, 0);
+            }
         }
 
         function closeQuestDropdown() {
@@ -18365,6 +18604,39 @@ function destroyWorldObject(object, sourceActor = player) {
             }
         }
 
+        function addSpectatorEntry(name, durationMs = Infinity, type = "npc") {
+            if (currentGameState !== GAME_STATES.MATCH) return;
+
+            const now = performance.now();
+            activeSpectators.push({
+                id: `spectator_${type}_${now | 0}_${Math.random()}`,
+                name: name || "Spectator",
+                type,
+                startedAt: now,
+                leaveAt: Number.isFinite(durationMs) ? now + durationMs : Infinity
+            });
+
+            if (activeSpectators.length > 40) {
+                activeSpectators.splice(0, activeSpectators.length - 40);
+            }
+
+            updateMatchKillsHud();
+        }
+
+        function addNpcSpectatorFromElimination(bot) {
+            if (!bot || currentGameState !== GAME_STATES.MATCH) return;
+
+            const roll = Math.random();
+
+            if (roll < 0.20) return;
+
+            if (roll < 0.60) {
+                addSpectatorEntry(bot.name || "NPC", 10000 + Math.random() * 10000, "npc");
+            } else {
+                addSpectatorEntry(bot.name || "NPC", Infinity, "npc");
+            }
+        }
+
         function eliminateBot(bot, source) {
             if (!bot || bot.isEliminated) return;
 
@@ -18390,6 +18662,7 @@ function destroyWorldObject(object, sourceActor = player) {
             refreshLobbyPlayerCountHud();
 
             if (source === player) {
+                addNpcSpectatorFromElimination(bot);
                 gainAether(60, "Eliminate Enemy");
 
                 if (player.runtimeStats?.secondBreath) {
@@ -18506,6 +18779,10 @@ function destroyWorldObject(object, sourceActor = player) {
             setTargetHp(target, nextHp);
             matchReportRecordDamage(target, source, hpDamage + armorAbsorbed);
             target.lastDamageTime = performance.now();
+
+            if (source === player && target.objectType === "destructibleCrate") {
+                target.playerContestedUntil = performance.now() + 4500;
+            }
 
             if (hpDamage > 0) {
                 target.lastDamageType = damageType;
@@ -18709,27 +18986,29 @@ function destroyWorldObject(object, sourceActor = player) {
 
                         mpPersistReconnectSession(false);
 
-            mpSocket.emit("matchState", {
-                x: player.x,
-                y: player.y,
-                angle: player.angle,
-                radius: player.radius,
-                hp: player.hp,
-                maxHp: player.maxHp,
-                health: player.health,
-                armorHp: getActorArmorHp(player),
-                armorMax: getActorArmorMax(player),
-                alive: player.alive,
-                isDowned: !!player.isDowned,
-                downedTimer: player.downedTimer || 0,
-                color: player.color,
-                name: player.name,
-                floor: player.floor || currentFloor,
-                scopeLevel: player.scopeLevel,
-                visionRadius: player.visionRadius,
-                teamId: player.teamId || "player_team",
-                gameState: currentGameState
-            });
+                mpSocket.emit("matchState", {
+                    x: player.x,
+                    y: player.y,
+                    angle: player.angle,
+                    radius: player.radius,
+                    hp: player.hp,
+                    maxHp: player.maxHp,
+                    health: player.health,
+                    shieldHp: Math.max(0, Math.round(Number(player.shieldHp || 0))),
+                    shieldMax: Math.max(0, Math.round(Number(player.shieldMax || 0))),
+                    armorHp: getActorArmorHp(player),
+                    armorMax: getActorArmorMax(player),
+                    alive: player.alive,
+                    isDowned: !!player.isDowned,
+                    downedTimer: player.downedTimer || 0,
+                    color: player.color,
+                    name: player.name,
+                    floor: player.floor || currentFloor,
+                    scopeLevel: player.scopeLevel,
+                    visionRadius: player.visionRadius,
+                    teamId: player.teamId || "player_team",
+                    gameState: currentGameState
+                });
         }
 
         function mpEmitMonsterCast(card, angle, spawnX, spawnY) {
@@ -18761,6 +19040,131 @@ function destroyWorldObject(object, sourceActor = player) {
             });
         }
 
+        function mpApplyResolvedDamageTaken(data = {}) {
+            const rawDamage = Math.max(0, Math.round(Number(data.rawDamage ?? data.amount ?? 0)));
+            const hasResolvedPayload = data.hpDamage !== undefined || data.armorDamage !== undefined || data.shieldDamage !== undefined;
+            const sourceName = data.sourceName || "Enemy";
+
+            if (!hasResolvedPayload) {
+                if (rawDamage <= 0) return null;
+
+                const beforeHp = getTargetHp(player);
+                const beforeArmor = getActorArmorHp(player);
+                const beforeShield = Math.max(0, Math.round(Number(player.shieldHp || 0)));
+
+                dealDamage(player, rawDamage, null, data.damageType || "online");
+
+                return {
+                    sourceName,
+                    hpDamage: Math.max(0, Math.round(beforeHp - getTargetHp(player))),
+                    armorDamage: Math.max(0, Math.round(beforeArmor - getActorArmorHp(player))),
+                    shieldDamage: Math.max(0, Math.round(beforeShield - Number(player.shieldHp || 0)))
+                };
+            }
+
+            const hpDamage = Math.max(0, Math.round(Number(data.hpDamage || 0)));
+            const armorDamage = Math.max(0, Math.round(Number(data.armorDamage || 0)));
+            const shieldDamage = Math.max(0, Math.round(Number(data.shieldDamage || 0)));
+            const totalDamage = hpDamage + armorDamage + shieldDamage;
+
+            if (rawDamage <= 0 && totalDamage <= 0) return null;
+
+            const sourceActor = data.sourceSocketId ? mpState.remotePlayers.get(data.sourceSocketId) : null;
+            const damageType = data.damageType || "online";
+            const beforeHp = getTargetHp(player);
+            const beforeArmor = getActorArmorHp(player);
+            const beforeShield = Math.max(0, Math.round(Number(player.shieldHp || 0)));
+
+            if (shieldDamage > 0) {
+                player.shieldHp = Math.max(0, beforeShield - shieldDamage);
+                if (player.shieldHp <= 0) {
+                    player.shieldMax = 0;
+                    player.shieldTimer = 0;
+                }
+            }
+
+            if (armorDamage > 0) {
+                setActorArmorHp(player, getActorArmorHp(player) - armorDamage);
+            }
+
+            if (hpDamage > 0) {
+                setTargetHp(player, Math.max(0, getTargetHp(player) - hpDamage));
+            }
+
+            const reportedHp = Number(data.targetHp ?? data.targetHealth);
+            if (Number.isFinite(reportedHp)) {
+                setTargetHp(player, Math.min(getTargetHp(player), Math.max(0, Math.round(reportedHp))));
+            }
+
+            const reportedArmorHp = Number(data.targetArmorHp);
+            if (Number.isFinite(reportedArmorHp)) {
+                setActorArmorHp(player, Math.min(getActorArmorHp(player), Math.max(0, Math.round(reportedArmorHp))));
+            }
+
+            const reportedShieldHp = Number(data.targetShieldHp);
+            if (Number.isFinite(reportedShieldHp)) {
+                player.shieldHp = Math.min(Math.max(0, Math.round(Number(player.shieldHp || 0))), Math.max(0, Math.round(reportedShieldHp)));
+                if (player.shieldHp <= 0) {
+                    player.shieldMax = 0;
+                    player.shieldTimer = 0;
+                }
+            }
+
+            const resolvedHpDamage = Math.max(0, Math.round(beforeHp - getTargetHp(player)));
+            const resolvedArmorDamage = Math.max(0, Math.round(beforeArmor - getActorArmorHp(player)));
+            const resolvedShieldDamage = Math.max(0, Math.round(beforeShield - Number(player.shieldHp || 0)));
+            const center = getTargetCenter(player);
+
+            player.lastDamageTime = performance.now();
+
+            if (resolvedShieldDamage > 0) {
+                spawnDamageNumber(center.x, center.y - getTargetRadius(player) - 12, `SHIELD ${resolvedShieldDamage}`, "#a78bfa");
+            }
+
+            if (resolvedArmorDamage > 0) {
+                spawnDamageNumber(center.x, center.y - getTargetRadius(player) - 12, `ARMOR ${resolvedArmorDamage}`, "#38bdf8");
+            }
+
+            if (resolvedHpDamage > 0) {
+                player.lastDamageType = damageType;
+                player.lastDamageSource = sourceActor || null;
+                if (sourceActor) player.lastAttacker = sourceActor;
+
+                spawnDamageNumber(center.x, center.y - getTargetRadius(player), resolvedHpDamage, "#fb7185");
+                questTrackEvent("damage_taken", resolvedHpDamage, { damageType });
+                dsPlayDamageImpact(damageType, player, center.x, center.y);
+            }
+
+            if (resolvedHpDamage > 0 || resolvedArmorDamage > 0 || resolvedShieldDamage > 0) {
+                matchReportRecordDamage(player, sourceActor || null, resolvedHpDamage + resolvedArmorDamage + resolvedShieldDamage);
+                spawnHitParticles(center.x, center.y, getHitParticleType(player));
+            }
+
+            handleLowHpTrap();
+            updatePlayerHealthHud();
+
+            if (getTargetHp(player) <= 0 && player.alive !== false) {
+                const canBeRevivedByTeam = isDuoMatchActive() && hasLivingTeamMate(player);
+
+                if (canBeRevivedByTeam) {
+                    downDuoActor(player, sourceActor || null);
+                } else {
+                    player.alive = false;
+                    player.takesDamage = false;
+                    scatterDeathLootForActor(player, sourceActor || null, "KNOCKED OUT");
+                    addKillFeedElimination(player, sourceActor || null, damageType, "KNOCKED OUT");
+                    triggerGameOver("KNOCKED OUT");
+                }
+            }
+
+            return {
+                sourceName,
+                hpDamage: resolvedHpDamage,
+                armorDamage: resolvedArmorDamage,
+                shieldDamage: resolvedShieldDamage
+            };
+        }
+
         function mpReportDamageToRemote(remoteTarget, amount, damageType, details = {}) {
             if (!mpSocket || !mpState.matchId || !remoteTarget?.socketId) return;
 
@@ -18784,6 +19188,10 @@ function destroyWorldObject(object, sourceActor = player) {
                 sourceSocketId: mpSocket.id,
                 sourceName: player.name,
                 targetHp: Math.max(0, Math.round(getTargetHp(remoteTarget))),
+                targetHealth: Math.max(0, Math.round(getTargetHp(remoteTarget))),
+                targetMaxHp: Math.max(1, Math.round(Number(remoteTarget.maxHp || 100))),
+                targetShieldHp: Math.max(0, Math.round(Number(remoteTarget.shieldHp || 0))),
+                targetShieldMax: Math.max(0, Math.round(Number(remoteTarget.shieldMax || 0))),
                 targetArmorHp: Math.max(0, Math.round(getActorArmorHp(remoteTarget))),
                 targetArmorMax: Math.max(0, Math.round(getActorArmorMax(remoteTarget)))
             });
@@ -21013,6 +21421,205 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                     gctx.moveTo(-w * 1.1, w * 0.28);
                     gctx.lineTo(-w * 2.15, w * 0.74);
                     gctx.stroke();
+                } else if (card.family === "Crystalbloom") {
+                    gctx.fillStyle = grad;
+                    gctx.shadowBlur = 26;
+                    gctx.shadowColor = card.visualColor || "#93c5fd";
+
+                    if (card.id === "crystal_hare") {
+                        gctx.beginPath();
+                        gctx.ellipse(-w * 0.15, 0, w * 0.92, w * 0.44, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.beginPath();
+                        gctx.ellipse(w * 0.72, -w * 0.08, w * 0.34, w * 0.26, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.fillStyle = "rgba(224,242,254,0.82)";
+                        gctx.beginPath();
+                        gctx.moveTo(w * 0.75, -w * 0.3);
+                        gctx.lineTo(w * 1.0, -w * 1.1);
+                        gctx.lineTo(w * 1.15, -w * 0.24);
+                        gctx.moveTo(w * 0.95, -w * 0.25);
+                        gctx.lineTo(w * 1.38, -w * 0.92);
+                        gctx.lineTo(w * 1.3, -w * 0.12);
+                        gctx.fill();
+
+                        for (let l = 0; l < 4; l++) {
+                            const x = -w * 0.62 + l * w * 0.36;
+                            const step = (l % 2 === 0 ? stride : -stride) * w * 0.3;
+                            gctx.beginPath();
+                            gctx.moveTo(x, w * 0.32);
+                            gctx.lineTo(x + step, w * 0.9);
+                            gctx.stroke();
+                        }
+                    } else if (card.id === "prism_lynx") {
+                        gctx.beginPath();
+                        gctx.ellipse(-w * 0.18, 0, w * 1.14, w * 0.46, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.beginPath();
+                        gctx.ellipse(w * 0.9, -w * 0.06, w * 0.4, w * 0.3, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.strokeStyle = "rgba(255,255,255,0.9)";
+                        for (let r = 0; r < 3; r++) {
+                            gctx.beginPath();
+                            gctx.moveTo(-w * 1.1, (r - 1) * w * 0.22);
+                            gctx.quadraticCurveTo(-w * 1.9, (r - 1) * w * 0.55, -w * 2.55, 0);
+                            gctx.stroke();
+                        }
+                    } else if (card.id === "mirror_stag") {
+                        gctx.beginPath();
+                        gctx.ellipse(-w * 0.2, 0, w * 1.22, w * 0.48, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.beginPath();
+                        gctx.ellipse(w * 0.88, -w * 0.1, w * 0.4, w * 0.28, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.strokeStyle = "#ffffff";
+                        gctx.lineWidth = 2.6;
+                        for (let side = -1; side <= 1; side += 2) {
+                            gctx.beginPath();
+                            gctx.moveTo(w * 1.02, -w * 0.26);
+                            gctx.lineTo(w * 1.36, side * w * 0.95);
+                            gctx.lineTo(w * 1.68, side * w * 1.18);
+                            gctx.moveTo(w * 1.32, side * w * 0.82);
+                            gctx.lineTo(w * 1.1, side * w * 1.14);
+                            gctx.moveTo(w * 1.4, side * w * 0.76);
+                            gctx.lineTo(w * 1.78, side * w * 0.76);
+                            gctx.stroke();
+                        }
+                    } else {
+                        gctx.beginPath();
+                        gctx.ellipse(-w * 0.3, 0, w * 1.3, w * 0.56, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.fillStyle = "rgba(196,181,253,0.55)";
+                        gctx.beginPath();
+                        gctx.moveTo(-w * 0.15, -w * 0.2);
+                        gctx.lineTo(-w * 1.5, -w * 1.25);
+                        gctx.lineTo(-w * 0.85, -w * 0.08);
+                        gctx.moveTo(-w * 0.15, w * 0.2);
+                        gctx.lineTo(-w * 1.5, w * 1.25);
+                        gctx.lineTo(-w * 0.85, w * 0.08);
+                        gctx.fill();
+
+                        gctx.strokeStyle = "#e0f2fe";
+                        gctx.lineWidth = 2.4;
+                        gctx.beginPath();
+                        gctx.arc(0, 0, w * 1.45, 0, Math.PI * 2);
+                        gctx.moveTo(-w * 1.45, 0);
+                        gctx.lineTo(w * 1.45, 0);
+                        gctx.stroke();
+                    }
+                } else if (card.family === "Bloodforge") {
+                    gctx.fillStyle = grad;
+                    gctx.shadowBlur = 24;
+                    gctx.shadowColor = card.visualColor || "#dc2626";
+
+                    if (card.id === "rust_bat") {
+                        gctx.beginPath();
+                        gctx.ellipse(0, 0, w * 0.72, w * 0.34, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.fillStyle = "rgba(127,29,29,0.78)";
+                        gctx.beginPath();
+                        gctx.moveTo(-w * 0.15, -w * 0.04);
+                        gctx.lineTo(-w * 1.25, -w * 0.9);
+                        gctx.lineTo(-w * 0.7, -w * 0.12);
+                        gctx.moveTo(-w * 0.15, w * 0.04);
+                        gctx.lineTo(-w * 1.25, w * 0.9);
+                        gctx.lineTo(-w * 0.7, w * 0.12);
+                        gctx.fill();
+
+                        gctx.fillStyle = "#fecaca";
+                        gctx.beginPath();
+                        gctx.moveTo(w * 0.62, -w * 0.08);
+                        gctx.lineTo(w * 1.1, 0);
+                        gctx.lineTo(w * 0.62, w * 0.08);
+                        gctx.fill();
+                    } else if (card.id === "sanguine_jackal") {
+                        gctx.beginPath();
+                        gctx.ellipse(-w * 0.16, 0, w * 1.16, w * 0.5, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.beginPath();
+                        gctx.ellipse(w * 0.9, -w * 0.06, w * 0.43, w * 0.32, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        for (let l = 0; l < 4; l++) {
+                            const x = -w * 0.72 + l * w * 0.4;
+                            const step = (l % 2 === 0 ? stride : -stride) * w * 0.28;
+                            gctx.beginPath();
+                            gctx.moveTo(x, w * 0.38);
+                            gctx.lineTo(x + step, w * 1.0);
+                            gctx.stroke();
+                        }
+
+                        gctx.fillStyle = "rgba(220,38,38,0.38)";
+                        gctx.beginPath();
+                        gctx.ellipse(-w * 1.55, w * 0.45, w * 1.05, w * 0.24, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                    } else if (card.id === "bloodglass_manticore") {
+                        gctx.beginPath();
+                        gctx.ellipse(-w * 0.18, 0, w * 1.18, w * 0.5, 0, 0, Math.PI * 2);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.fillStyle = "rgba(239,68,68,0.5)";
+                        gctx.beginPath();
+                        gctx.moveTo(-w * 0.25, -w * 0.1);
+                        gctx.lineTo(-w * 1.5, -w * 1.0);
+                        gctx.lineTo(-w * 0.85, -w * 0.05);
+                        gctx.moveTo(-w * 0.25, w * 0.1);
+                        gctx.lineTo(-w * 1.5, w * 1.0);
+                        gctx.lineTo(-w * 0.85, w * 0.05);
+                        gctx.fill();
+
+                        gctx.strokeStyle = "#fecaca";
+                        gctx.lineWidth = 3;
+                        gctx.beginPath();
+                        gctx.moveTo(-w * 0.85, 0);
+                        gctx.quadraticCurveTo(-w * 1.55, -w * 0.72, -w * 2.05, -w * 0.1);
+                        gctx.lineTo(-w * 2.32, w * 0.22);
+                        gctx.stroke();
+                    } else {
+                        gctx.beginPath();
+                        gctx.roundRect(-w * 1.1, -w * 0.58, w * 2.15, w * 1.16, 8);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.fillStyle = "rgba(15,23,42,0.55)";
+                        for (let p = 0; p < 4; p++) {
+                            gctx.fillRect(-w * 0.85 + p * w * 0.45, -w * 0.48, w * 0.26, w * 0.96);
+                        }
+
+                        gctx.fillStyle = "#7f1d1d";
+                        gctx.beginPath();
+                        gctx.moveTo(w * 0.72, -w * 0.52);
+                        gctx.lineTo(w * 1.82, 0);
+                        gctx.lineTo(w * 0.72, w * 0.52);
+                        gctx.fill();
+                        gctx.stroke();
+
+                        gctx.strokeStyle = "#fecaca";
+                        gctx.lineWidth = 2.2;
+                        gctx.beginPath();
+                        gctx.arc(0, 0, w * 1.35, Math.PI * 0.14, Math.PI * 1.86);
+                        gctx.stroke();
+                    }
                 } else if (card.family === "Runebound") {
                     gctx.fillStyle = grad;
                     if (card.id === "paper_imp") {
@@ -21420,7 +22027,12 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             player.targetZoom = 1.0;
             player.currentZoom = 1.0;
             player.hasScoutLens = false;
+            resetAetherProgress();
             resetPlayerCombatStats();
+            resetTransientMatchHudState();
+            matchReportStats.active = false;
+            minimapAttackPings.length = 0;
+            matchPings.length = 0;
             clearCombatLoadout();
             resetCombatFx();
 
@@ -21665,8 +22277,10 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
             minimapAttackPings.length = 0;
             matchPings.length = 0;
             killFeedEntries.length = 0;
+            activeSpectators.length = 0;
             killFeedDirty = true;
             renderKillFeed();
+            updateMatchKillsHud();
 
             const groundLensCount = 12;
 
@@ -25563,7 +26177,7 @@ function mpDrawRemotePlayers() {
             const windY = Math.sin(windAngle);
             const sideX = -windY;
             const sideY = windX;
-            const playerInside = isPointInsideSandStorm(player.x, player.y);
+            const playerInside = isPointInsideSandStorm(player.x, player.y, objectFloor(player));
             const intensity = playerInside ? 1.22 : 1;
 
             const x1 = Math.max(bounds.x1, sandStormDisaster.x - radius - 160);
@@ -25579,38 +26193,40 @@ function mpDrawRemotePlayers() {
             const hazeStep = perfSettings.effectsLevel >= 2 ? 78 : 118;
             const startX = Math.floor(x1 / hazeStep) * hazeStep;
             const startY = Math.floor(y1 / hazeStep) * hazeStep;
+            const hazeCells = getSandStormHazeVisualCells(startX, startY, x2, y2, hazeStep, radius);
+            const hazeSampleSize = Math.max(24, hazeStep * 0.45);
 
-            for (let y = startY; y < y2; y += hazeStep) {
-                for (let x = startX; x < x2; x += hazeStep) {
-                    const jitter = Math.sin(x * 0.013 + y * 0.009 + phase) * hazeStep * 0.18;
-                    const cx = x + hazeStep * 0.5 + sideX * jitter;
-                    const cy = y + hazeStep * 0.5 + sideY * jitter;
-                    const dist = Math.hypot(cx - sandStormDisaster.x, cy - sandStormDisaster.y);
+            for (const cell of hazeCells) {
+                const x = cell.x;
+                const y = cell.y;
+                const jitter = Math.sin(x * 0.013 + y * 0.009 + phase) * hazeStep * 0.18;
+                const cx = x + hazeStep * 0.5 + sideX * jitter;
+                const cy = y + hazeStep * 0.5 + sideY * jitter;
+                const dist = Math.hypot(cx - sandStormDisaster.x, cy - sandStormDisaster.y);
 
-                    if (dist > radius || !isSandStormSandPoint(cx, cy)) continue;
+                if (dist > radius || !isCachedSandStormVisualSandPoint(cx, cy, hazeSampleSize)) continue;
 
-                    const edgeFade = clamp01(1 - dist / radius);
-                    const wave = 0.5 + Math.sin(cx * 0.011 * sideX + cy * 0.011 * sideY + phase + dist * 0.01) * 0.5;
-                    const alpha = Math.min(0.24, (0.035 + edgeFade * 0.12 + wave * 0.055) * intensity);
+                const edgeFade = clamp01(1 - dist / radius);
+                const wave = 0.5 + Math.sin(cx * 0.011 * sideX + cy * 0.011 * sideY + phase + dist * 0.01) * 0.5;
+                const alpha = Math.min(0.24, (0.035 + edgeFade * 0.12 + wave * 0.055) * intensity);
 
-                    gctx.globalAlpha = alpha;
-                    const fog = gctx.createRadialGradient(cx, cy, hazeStep * 0.06, cx, cy, hazeStep * 0.82);
-                    fog.addColorStop(0, "rgba(255, 224, 166, 0.72)");
-                    fog.addColorStop(0.52, "rgba(214, 158, 74, 0.36)");
-                    fog.addColorStop(1, "rgba(120, 53, 15, 0)");
-                    gctx.fillStyle = fog;
-                    gctx.beginPath();
-                    gctx.ellipse(
-                        cx + windX * wave * 22,
-                        cy + windY * wave * 22,
-                        hazeStep * (0.6 + edgeFade * 0.25),
-                        hazeStep * (0.22 + wave * 0.14),
-                        windAngle,
-                        0,
-                        Math.PI * 2
-                    );
-                    gctx.fill();
-                }
+                gctx.globalAlpha = alpha;
+                const fog = gctx.createRadialGradient(cx, cy, hazeStep * 0.06, cx, cy, hazeStep * 0.82);
+                fog.addColorStop(0, "rgba(255, 224, 166, 0.72)");
+                fog.addColorStop(0.52, "rgba(214, 158, 74, 0.36)");
+                fog.addColorStop(1, "rgba(120, 53, 15, 0)");
+                gctx.fillStyle = fog;
+                gctx.beginPath();
+                gctx.ellipse(
+                    cx + windX * wave * 22,
+                    cy + windY * wave * 22,
+                    hazeStep * (0.6 + edgeFade * 0.25),
+                    hazeStep * (0.22 + wave * 0.14),
+                    windAngle,
+                    0,
+                    Math.PI * 2
+                );
+                gctx.fill();
             }
 
             const bandCount = perfSettings.effectsLevel >= 2 ? 34 : 22;
@@ -25633,7 +26249,7 @@ function mpDrawRemotePlayers() {
                     const px = sandStormDisaster.x + windX * s + sideX * (cross + drift + bend);
                     const py = sandStormDisaster.y + windY * s + sideY * (cross + drift + bend);
                     const dist = Math.hypot(px - sandStormDisaster.x, py - sandStormDisaster.y);
-                    const valid = dist <= radius && isSandStormSandPoint(px, py);
+                    const valid = dist <= radius && isCachedSandStormVisualSandPoint(px, py, 42);
 
                     if (valid && !drawing) {
                         gctx.moveTo(px, py);
@@ -26333,7 +26949,7 @@ function mpDrawRemotePlayers() {
             if (bot.blindTimer > 0) score *= 0.45;
             if (bot.shockTimer > 0) score *= 0.82;
 
-            if (isPointInsideSandStorm(bot.x, bot.y) || isPointInsideSandStorm(target.x, target.y)) {
+            if (isPointInsideSandStorm(bot.x, bot.y, objectFloor(bot)) || isPointInsideSandStorm(target.x, target.y, objectFloor(target))) {
                 score *= dist < 150 ? 0.82 : 0.56;
             }
 
@@ -26384,7 +27000,7 @@ function mpDrawRemotePlayers() {
             delay *= 1 - late.focus * late.pressure * 0.22 + late.panic * 0.16;
 
             if (bot.blindTimer > 0) delay *= 1.5;
-            if (isPointInsideSandStorm(bot.x, bot.y)) delay *= 1.28;
+            if (isPointInsideSandStorm(bot.x, bot.y, objectFloor(bot))) delay *= 1.28;
 
             return Math.max(75, delay + Math.random() * (150 + late.panic * 130));
         }
@@ -26975,19 +27591,95 @@ function moveBotTowardLootItem(bot, item, time) {
             return true;
         }
 
+        function getPlayerCrateContestInfo(crate, bot = null, time = performance.now()) {
+            if (!crate || !isTargetAlive(crate) || !player || player.alive === false || player.isEliminated) return null;
+            if (objectFloor(crate) !== objectFloor(player)) return null;
+
+            const bounds = getCrateBounds(crate);
+            const playerDist = Math.hypot(bounds.centerX - player.x, bounds.centerY - player.y);
+            const recentlyHitByPlayer = crate.lastDamageSource === player && time - (crate.lastDamageTime || 0) < 4500;
+            const playerClose = playerDist < 170 || time < (crate.playerContestedUntil || 0);
+
+            if (!recentlyHitByPlayer && !playerClose) return null;
+
+            if (bot) {
+                if (objectFloor(bot) !== objectFloor(crate)) return null;
+
+                const botDist = Math.hypot(bounds.centerX - bot.x, bounds.centerY - bot.y);
+                const seesPlayer = canActorSeeTarget(bot, player, 8);
+                const closeEnoughToNotice = botDist < Math.max(360, getActorEffectiveSightRadius(bot) * 0.92);
+
+                if (!seesPlayer && !closeEnoughToNotice) return null;
+            }
+
+            return { bounds, playerDist, recentlyHitByPlayer, playerClose };
+        }
+
+        function botWantsToStealContestedCrate(bot, crate, time = performance.now()) {
+            if (!bot || !crate || bot.isDuoPartner || isSameTeam(bot, player)) return false;
+            if (!getPlayerCrateContestInfo(crate, bot, time)) return false;
+
+            const key = `steal_${getBotLootKey(crate)}`;
+            if (!bot.aiCrateStealDecisions) bot.aiCrateStealDecisions = {};
+
+            const existing = bot.aiCrateStealDecisions[key];
+            if (existing && existing.expiresAt > time) return !!existing.steal;
+
+            const steal = Math.random() < 0.5;
+            bot.aiCrateStealDecisions[key] = {
+                steal,
+                expiresAt: time + 6500
+            };
+
+            return steal;
+        }
+
+        function findBestPlayerContestedLootCrateForBot(bot, time = performance.now()) {
+            let best = null;
+            let bestScore = -Infinity;
+
+            for (let i = 0; i < crates.length; i++) {
+                const crate = crates[i];
+                if (!isTargetAlive(crate)) continue;
+                if (!botWantsToStealContestedCrate(bot, crate, time)) continue;
+
+                const bounds = getCrateBounds(crate);
+                const dist = Math.hypot(bounds.centerX - bot.x, bounds.centerY - bot.y);
+                if (dist > 900) continue;
+
+                const score =
+                    (crate.crateType === "godfall" ? 120 :
+                    crate.crateType === "prism" ? 90 :
+                    crate.crateType === "monster" ? 70 :
+                    crate.crateType === "rune" ? 52 :
+                    35) - dist * 0.045;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = crate;
+                }
+            }
+
+            return best;
+        }
+
 function findBestLootCrateForBot(bot) {
             if (!bot || bot.isDowned || !isTargetAlive(bot)) return null;
 
             const need = getBotLootNeedProfile(bot);
             const weaponless = need.weaponless;
             const combatReady = need.combatReady;
+            const time = performance.now();
+            const contestedCrate = findBestPlayerContestedLootCrateForBot(bot, time);
+            const stealingContestedLoot = !!contestedCrate;
 
             if (getBotUsefulCardCount(bot) <= 0) {
-            } else if (!botWantsLoot(bot) && !weaponless && bot.personality !== "looter") {
+            } else if (!stealingContestedLoot && !botWantsLoot(bot) && !weaponless && bot.personality !== "looter") {
                 return null;
             }
 
             if (
+                !stealingContestedLoot &&
                 combatReady &&
                 bot.personality !== "looter" &&
                 !need.needsHeal &&
@@ -27034,10 +27726,13 @@ function findBestLootCrateForBot(bot) {
                     crate.crateType === "rune" ? 32 :
                     12;
 
+                const contestingThisCrate = crate === contestedCrate || botWantsToStealContestedCrate(bot, crate, time);
+
                 let score =
                     rarityScore -
                     dist * 0.045 -
                     routePenalty +
+                    (contestingThisCrate ? 175 : 0) +
                     (bot.personality === "looter" ? 26 : 0) +
                     (weaponless && crate.crateType === "monster" ? 105 : 0) +
                     (weaponless ? 54 : 0) +
@@ -27048,7 +27743,7 @@ function findBestLootCrateForBot(bot) {
                     ((bot.personality === "hunter" || ["veteran", "ace", "mythic"].includes(bot.skillTier)) && crate.crateType === "lens" ? 34 : 0) +
                     (config.categoryBias?.includes("monster") && need.wantsMonsterSlot ? 20 : 0);
 
-                if (combatReady && crate.crateType !== "prism" && crate.crateType !== "godfall") {
+                if (!contestingThisCrate && combatReady && crate.crateType !== "prism" && crate.crateType !== "godfall") {
                     score -= bot.personality === "looter" ? 35 : 105;
                 }
 
@@ -27150,7 +27845,7 @@ function findBestLootCrateForBot(bot) {
             const rangeNoise = clamp01(dist / sight) * 0.13;
             const hpPanic = bot.hp / Math.max(1, bot.maxHp || 100) < 0.34 ? 0.08 : 0;
             const threatPanic = botRecentlyThreatened(bot) ? 0.045 : 0;
-            const sandNoise = isPointInsideSandStorm(bot.x, bot.y) || isPointInsideSandStorm(target.x, target.y) ? 0.08 : 0;
+            const sandNoise = isPointInsideSandStorm(bot.x, bot.y, objectFloor(bot)) || isPointInsideSandStorm(target.x, target.y, objectFloor(target)) ? 0.08 : 0;
             const activeWeatherNoise =
                 weatherDisasterManager?.state === "active"
                     ? weatherDisasterManager.activeType === "hurricane" ? 0.075 :
@@ -28769,6 +29464,33 @@ function processBotItemPickups(bot) {
             return isDuoMatchActive() ? Math.max(1, Math.ceil(slots / 2)) : slots;
         }
 
+        function resetTransientMatchHudState() {
+            matchReportStats.finalized = false;
+            matchReportStats.rewardsApplied = false;
+            matchReportStats.placement = null;
+            matchReportStats.totalTeamsAtStart = matchReportCountStartingTeams();
+            matchReportStats.eliminations = 0;
+            matchReportStats.teamEliminations = 0;
+            matchReportStats.damageDealt = 0;
+            matchReportStats.damageTaken = 0;
+            matchReportStats.revives = 0;
+            matchReportStats.cardsCollected = 0;
+            matchReportStats.cardUseCounts = {};
+            matchReportStats.favoriteCardName = "None";
+            matchReportStats.favoriteCardUses = 0;
+            matchReportStats.rankedBefore = mpState.profile?.rankedPoints ?? 1000;
+            matchReportStats.rankedAfter = matchReportStats.rankedBefore;
+            matchReportStats.rankedDelta = 0;
+            matchReportStats.rewards = { gold: 0, gems: 0, xp: 0 };
+            matchReportStats.teamResult = "In Progress";
+            matchReportStats.matchStartedAt = performance.now();
+            activeSpectators.length = 0;
+            killFeedEntries.length = 0;
+            killFeedDirty = true;
+            renderKillFeed();
+            updateMatchKillsHud();
+        }
+
         function matchReportResetStats() {
             matchReportStats.active = true;
             matchReportStats.finalized = false;
@@ -28920,12 +29642,21 @@ function processBotItemPickups(bot) {
             const hud = document.getElementById("match-kill-hud");
             if (!hud) return;
 
+            const now = performance.now();
+            for (let i = activeSpectators.length - 1; i >= 0; i--) {
+                if (Number.isFinite(activeSpectators[i].leaveAt) && now >= activeSpectators[i].leaveAt) {
+                    activeSpectators.splice(i, 1);
+                }
+            }
+
+            const spectatorsEl = document.getElementById("match-spectator-count");
             const killsEl = document.getElementById("match-kill-count");
             const teamWrap = document.getElementById("match-team-kill-wrap");
             const teamKillsEl = document.getElementById("match-team-kill-count");
 
             hud.classList.toggle("hidden", currentGameState === GAME_STATES.MENU);
 
+            if (spectatorsEl) spectatorsEl.textContent = String(activeSpectators.length || 0);
             if (killsEl) killsEl.textContent = String(matchReportStats.eliminations || 0);
 
             const showTeamKills = isDuoMatchActive();
@@ -31382,7 +32113,10 @@ function updateBotAi(bot, dt, time) {
                 const targetDist = bot.aiTarget ? Math.hypot(bot.aiTarget.x - bot.x, bot.aiTarget.y - bot.y) : Infinity;
                 const threatened = botRecentlyThreatened(bot, time) || targetDist < 260;
 
-                if (threatened && !weaponless) {
+                const contestedCrate = findBestPlayerContestedLootCrateForBot(bot, time);
+                const stealingContestedCrate = !!contestedCrate;
+
+                if (threatened && !weaponless && !stealingContestedCrate) {
                     bot.aiTargetLootItem = null;
                     bot.aiTargetCrate = null;
                 }
@@ -31401,10 +32135,10 @@ function updateBotAi(bot, dt, time) {
                     late.panic < 0.45;
 
                 const shouldLoot =
-                    botWantsLoot(bot) &&
-                    (!bot.aiTarget || weaponless || looterCanBreakOff);
+                    (botWantsLoot(bot) || stealingContestedCrate) &&
+                    (!bot.aiTarget || weaponless || looterCanBreakOff || stealingContestedCrate);
 
-                bot.aiTargetCrate = shouldLoot ? findBestLootCrateForBot(bot) : null;
+                bot.aiTargetCrate = stealingContestedCrate ? contestedCrate : (shouldLoot ? findBestLootCrateForBot(bot) : null);
                 bot.aiThinkTimer = Math.random() * (0.35 - late.focus * late.pressure * 0.12 + late.panic * 0.14) + 0.14;
             }
 
@@ -31436,7 +32170,9 @@ function updateBotAi(bot, dt, time) {
             const targetDist = target ? Math.hypot(target.x - bot.x, target.y - bot.y) : Infinity;
             const threatened = target && (targetDist < 260 || botRecentlyThreatened(bot, time));
 
-            if (target && isTargetAlive(target) && !target.isDowned && threatened && (!weaponless || targetDist < 185)) {
+            const stealingContestedCrateNow = bot.aiTargetCrate && botWantsToStealContestedCrate(bot, bot.aiTargetCrate, time);
+
+            if (target && isTargetAlive(target) && !target.isDowned && threatened && !stealingContestedCrateNow && (!weaponless || targetDist < 185)) {
                 clearBotLootFocus(bot);
                 runBotCombatStrategy(bot, target, time);
                 return;
@@ -31454,8 +32190,11 @@ function updateBotAi(bot, dt, time) {
             if (bot.aiTargetCrate && isTargetAlive(bot.aiTargetCrate)) {
                 const enemyDist = target ? Math.hypot(target.x - bot.x, target.y - bot.y) : Infinity;
 
-                if (weaponless || enemyDist > 280 || (bot.personality === "looter" && !threatened)) {
-                    botBreakCrateTarget(bot, bot.aiTargetCrate, time, bot.personality === "looter" ? 1.1 : 0.92);
+                const stealingCrate = botWantsToStealContestedCrate(bot, bot.aiTargetCrate, time);
+
+                if (stealingCrate || weaponless || enemyDist > 280 || (bot.personality === "looter" && !threatened)) {
+                    bot.aiObjective = stealingCrate ? "steal_contested_crate" : bot.aiObjective;
+                    botBreakCrateTarget(bot, bot.aiTargetCrate, time, stealingCrate ? 1.16 : (bot.personality === "looter" ? 1.1 : 0.92));
                     return;
                 }
             }
@@ -32587,6 +33326,18 @@ function resizeMinimapCanvas() {
                 return true;
             }
 
+            const questPanel = document.getElementById("quest-dropdown");
+            if (questPanel && questState.dropdownOpen) {
+                closeQuestDropdown();
+                return true;
+            }
+
+            const friendsPanel = document.getElementById("mp-friends-panel");
+            if (friendsPanel) {
+                friendsPanel.remove();
+                return true;
+            }
+
             if (menuPanelLayer && !menuPanelLayer.classList.contains("hidden")) {
                 closeMenuPanel();
                 return true;
@@ -32606,6 +33357,9 @@ function resizeMinimapCanvas() {
             return document.getElementById("perf-settings-panel") ||
                 document.getElementById("mp-results-screen") ||
                 document.getElementById("mp-winner-screen") ||
+                document.getElementById("mp-friends-panel") ||
+                document.getElementById("quest-dropdown") ||
+                document.getElementById("mp-spectate-hud") ||
                 (gameOverScreen && !gameOverScreen.classList.contains("hidden") ? gameOverScreen : null) ||
                 (isAwakeningChoiceOverlayOpen() ? awakeningOverlay : null) ||
                 (typeof awakeningTreeOverlay !== "undefined" && awakeningTreeOverlay && !awakeningTreeOverlay.classList.contains("hidden") ? awakeningTreeOverlay : null) ||
