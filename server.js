@@ -28,6 +28,7 @@ const players = new Map();
 const idToSocket = new Map();
 const parties = new Map();
 const matches = new Map();
+const leaderboardProfiles = new Map();
 
 const PARTY_MAX_SIZE = 4;
 const MATCH_TOTAL_SLOTS = 100;
@@ -35,6 +36,13 @@ const MATCH_BOT_MIN = 40;
 const MATCH_BOT_MAX = 99;
 const ONLINE_QUEUE_MS = 15000;
 const WORLD_SNAPSHOT_MIN_MS = 160;
+const PROFILE_MAX_LEVEL = 100;
+
+function profileXpForNextLevel(level = 1) {
+  const safeLevel = Math.max(1, Math.min(PROFILE_MAX_LEVEL, Math.round(Number(level || 1))));
+  if (safeLevel >= PROFILE_MAX_LEVEL) return 0;
+  return Math.round(220 + Math.pow(safeLevel, 1.82) * 72);
+}
 
 const TEAM_SIZE_BY_MODE = {
   duo: 2,
@@ -119,6 +127,12 @@ function makeMatchSyncPayload(match) {
       teamId: entry.teamId,
       alive: entry.alive !== false,
       hp: entry.hp ?? 100,
+      health: entry.hp ?? 100,
+      maxHp: entry.maxHp ?? entry.state?.maxHp ?? 100,
+      shieldHp: entry.shieldHp ?? entry.state?.shieldHp ?? 0,
+      shieldMax: entry.shieldMax ?? entry.state?.shieldMax ?? 0,
+      armorHp: entry.armorHp ?? entry.state?.armorHp ?? 0,
+      armorMax: entry.armorMax ?? entry.state?.armorMax ?? 100,
       x: entry.x || 0,
       y: entry.y || 0,
       angle: entry.angle || 0,
@@ -253,8 +267,14 @@ function publicPlayer(p) {
     playerId: p.playerId,
     name: p.name,
     rank: p.rank || "SURVIVOR",
-    level: p.level || 1,
+    level: Math.max(1, Math.min(PROFILE_MAX_LEVEL, Number(p.level || 1))),
+    profileXp: Math.max(0, Number(p.profileXp || 0)),
+    xpToNext: profileXpForNextLevel(p.level || 1),
     wins: p.wins || 0,
+    kills: p.kills || 0,
+    deaths: p.deaths || 0,
+    losses: p.losses || 0,
+    revives: p.revives || 0,
     gold: p.gold || 0,
     gems: p.gems || 0,
     color: p.color || "#38bdf8",
@@ -270,6 +290,152 @@ function publicPlayer(p) {
 
 function broadcastOnlineList() {
   io.emit("onlinePlayers", [...players.values()].map(publicPlayer));
+}
+
+function safeStatInt(value, fallback = 0, max = 999999) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(max, Math.round(n)));
+}
+
+function getOrCreateLeaderboardEntry(profile = {}) {
+  const playerId = String(profile.playerId || "").trim() || makeSurvivorId();
+
+  let entry = leaderboardProfiles.get(playerId);
+
+  if (!entry) {
+    entry = {
+      playerId,
+      name: String(profile.name || playerId).trim().slice(0, 24),
+      rank: String(profile.rank || "SURVIVOR").trim().slice(0, 32),
+      level: Math.min(PROFILE_MAX_LEVEL, safeStatInt(profile.level, 1, PROFILE_MAX_LEVEL)),
+      profileXp: safeStatInt(profile.profileXp ?? profile.xp, 0, 999999999),
+      wins: 0,
+      kills: 0,
+      deaths: 0,
+      losses: 0,
+      revives: 0,
+      color: profile.color || "#38bdf8",
+      icon: profile.icon || "DS",
+      reportKeys: new Set(),
+      firstSeenAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    leaderboardProfiles.set(playerId, entry);
+  }
+
+  if (!(entry.reportKeys instanceof Set)) entry.reportKeys = new Set();
+
+  entry.name = String(profile.name || entry.name || playerId).trim().slice(0, 24);
+  entry.rank = String(profile.rank || entry.rank || "SURVIVOR").trim().slice(0, 32);
+  entry.level = Math.min(PROFILE_MAX_LEVEL, Math.max(safeStatInt(entry.level, 1, PROFILE_MAX_LEVEL), safeStatInt(profile.level, 1, PROFILE_MAX_LEVEL)));
+  entry.profileXp = Math.max(safeStatInt(entry.profileXp, 0, 999999999), safeStatInt(profile.profileXp ?? profile.xp, 0, 999999999));
+  if (entry.level >= PROFILE_MAX_LEVEL) entry.profileXp = 0;
+  entry.color = profile.color || entry.color || "#38bdf8";
+  entry.icon = profile.icon || entry.icon || "DS";
+
+  entry.wins = Math.max(safeStatInt(entry.wins), safeStatInt(profile.wins));
+  entry.kills = Math.max(safeStatInt(entry.kills), safeStatInt(profile.kills));
+  entry.deaths = Math.max(safeStatInt(entry.deaths), safeStatInt(profile.deaths));
+  entry.losses = Math.max(safeStatInt(entry.losses), safeStatInt(profile.losses));
+  entry.revives = Math.max(safeStatInt(entry.revives), safeStatInt(profile.revives));
+  entry.updatedAt = Date.now();
+
+  return entry;
+}
+
+function publicLeaderboardEntry(entry, index = 0) {
+  const wins = safeStatInt(entry.wins);
+  const kills = safeStatInt(entry.kills);
+  const deaths = safeStatInt(entry.deaths);
+  const losses = safeStatInt(entry.losses);
+  const revives = safeStatInt(entry.revives);
+
+  return {
+    position: index + 1,
+    playerId: entry.playerId,
+    name: entry.name,
+    rank: entry.rank || "SURVIVOR",
+    level: Math.max(1, Math.min(PROFILE_MAX_LEVEL, Number(entry.level || 1))),
+    profileXp: Math.max(0, Number(entry.profileXp || 0)),
+    xpToNext: profileXpForNextLevel(entry.level || 1),
+    wins,
+    kills,
+    deaths,
+    losses,
+    revives,
+    score: wins * 1000 + kills * 25 + revives * 12 - deaths * 4 - losses * 10,
+    color: entry.color || "#38bdf8",
+    icon: entry.icon || "DS",
+    updatedAt: entry.updatedAt || Date.now()
+  };
+}
+
+function sortedLeaderboardRows(sortKey = "kills") {
+  const rows = [...leaderboardProfiles.values()].map(publicLeaderboardEntry);
+
+  rows.sort((a, b) => {
+    if (sortKey === "wins") return (b.wins - a.wins) || (b.kills - a.kills) || (a.losses - b.losses);
+    if (sortKey === "overall") return (b.score - a.score) || (b.wins - a.wins) || (b.kills - a.kills);
+    return (b.kills - a.kills) || (b.wins - a.wins) || (a.deaths - b.deaths);
+  });
+
+  return rows.slice(0, 100).map((row, index) => ({ ...row, position: index + 1 }));
+}
+
+function getLeaderboardPayload() {
+  return {
+    kills: sortedLeaderboardRows("kills"),
+    wins: sortedLeaderboardRows("wins"),
+    overall: sortedLeaderboardRows("overall"),
+    updatedAt: Date.now()
+  };
+}
+
+function broadcastLeaderboards() {
+  io.emit("leaderboards", getLeaderboardPayload());
+}
+
+function applyLeaderboardMatchReport(socketId, data = {}) {
+  const p = getPlayer(socketId);
+  if (!p) return { ok: false };
+
+  const entry = getOrCreateLeaderboardEntry({
+    ...p,
+    ...(data.profile || {})
+  });
+
+  const reportKey = String(data.reportKey || `${entry.playerId}:${data.matchId || Date.now()}`).slice(0, 160);
+  if (entry.reportKeys.has(reportKey)) {
+    return { ok: true, duplicate: true };
+  }
+
+  entry.reportKeys.add(reportKey);
+  if (entry.reportKeys.size > 80) {
+    entry.reportKeys = new Set([...entry.reportKeys].slice(-40));
+  }
+
+  const stats = data.stats || {};
+  const won = !!data.won;
+
+  entry.kills += safeStatInt(stats.kills, 0, 100);
+  entry.deaths += stats.deaths == null ? (won ? 0 : 1) : safeStatInt(stats.deaths, 0, 1);
+  entry.wins += stats.wins == null ? (won ? 1 : 0) : safeStatInt(stats.wins, 0, 1);
+  entry.losses += stats.losses == null ? (won ? 0 : 1) : safeStatInt(stats.losses, 0, 1);
+  entry.revives += safeStatInt(stats.revives, 0, 25);
+  entry.updatedAt = Date.now();
+
+  p.rank = entry.rank;
+  p.level = entry.level;
+  p.profileXp = entry.profileXp || 0;
+  p.wins = entry.wins;
+  p.kills = entry.kills;
+  p.deaths = entry.deaths;
+  p.losses = entry.losses;
+  p.revives = entry.revives;
+
+  return { ok: true, entry };
 }
 
 function getVoiceRoomId(p) {
@@ -665,7 +831,6 @@ function checkMatchWinner(match) {
       if (profile) {
         profile.inMatch = false;
         profile.matchId = null;
-        if (won) profile.wins = (profile.wins || 0) + 1;
       }
     }
 
@@ -692,8 +857,13 @@ io.on("connection", socket => {
       playerId,
       name: String(data?.name || playerId).trim().slice(0, 24),
       rank: data?.rank || "SURVIVOR",
-      level: Number(data?.level || 1),
+      level: Math.max(1, Math.min(PROFILE_MAX_LEVEL, Number(data?.level || 1))),
+      profileXp: Number(data?.profileXp || data?.xp || 0),
       wins: Number(data?.wins || 0),
+      kills: Number(data?.kills || 0),
+      deaths: Number(data?.deaths || 0),
+      losses: Number(data?.losses || 0),
+      revives: Number(data?.revives || 0),
       gold: Number(data?.gold || 0),
       gems: Number(data?.gems || 0),
       color: data?.color || "#38bdf8",
@@ -704,8 +874,19 @@ io.on("connection", socket => {
     };
 
     players.set(socket.id, p);
+
+    const leaderboardEntry = getOrCreateLeaderboardEntry(p);
+    p.level = leaderboardEntry.level;
+    p.profileXp = leaderboardEntry.profileXp || 0;
+    p.wins = leaderboardEntry.wins;
+    p.kills = leaderboardEntry.kills;
+    p.deaths = leaderboardEntry.deaths;
+    p.losses = leaderboardEntry.losses;
+    p.revives = leaderboardEntry.revives;
+
     socket.emit("profileAssigned", publicPlayer(p));
     broadcastOnlineList();
+    broadcastLeaderboards();
   });
 
   socket.on("renamePlayer", (data, cb) => {
@@ -946,10 +1127,22 @@ io.on("connection", socket => {
     entry.y = Number(state?.y || 0);
     entry.angle = Number(state?.angle || 0);
     entry.hp = Number(state?.hp ?? entry.hp);
+    entry.maxHp = Number(state?.maxHp ?? entry.maxHp ?? 100);
+    entry.shieldHp = Math.max(0, Math.round(Number(state?.shieldHp ?? entry.shieldHp ?? 0)));
+    entry.shieldMax = Math.max(0, Math.round(Number(state?.shieldMax ?? entry.shieldMax ?? 0)));
+    entry.armorHp = Math.max(0, Math.round(Number(state?.armorHp ?? entry.armorHp ?? 0)));
+    entry.armorMax = Math.max(1, Math.round(Number(state?.armorMax ?? entry.armorMax ?? 100)));
     entry.alive = state?.alive !== false;
     entry.state = {
       ...(entry.state || {}),
       ...state,
+      hp: entry.hp,
+      health: entry.hp,
+      maxHp: entry.maxHp,
+      shieldHp: entry.shieldHp,
+      shieldMax: entry.shieldMax,
+      armorHp: entry.armorHp,
+      armorMax: entry.armorMax,
       gameState: state?.gameState || entry.state?.gameState || "MATCH",
       floor: state?.floor || entry.state?.floor || "surface",
       updatedAt: Date.now()
@@ -1103,7 +1296,7 @@ io.on("connection", socket => {
     const rawArmorDamage = Number(data?.armorDamage ?? 0);
     const rawShieldDamage = Number(data?.shieldDamage ?? 0);
 
-    if (!Number.isFinite(rawAmount) || rawAmount <= 0) return;
+    if (![rawAmount, rawHpDamage, rawArmorDamage, rawShieldDamage].some(Number.isFinite)) return;
 
     const sx = Number(sourceEntry.x);
     const sy = Number(sourceEntry.y);
@@ -1115,7 +1308,7 @@ io.on("connection", socket => {
       if (dist > 1800) return;
     }
 
-    const amount = Math.max(0, Math.min(120, Math.round(rawAmount)));
+    const amount = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawAmount) ? rawAmount : 0)));
     const hpDamage = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawHpDamage) ? rawHpDamage : amount)));
     const armorDamage = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawArmorDamage) ? rawArmorDamage : 0)));
     const shieldDamage = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawShieldDamage) ? rawShieldDamage : 0)));
@@ -1123,13 +1316,35 @@ io.on("connection", socket => {
 
     if (amount <= 0 && hpDamage <= 0 && armorDamage <= 0 && shieldDamage <= 0) return;
 
-    target.hp = Math.max(0, target.hp - hpDamage);
+    const reportedTargetHp = Number(data?.targetHp ?? data?.targetHealth);
+    const reportedTargetMaxHp = Number(data?.targetMaxHp ?? data?.targetMaxHealth);
+    const reportedTargetShieldHp = Number(data?.targetShieldHp);
+    const reportedTargetShieldMax = Number(data?.targetShieldMax);
+    const reportedTargetArmorHp = Number(data?.targetArmorHp);
+    const reportedTargetArmorMax = Number(data?.targetArmorMax);
+
+    target.hp = Math.max(0, Number.isFinite(reportedTargetHp) ? Math.round(reportedTargetHp) : target.hp - hpDamage);
+    target.maxHp = Math.max(1, Math.round(Number.isFinite(reportedTargetMaxHp) ? reportedTargetMaxHp : target.maxHp ?? target.state?.maxHp ?? 100));
+    target.shieldHp = Math.max(0, Math.round(Number.isFinite(reportedTargetShieldHp) ? reportedTargetShieldHp : target.shieldHp ?? target.state?.shieldHp ?? 0));
+    target.shieldMax = Math.max(0, Math.round(Number.isFinite(reportedTargetShieldMax) ? reportedTargetShieldMax : target.shieldMax ?? target.state?.shieldMax ?? 0));
+    target.armorHp = Math.max(0, Math.round(Number.isFinite(reportedTargetArmorHp) ? reportedTargetArmorHp : target.armorHp ?? target.state?.armorHp ?? 0));
+    target.armorMax = Math.max(1, Math.round(Number.isFinite(reportedTargetArmorMax) ? reportedTargetArmorMax : target.armorMax ?? target.state?.armorMax ?? 100));
     target.lastDamageAt = Date.now();
     target.lastDamageSourceSocketId = socket.id;
     target.lastRawDamage = amount;
     target.lastHpDamage = hpDamage;
     target.lastArmorDamage = armorDamage;
     target.lastShieldDamage = shieldDamage;
+    target.state = {
+      ...(target.state || {}),
+      hp: target.hp,
+      health: target.hp,
+      maxHp: target.maxHp,
+      shieldHp: target.shieldHp,
+      shieldMax: target.shieldMax,
+      armorHp: target.armorHp,
+      armorMax: target.armorMax
+    };
 
     io.to(targetSocketId).emit("matchDamageTaken", {
       amount,
@@ -1139,16 +1354,30 @@ io.on("connection", socket => {
       shieldDamage,
       damageType,
       sourceSocketId: socket.id,
-      sourceName: source.name
+      sourceName: source.name,
+      targetHp: target.hp,
+      targetHealth: target.hp,
+      targetMaxHp: target.maxHp,
+      targetShieldHp: target.shieldHp,
+      targetShieldMax: target.shieldMax,
+      targetArmorHp: target.armorHp,
+      targetArmorMax: target.armorMax
     });
 
     io.to(source.matchId).emit("matchDamageFx", {
       targetSocketId,
-      amount: hpDamage > 0 ? hpDamage : amount,
+      amount: hpDamage > 0 ? hpDamage : armorDamage > 0 ? armorDamage : shieldDamage > 0 ? shieldDamage : amount,
       rawDamage: amount,
       hpDamage,
       armorDamage,
       shieldDamage,
+      targetHp: target.hp,
+      targetHealth: target.hp,
+      targetMaxHp: target.maxHp,
+      targetShieldHp: target.shieldHp,
+      targetShieldMax: target.shieldMax,
+      targetArmorHp: target.armorHp,
+      targetArmorMax: target.armorMax,
       x: target.x,
       y: target.y,
       damageType
@@ -1227,6 +1456,60 @@ socket.on("matchLocalDeath", data => {
 
   checkMatchWinner(match);
 });
+
+  socket.on("profileReset", data => {
+    const p = getPlayer(socket.id);
+    if (!p) return;
+
+    const playerId = p.playerId;
+    const keepName = String(data?.name || p.name || playerId).trim().slice(0, 24) || playerId;
+
+    p.name = keepName;
+    p.rank = "SURVIVOR";
+    p.level = 1;
+    p.profileXp = 0;
+    p.wins = 0;
+    p.kills = 0;
+    p.deaths = 0;
+    p.losses = 0;
+    p.revives = 0;
+    p.gold = 0;
+    p.gems = 0;
+
+    let entry = leaderboardProfiles.get(playerId);
+    if (!entry) {
+      entry = getOrCreateLeaderboardEntry(p);
+    }
+
+    entry.name = keepName;
+    entry.rank = "SURVIVOR";
+    entry.level = 1;
+    entry.profileXp = 0;
+    entry.wins = 0;
+    entry.kills = 0;
+    entry.deaths = 0;
+    entry.losses = 0;
+    entry.revives = 0;
+    entry.reportKeys = new Set();
+    entry.updatedAt = Date.now();
+
+    socket.emit("profileAssigned", publicPlayer(p));
+    broadcastOnlineList();
+    broadcastLeaderboards();
+  });
+
+  socket.on("leaderboardRequest", () => {
+    socket.emit("leaderboards", getLeaderboardPayload());
+  });
+
+  socket.on("matchResultReport", data => {
+    const result = applyLeaderboardMatchReport(socket.id, data);
+    if (!result.ok) return;
+
+    socket.emit("profileAssigned", publicPlayer(getPlayer(socket.id)));
+    broadcastOnlineList();
+    broadcastLeaderboards();
+  });
 
   socket.on("disconnect", () => {
     const p = getPlayer(socket.id);
