@@ -35176,17 +35176,17 @@ function resizeMinimapCanvas() {
             };
 
             if (menuScreenState.screen === "leaderboards") {
-                renderLeaderboardsScreen(mpState.leaderboardTab || "kills");
+                renderLeaderboardsScreen(mpState.leaderboardTab || "kills", false);
             }
         }
 
-        function renderLeaderboardsScreen(tab = mpState.leaderboardTab || "kills") {
+        function renderLeaderboardsScreen(tab = mpState.leaderboardTab || "kills", requestLive = true) {
             const layer = ensureMenuPanelLayer();
             layer.classList.remove("hidden");
             menuScreenState.screen = "leaderboards";
             mpState.leaderboardTab = ["kills", "wins", "overall"].includes(tab) ? tab : "kills";
 
-            if (mpSocket?.connected) {
+            if (requestLive && mpSocket?.connected) {
                 mpSocket.emit("leaderboardRequest");
             }
 
@@ -35282,7 +35282,11 @@ function resizeMinimapCanvas() {
             if (closeBtn) closeBtn.addEventListener("click", closeMenuPanel);
 
             layer.querySelectorAll("[data-leaderboard-tab]").forEach(btn => {
-                btn.addEventListener("click", () => renderLeaderboardsScreen(btn.dataset.leaderboardTab));
+                btn.addEventListener("click", event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    renderLeaderboardsScreen(btn.dataset.leaderboardTab, false);
+                });
             });
 
             if (virtualInput?.mode === "gamepad") {
