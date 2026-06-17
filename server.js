@@ -1305,6 +1305,170 @@ function createDuoMatchFromParty(party) {
   createMatchFromParty(party, "duo");
 }
 
+function cleanQuickMatchMode(mode = "duo") {
+  return mode === "team" ? "team" : "duo";
+}
+
+function publicMatchTeammates(match) {
+  return [...match.players.values()]
+    .map(entry => getPlayer(entry.socketId))
+    .filter(Boolean)
+    .map(publicPlayer);
+}
+
+function findJoinablePublicMatch(mode = "duo") {
+  const cleanMode = cleanQuickMatchMode(mode);
+  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
+  const now = Date.now();
+
+  return [...matches.values()]
+    .filter(match => {
+      if (!match || !match.publicQueue) return false;
+      if (match.mode !== cleanMode) return false;
+      if (match.ranked) return false;
+
+      // Keep a small safety window so nobody joins right as deployment fires.
+      if (now >= (match.deployAt || 0) - 2500) return false;
+
+      // Public quick-match is random-teammate based: Duo max 2 humans, Squad max 4 humans.
+      if (getMatchHumanCount(match) >= teamSize) return false;
+
+      return true;
+    })
+    .sort((a, b) => {
+      const humanDiff = getMatchHumanCount(b) - getMatchHumanCount(a);
+      if (humanDiff !== 0) return humanDiff;
+
+      // Prefer the lobby that is closer to deploying, as long as it is still joinable.
+      return (a.deployAt || 0) - (b.deployAt || 0);
+    })[0] || null;
+}
+
+function createPublicQuickMatch(mode = "duo") {
+  const cleanMode = cleanQuickMatchMode(mode);
+  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
+  const matchId = makeMatchId();
+  const seed = makeSeed();
+  const now = Date.now();
+
+  const match = {
+    matchId,
+    seed,
+    mode: cleanMode,
+    partyId: null,
+    publicQueue: true,
+    teamSize,
+    totalSlots: MATCH_TOTAL_SLOTS,
+    queueStartAt: now,
+    deployAt: now + ONLINE_QUEUE_MS,
+    worldAuthoritySocketId: null,
+    worldSnapshot: null,
+    lastWorldSnapshotAt: 0,
+    ranked: false,
+    players: new Map()
+  };
+
+  matches.set(matchId, match);
+  return match;
+}
+
+function emitPublicMatchTeamUpdate(match) {
+  if (!match) return;
+
+  const teammates = publicMatchTeammates(match);
+  const humanCount = Math.max(1, teammates.length);
+  const botTarget = getMatchBotTarget(match, humanCount);
+
+  match.populationTarget = Math.min(MATCH_TOTAL_SLOTS, humanCount + botTarget);
+
+  for (const entry of match.players.values()) {
+    io.to(entry.socketId).emit("matchTeamUpdate", {
+      matchId: match.matchId,
+      mode: match.mode,
+      teamSize: match.teamSize || TEAM_SIZE_BY_MODE[match.mode] || 2,
+      teammates,
+      botFillSlots: Math.max(0, (match.teamSize || 2) - teammates.length),
+      humanCount,
+      botCount: botTarget,
+      populationTarget: match.populationTarget,
+      worldAuthoritySocketId: match.worldAuthoritySocketId
+    });
+  }
+}
+
+function joinPublicQuickMatch(socket, mode = "duo") {
+  const p = getPlayer(socket.id);
+  if (!p) return { ok: false, error: "Not registered." };
+  if (p.inMatch) return { ok: false, error: "You are already in a match." };
+
+  // Parties should continue using the normal party-ready matchmaking path.
+  if (p.partyId) return { ok: false, error: "Leave your party or use party ready check." };
+
+  const cleanMode = cleanQuickMatchMode(mode);
+  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
+
+  let match = findJoinablePublicMatch(cleanMode);
+  const joinedExisting = !!match;
+
+  if (!match) {
+    match = createPublicQuickMatch(cleanMode);
+  }
+
+  if (!match.worldAuthoritySocketId || !io.sockets.sockets.has(match.worldAuthoritySocketId)) {
+    match.worldAuthoritySocketId = socket.id;
+  }
+
+  p.inMatch = true;
+  p.matchId = match.matchId;
+
+  // Public quick-match randoms are teammates in Duo/Squad.
+  match.players.set(socket.id, {
+    socketId: socket.id,
+    playerId: p.playerId,
+    name: p.name,
+    teamId: "player_team",
+    alive: true,
+    hp: 100,
+    x: 0,
+    y: 0,
+    angle: 0
+  });
+
+  socket.join(match.matchId);
+
+  const humanCount = getMatchHumanCount(match);
+  const botTarget = getMatchBotTarget(match, humanCount);
+  match.botTarget = botTarget;
+  match.populationTarget = Math.min(MATCH_TOTAL_SLOTS, humanCount + botTarget);
+
+  const teammates = publicMatchTeammates(match);
+
+  socket.emit("partyMatchStart", {
+    matchId: match.matchId,
+    seed: match.seed,
+    partyId: null,
+    mode: cleanMode,
+    teamSize,
+    botFillSlots: Math.max(0, teamSize - teammates.length),
+    totalSlots: MATCH_TOTAL_SLOTS,
+    botCount: botTarget,
+    populationTarget: match.populationTarget,
+    queueMs: Math.max(0, match.deployAt - Date.now()),
+    serverNow: Date.now(),
+    deployAt: match.deployAt,
+    worldAuthoritySocketId: match.worldAuthoritySocketId,
+    ranked: false,
+    teammates,
+    joinedExisting
+  });
+
+  emitPublicMatchTeamUpdate(match);
+  broadcastMatchSync(match);
+  broadcastOnlineList();
+
+  return { ok: true, match, joinedExisting };
+}
+
 function cancelMatchBackToPartyLobby(match, reason = "Queue cancelled.") {
   if (!match) return;
 
@@ -1513,6 +1677,26 @@ io.on("connection", socket => {
     } else {
       fromSocket.emit("friendDeclined", { player: publicPlayer(me) });
     }
+  });
+
+    socket.on("quickMatch", (data, cb) => {
+    const mode = cleanQuickMatchMode(data?.mode || "duo");
+    const result = joinPublicQuickMatch(socket, mode);
+
+    if (!result.ok) {
+      cb?.({
+        ok: false,
+        error: result.error || "Could not join quick match."
+      });
+      return;
+    }
+
+    cb?.({
+      ok: true,
+      matchId: result.match.matchId,
+      joinedExisting: result.joinedExisting,
+      mode: result.match.mode
+    });
   });
 
   socket.on("partyInvite", data => {
@@ -1827,7 +2011,10 @@ io.on("connection", socket => {
 
     match.worldAuthoritySocketId = socket.id;
     match.lastWorldSnapshotAt = now;
-    match.worldSnapshot = sanitizeWorldSnapshot(snapshot);
+    match.worldSnapshot = {
+      ...sanitizeWorldSnapshot(snapshot),
+      matchId: match.matchId
+    };
 
     socket.to(p.matchId).emit("matchWorldSnapshot", match.worldSnapshot);
   });
