@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const fs = require("fs");
 const path = require("path");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
@@ -29,6 +30,12 @@ const idToSocket = new Map();
 const parties = new Map();
 const matches = new Map();
 const leaderboardProfiles = new Map();
+const RANKED_STATE_DIR = process.env.RANKED_STATE_DIR || path.join(__dirname, "data");
+const RANKED_STATE_FILE = process.env.RANKED_STATE_FILE || path.join(RANKED_STATE_DIR, "ranked-season-state.json");
+const RANKED_ADMIN_KEY = process.env.RANKED_ADMIN_KEY || "";
+const rankedSeasonArchives = new Map();
+const rankedRewardInbox = new Map();
+let rankedStateSaveTimer = null;
 
 const PARTY_MAX_SIZE = 4;
 const MATCH_TOTAL_SLOTS = 100;
@@ -183,7 +190,11 @@ function sanitizeWorldSnapshot(snapshot) {
       healAmount: Number(item.healAmount || 0),
       shieldAmount: Number(item.shieldAmount || 0),
       armorAmount: Number(item.armorAmount || 0),
-      amount: Number(item.amount || 0)
+      amount: Number(item.amount || 0),
+      meleeId: item.meleeId ? String(item.meleeId).slice(0, 64) : null,
+      damage: Number(item.damage || 0),
+      objectDamage: Number(item.objectDamage || 0),
+      cooldownMs: Number(item.cooldownMs || 0)
     })) : [],
     crates: Array.isArray(snapshot?.crates) ? snapshot.crates.slice(0, 220).map(crate => ({
       id: String(crate.id || ""),
@@ -207,6 +218,10 @@ app.get("/status", (req, res) => {
 });
 
 app.get("/debug", (req, res) => {
+  if (process.env.ENABLE_DEBUG_API !== "true") {
+    return res.status(404).json({ ok: false, error: "Debug API disabled." });
+  }
+
   res.json({
     ok: true,
     onlinePlayers: [...players.values()].map(publicPlayer),
@@ -223,6 +238,86 @@ app.get("/debug", (req, res) => {
       playerCount: m.players.size
     }))
   });
+});
+
+app.get("/admin/ranked/current", (req, res) => {
+  if (!requireRankedAdmin(req, res)) return;
+  finalizeExpiredRankedSeasons("admin_current_check");
+  res.json({
+    ok: true,
+    state: rankedStatePayload(),
+    leaderboards: getLeaderboardPayload()
+  });
+});
+
+app.get("/admin/ranked/seasons", (req, res) => {
+  if (!requireRankedAdmin(req, res)) return;
+  res.json({
+    ok: true,
+    activeSeason: getRankedSeasonInfo(),
+    archives: [...rankedSeasonArchives.values()],
+    rewardInbox: [...rankedRewardInbox.entries()].map(([playerId, rewards]) => ({ playerId, rewards }))
+  });
+});
+
+app.post("/admin/ranked/finalize", (req, res) => {
+  if (!requireRankedAdmin(req, res)) return;
+
+  const currentSeason = getRankedSeasonInfo();
+  const requestedSeasonId = String(req.body?.seasonId || "").trim();
+  const forceActive = req.body?.forceActive === true || req.body?.forceActive === "true";
+
+  if (!requestedSeasonId) {
+    const archives = finalizeExpiredRankedSeasons("admin_finalize_expired");
+    rankedScheduleSave();
+    broadcastLeaderboards();
+    return res.json({ ok: true, activeSeason: currentSeason, archives });
+  }
+
+  if (requestedSeasonId === currentSeason.id && !forceActive) {
+    return res.status(409).json({
+      ok: false,
+      error: "Refusing to finalize the active ranked season without forceActive=true.",
+      activeSeason: currentSeason
+    });
+  }
+
+  if (forceActive) {
+    rankedSeasonArchives.delete(requestedSeasonId);
+  }
+
+  const archive = createRankedSeasonArchive(
+    requestedSeasonId,
+    requestedSeasonId === currentSeason.id ? "admin_force_active_snapshot" : "admin_finalize"
+  );
+
+  rankedScheduleSave();
+  broadcastLeaderboards();
+
+  res.json({ ok: true, activeSeason: currentSeason, archive });
+});
+
+app.post("/admin/ranked/reward-paid", (req, res) => {
+  if (!requireRankedAdmin(req, res)) return;
+
+  const playerId = String(req.body?.playerId || "").trim();
+  const rewardId = String(req.body?.rewardId || "").trim();
+  const rewards = rankedRewardInbox.get(playerId) || [];
+  const reward = rewards.find(entry => entry.id === rewardId);
+
+  if (!reward) return res.status(404).json({ ok: false, error: "Reward not found." });
+
+  reward.claimed = true;
+  reward.paidAt = Date.now();
+
+  rankedScheduleSave();
+  res.json({ ok: true, reward });
+});
+
+app.post("/admin/ranked/save", (req, res) => {
+  if (!requireRankedAdmin(req, res)) return;
+  rankedSaveStateNow();
+  res.json({ ok: true, file: RANKED_STATE_FILE });
 });
 
 app.get("/play", (req, res) => {
@@ -284,7 +379,8 @@ function publicPlayer(p) {
     voiceReady: !!p.voiceReady,
     voiceMuted: !!p.voiceMuted,
     voiceMode: p.voiceMode || "ptt",
-    voiceRange: Number(p.voiceRange || 650)
+    voiceRange: Number(p.voiceRange || 650),
+    seasonRewards: rankedRewardInbox.get(p.playerId) || []
   };
 }
 
@@ -308,10 +404,417 @@ function broadcastSpectatorCounts() {
   io.emit("spectatorCounts", getSpectatorCountsPayload());
 }
 
+function getRankedSeasonInfo(time = Date.now()) {
+  const nowMs = Number(time || Date.now());
+  const seasonOneStart = Date.UTC(2026, 0, 1);
+  const seasonTwoStart = Date.UTC(2027, 0, 1);
+
+  let index;
+  let startAt;
+  let endAt;
+
+  if (nowMs < seasonTwoStart) {
+    index = 1;
+    startAt = seasonOneStart;
+    endAt = seasonTwoStart;
+  } else {
+    const d = new Date(nowMs);
+    const year = d.getUTCFullYear();
+    const half = d.getUTCMonth() < 6 ? 0 : 1;
+    index = 2 + (year - 2027) * 2 + half;
+    startAt = Date.UTC(year, half === 0 ? 0 : 6, 1);
+    endAt = half === 0 ? Date.UTC(year, 6, 1) : Date.UTC(year + 1, 0, 1);
+  }
+
+  const label = `SEASON ${String(index).padStart(2, "0")}`;
+
+  return {
+    index,
+    id: `ranked_${String(index).padStart(2, "0")}`,
+    label,
+    startAt,
+    endAt,
+    updatedAt: Date.now()
+  };
+}
+
+function defaultServerRankedBucket() {
+  const season = getRankedSeasonInfo();
+
+  return {
+    seasonId: season.id,
+    seasonName: season.label,
+    rating: 1000,
+    seasonalRating: 1000,
+    wins: 0,
+    losses: 0,
+    kills: 0,
+    deaths: 0,
+    revives: 0,
+    matches: 0,
+    bestPlacement: null,
+    updatedAt: Date.now()
+  };
+}
+
+function applyRankedProfileToEntry(entry, ranked = {}) {
+  if (!entry.ranked || typeof entry.ranked !== "object") {
+    entry.ranked = {
+      solo: defaultServerRankedBucket(),
+      duo: defaultServerRankedBucket()
+    };
+  }
+
+  for (const mode of ["solo", "duo"]) {
+    const incoming = ranked?.[mode] || {};
+    const current = entry.ranked[mode] || defaultServerRankedBucket();
+
+    entry.ranked[mode] = {
+      ...current,
+      ...incoming,
+      rating: Math.max(safeStatInt(current.rating, 1000, 999999), safeStatInt(incoming.rating, 1000, 999999)),
+      seasonalRating: Math.max(safeStatInt(current.seasonalRating, 1000, 999999), safeStatInt(incoming.seasonalRating, 1000, 999999)),
+      wins: Math.max(safeStatInt(current.wins), safeStatInt(incoming.wins)),
+      losses: Math.max(safeStatInt(current.losses), safeStatInt(incoming.losses)),
+      kills: Math.max(safeStatInt(current.kills), safeStatInt(incoming.kills)),
+      deaths: Math.max(safeStatInt(current.deaths), safeStatInt(incoming.deaths)),
+      revives: Math.max(safeStatInt(current.revives), safeStatInt(incoming.revives)),
+      matches: Math.max(safeStatInt(current.matches), safeStatInt(incoming.matches)),
+      updatedAt: Date.now()
+    };
+  }
+
+  entry.rankedPoints = Math.max(entry.ranked.solo.rating || 1000, entry.ranked.duo.rating || 1000, safeStatInt(entry.rankedPoints, 1000, 999999));
+}
+
+function normalizeRankedReport(data = {}) {
+  if (!data || !data.active) return null;
+  const mode = data.mode === "duo" ? "duo" : "solo";
+  const season = getRankedSeasonInfo();
+
+  return {
+    active: true,
+    mode,
+    seasonId: String(data.seasonId || season.id).slice(0, 32),
+    seasonName: String(data.seasonName || season.label).slice(0, 32),
+    rating: safeStatInt(data.rating, 1000, 999999),
+    seasonalRating: safeStatInt(data.seasonalRating ?? data.rating, 1000, 999999),
+    delta: Math.max(-999, Math.min(999, Math.round(Number(data.delta || 0)))),
+    wins: safeStatInt(data.wins, data.won ? 1 : 0, 1),
+    losses: safeStatInt(data.losses, data.won ? 0 : 1, 1),
+    kills: safeStatInt(data.kills, 0, 100),
+    deaths: safeStatInt(data.deaths, data.won ? 0 : 1, 1),
+    revives: safeStatInt(data.revives, 0, 25),
+    placement: safeStatInt(data.placement, 0, 100),
+    updatedAt: Date.now()
+  };
+}
+
+function applyRankedReportToEntry(entry, rankedReport) {
+  if (!rankedReport?.active) return;
+
+  if (!entry.ranked || typeof entry.ranked !== "object") {
+    entry.ranked = {
+      solo: defaultServerRankedBucket(),
+      duo: defaultServerRankedBucket()
+    };
+  }
+
+  const bucket = entry.ranked[rankedReport.mode] || defaultServerRankedBucket();
+
+  if (bucket.seasonId && bucket.seasonId !== rankedReport.seasonId) {
+    entry.ranked[rankedReport.mode] = {
+      ...defaultServerRankedBucket(),
+      seasonId: rankedReport.seasonId,
+      seasonName: rankedReport.seasonName
+    };
+  }
+
+  const next = entry.ranked[rankedReport.mode];
+
+  next.seasonId = rankedReport.seasonId;
+  next.seasonName = rankedReport.seasonName;
+  next.rating = Math.max(0, rankedReport.rating);
+  next.seasonalRating = Math.max(0, rankedReport.seasonalRating);
+  next.wins += rankedReport.wins;
+  next.losses += rankedReport.losses;
+  next.kills += rankedReport.kills;
+  next.deaths += rankedReport.deaths;
+  next.revives += rankedReport.revives;
+  next.matches += 1;
+  next.bestPlacement = next.bestPlacement ? Math.min(next.bestPlacement, rankedReport.placement || 999) : rankedReport.placement || null;
+  next.updatedAt = Date.now();
+
+  entry.rankedPoints = Math.max(entry.ranked.solo.rating || 1000, entry.ranked.duo.rating || 1000);
+  entry.rank = entry.rankedPoints >= 2600 ? "MYTHIC" :
+    entry.rankedPoints >= 2200 ? "DIAMOND" :
+    entry.rankedPoints >= 1800 ? "PLATINUM" :
+    entry.rankedPoints >= 1450 ? "GOLD" :
+    entry.rankedPoints >= 1150 ? "SILVER" :
+    "BRONZE";
+}
+
+function publicRankedLeaderboardEntry(entry, mode, index = 0) {
+  const bucket = entry.ranked?.[mode] || defaultServerRankedBucket();
+
+  return {
+    position: index + 1,
+    playerId: entry.playerId,
+    name: entry.name,
+    rank: entry.rank || "SURVIVOR",
+    level: Math.max(1, Math.min(PROFILE_MAX_LEVEL, Number(entry.level || 1))),
+    mode,
+    seasonId: bucket.seasonId,
+    seasonName: bucket.seasonName,
+    rating: safeStatInt(bucket.rating, 1000, 999999),
+    wins: safeStatInt(bucket.wins),
+    losses: safeStatInt(bucket.losses),
+    kills: safeStatInt(bucket.kills),
+    deaths: safeStatInt(bucket.deaths),
+    revives: safeStatInt(bucket.revives),
+    matches: safeStatInt(bucket.matches),
+    bestPlacement: bucket.bestPlacement || null,
+    score: safeStatInt(bucket.rating, 1000, 999999) + safeStatInt(bucket.wins) * 60 + safeStatInt(bucket.kills) * 8 + safeStatInt(bucket.revives) * 5 - safeStatInt(bucket.losses) * 12,
+    updatedAt: bucket.updatedAt || entry.updatedAt || Date.now()
+  };
+}
+
+function sortedRankedLeaderboardRows(mode = "solo") {
+  const season = getRankedSeasonInfo();
+
+  const rows = [...leaderboardProfiles.values()]
+    .map(entry => publicRankedLeaderboardEntry(entry, mode))
+    .filter(row => row.seasonId === season.id && (row.matches > 0 || row.rating > 1000));
+
+  rows.sort((a, b) =>
+    (b.rating - a.rating) ||
+    (b.wins - a.wins) ||
+    (b.kills - a.kills) ||
+    (a.losses - b.losses)
+  );
+
+  return rows.slice(0, 50).map((row, index) => ({ ...row, position: index + 1 }));
+}
+
 function safeStatInt(value, fallback = 0, max = 999999) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(0, Math.min(max, Math.round(n)));
+}
+
+function serializeLeaderboardEntry(entry = {}) {
+  return {
+    ...entry,
+    reportKeys: [...(entry.reportKeys instanceof Set ? entry.reportKeys : new Set())]
+  };
+}
+
+function hydrateLeaderboardEntry(raw = {}) {
+  if (!raw.playerId) return;
+
+  const entry = {
+    ...raw,
+    reportKeys: new Set(Array.isArray(raw.reportKeys) ? raw.reportKeys : [])
+  };
+
+  if (!entry.ranked || typeof entry.ranked !== "object") {
+    entry.ranked = {
+      solo: defaultServerRankedBucket(),
+      duo: defaultServerRankedBucket()
+    };
+  }
+
+  if (!entry.ranked.solo) entry.ranked.solo = defaultServerRankedBucket();
+  if (!entry.ranked.duo) entry.ranked.duo = defaultServerRankedBucket();
+
+  leaderboardProfiles.set(entry.playerId, entry);
+}
+
+function rankedStatePayload() {
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    activeSeason: getRankedSeasonInfo(),
+    profiles: [...leaderboardProfiles.values()].map(serializeLeaderboardEntry),
+    archives: [...rankedSeasonArchives.values()],
+    rewardInbox: [...rankedRewardInbox.entries()].map(([playerId, rewards]) => ({
+      playerId,
+      rewards
+    }))
+  };
+}
+
+function rankedSaveStateNow() {
+  try {
+    fs.mkdirSync(RANKED_STATE_DIR, { recursive: true });
+    const tmp = `${RANKED_STATE_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(rankedStatePayload(), null, 2));
+    fs.renameSync(tmp, RANKED_STATE_FILE);
+  } catch (err) {
+    console.error("[ranked] save failed:", err);
+  }
+}
+
+function rankedScheduleSave() {
+  if (rankedStateSaveTimer) clearTimeout(rankedStateSaveTimer);
+  rankedStateSaveTimer = setTimeout(() => {
+    rankedStateSaveTimer = null;
+    rankedSaveStateNow();
+  }, 1500);
+  rankedStateSaveTimer.unref?.();
+}
+
+function rankedLoadState() {
+  try {
+    if (!fs.existsSync(RANKED_STATE_FILE)) return;
+
+    const data = JSON.parse(fs.readFileSync(RANKED_STATE_FILE, "utf8"));
+
+    leaderboardProfiles.clear();
+    for (const raw of data.profiles || []) hydrateLeaderboardEntry(raw);
+
+    rankedSeasonArchives.clear();
+    for (const archive of data.archives || []) {
+      if (archive?.seasonId) rankedSeasonArchives.set(archive.seasonId, archive);
+    }
+
+    rankedRewardInbox.clear();
+    for (const row of data.rewardInbox || []) {
+      if (row?.playerId) rankedRewardInbox.set(row.playerId, Array.isArray(row.rewards) ? row.rewards : []);
+    }
+
+    console.log(`[ranked] loaded ${leaderboardProfiles.size} profiles and ${rankedSeasonArchives.size} season archives.`);
+  } catch (err) {
+    console.error("[ranked] load failed:", err);
+  }
+}
+
+function sortedRankedLeaderboardRowsForSeason(mode = "solo", seasonId = getRankedSeasonInfo().id) {
+  const rows = [...leaderboardProfiles.values()]
+    .map(entry => publicRankedLeaderboardEntry(entry, mode))
+    .filter(row => row.seasonId === seasonId && (row.matches > 0 || row.rating > 1000));
+
+  rows.sort((a, b) =>
+    (b.rating - a.rating) ||
+    (b.wins - a.wins) ||
+    (b.kills - a.kills) ||
+    (a.losses - b.losses)
+  );
+
+  return rows.slice(0, 50).map((row, index) => ({ ...row, position: index + 1 }));
+}
+
+function rankedRewardForPosition(position = 999, mode = "solo") {
+  if (position === 1) return { gold: 25000, gems: 1200, title: `${mode.toUpperCase()} SEASON CHAMPION` };
+  if (position <= 3) return { gold: 18000, gems: 800, title: `${mode.toUpperCase()} TOP 3` };
+  if (position <= 10) return { gold: 12000, gems: 450, title: `${mode.toUpperCase()} TOP 10` };
+  if (position <= 25) return { gold: 7000, gems: 220, title: `${mode.toUpperCase()} TOP 25` };
+  return { gold: 2500, gems: 75, title: `${mode.toUpperCase()} TOP 50` };
+}
+
+function rankedQueueReward(playerId, reward) {
+  if (!playerId || !reward?.id) return;
+
+  const rewards = rankedRewardInbox.get(playerId) || [];
+  if (rewards.some(existing => existing.id === reward.id)) return;
+
+  rewards.push({
+    ...reward,
+    claimed: false,
+    paidAt: null,
+    createdAt: Date.now()
+  });
+
+  rankedRewardInbox.set(playerId, rewards);
+}
+
+function createRankedSeasonArchive(seasonId, reason = "auto_rollover") {
+  if (!seasonId || rankedSeasonArchives.has(seasonId)) return rankedSeasonArchives.get(seasonId) || null;
+
+  const solo = sortedRankedLeaderboardRowsForSeason("solo", seasonId);
+  const duo = sortedRankedLeaderboardRowsForSeason("duo", seasonId);
+
+  const archive = {
+    seasonId,
+    reason,
+    finalizedAt: Date.now(),
+    rankedSolo: solo,
+    rankedDuo: duo,
+    payouts: []
+  };
+
+  for (const mode of ["solo", "duo"]) {
+    const rows = mode === "solo" ? solo : duo;
+
+    for (const row of rows.slice(0, 50)) {
+      const reward = rankedRewardForPosition(row.position, mode);
+      const payout = {
+        id: `${seasonId}:${mode}:${row.position}:${row.playerId}`,
+        seasonId,
+        mode,
+        position: row.position,
+        playerId: row.playerId,
+        name: row.name,
+        rating: row.rating,
+        ...reward
+      };
+
+      archive.payouts.push(payout);
+      if (row.position <= 50) rankedQueueReward(row.playerId, payout);
+    }
+  }
+
+  rankedSeasonArchives.set(seasonId, archive);
+  return archive;
+}
+
+function finalizeExpiredRankedSeasons(reason = "auto_rollover") {
+  const current = getRankedSeasonInfo();
+  const expiredSeasonIds = new Set();
+
+  for (const entry of leaderboardProfiles.values()) {
+    for (const mode of ["solo", "duo"]) {
+      const bucket = entry.ranked?.[mode];
+      if (bucket?.seasonId && bucket.seasonId !== current.id && safeStatInt(bucket.matches) > 0) {
+        expiredSeasonIds.add(bucket.seasonId);
+      }
+    }
+  }
+
+  if (!expiredSeasonIds.size) return [];
+
+  const archives = [];
+
+  for (const seasonId of expiredSeasonIds) {
+    const archive = createRankedSeasonArchive(seasonId, reason);
+    if (archive) archives.push(archive);
+  }
+
+  for (const entry of leaderboardProfiles.values()) {
+    for (const mode of ["solo", "duo"]) {
+      if (entry.ranked?.[mode]?.seasonId && entry.ranked[mode].seasonId !== current.id) {
+        entry.ranked[mode] = defaultServerRankedBucket();
+      }
+    }
+    entry.rankedPoints = Math.max(entry.ranked?.solo?.rating || 1000, entry.ranked?.duo?.rating || 1000);
+  }
+
+  rankedScheduleSave();
+  broadcastLeaderboards();
+  return archives;
+}
+
+function requireRankedAdmin(req, res) {
+  const provided = String(req.headers["x-admin-key"] || req.query.key || "");
+  if (!RANKED_ADMIN_KEY) {
+    res.status(503).json({ ok: false, error: "RANKED_ADMIN_KEY is not configured." });
+    return false;
+  }
+  if (provided !== RANKED_ADMIN_KEY) {
+    res.status(403).json({ ok: false, error: "Invalid admin key." });
+    return false;
+  }
+  return true;
 }
 
 function getOrCreateLeaderboardEntry(profile = {}) {
@@ -331,6 +834,11 @@ function getOrCreateLeaderboardEntry(profile = {}) {
       deaths: 0,
       losses: 0,
       revives: 0,
+      rankedPoints: 1000,
+      ranked: {
+        solo: defaultServerRankedBucket(),
+        duo: defaultServerRankedBucket()
+      },
       color: profile.color || "#38bdf8",
       icon: profile.icon || "DS",
       reportKeys: new Set(),
@@ -356,6 +864,7 @@ function getOrCreateLeaderboardEntry(profile = {}) {
   entry.deaths = Math.max(safeStatInt(entry.deaths), safeStatInt(profile.deaths));
   entry.losses = Math.max(safeStatInt(entry.losses), safeStatInt(profile.losses));
   entry.revives = Math.max(safeStatInt(entry.revives), safeStatInt(profile.revives));
+  applyRankedProfileToEntry(entry, profile.ranked || {});
   entry.updatedAt = Date.now();
 
   return entry;
@@ -405,6 +914,9 @@ function getLeaderboardPayload() {
     kills: sortedLeaderboardRows("kills"),
     wins: sortedLeaderboardRows("wins"),
     overall: sortedLeaderboardRows("overall"),
+    rankedSolo: sortedRankedLeaderboardRows("solo"),
+    rankedDuo: sortedRankedLeaderboardRows("duo"),
+    rankedSeason: getRankedSeasonInfo(),
     updatedAt: Date.now()
   };
 }
@@ -440,7 +952,14 @@ function applyLeaderboardMatchReport(socketId, data = {}) {
   entry.wins += stats.wins == null ? (won ? 1 : 0) : safeStatInt(stats.wins, 0, 1);
   entry.losses += stats.losses == null ? (won ? 0 : 1) : safeStatInt(stats.losses, 0, 1);
   entry.revives += safeStatInt(stats.revives, 0, 25);
+
+  const rankedReport = normalizeRankedReport(data.ranked);
+  if (rankedReport) {
+    applyRankedReportToEntry(entry, rankedReport);
+  }
+
   entry.updatedAt = Date.now();
+  rankedScheduleSave();
 
   p.rank = entry.rank;
   p.level = entry.level;
@@ -709,6 +1228,7 @@ function createMatchFromParty(party, mode = "duo") {
     worldAuthoritySocketId: party.leaderId || party.members[0] || null,
     worldSnapshot: null,
     lastWorldSnapshotAt: 0,
+    ranked: !!party.rankedIntent,
     players: new Map()
   };
 
@@ -770,6 +1290,7 @@ function createMatchFromParty(party, mode = "duo") {
       serverNow: now,
       deployAt: match.deployAt,
       worldAuthoritySocketId: match.worldAuthoritySocketId,
+      ranked: !!match.ranked,
       teammates
     });
   }
@@ -854,6 +1375,24 @@ function checkMatchWinner(match) {
     broadcastOnlineList();
   }
 }
+
+rankedLoadState();
+finalizeExpiredRankedSeasons("server_startup");
+
+const rankedSeasonTimer = setInterval(() => {
+  finalizeExpiredRankedSeasons("scheduled_check");
+}, 60 * 60 * 1000);
+rankedSeasonTimer.unref?.();
+
+process.on("SIGINT", () => {
+  rankedSaveStateNow();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  rankedSaveStateNow();
+  process.exit(0);
+});
 
 io.on("connection", socket => {
   console.log("[socket] connected:", socket.id);
@@ -1035,7 +1574,7 @@ io.on("connection", socket => {
     if (!result.ok) socket.emit("partyError", result.error || "Could not kick party member.");
   });
 
-  function startPartyReadyCheck(mode = "duo") {
+  function startPartyReadyCheck(mode = "duo", options = {}) {
     const cleanMode = mode === "team" ? "team" : "duo";
 
     const p = getPlayer(socket.id);
@@ -1062,6 +1601,7 @@ io.on("connection", socket => {
 
     party.status = "readying";
     party.modeIntent = cleanMode;
+    party.rankedIntent = cleanMode === "duo" && !!options?.ranked;
     party.teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
 
     for (const id of party.members) {
@@ -1072,7 +1612,7 @@ io.on("connection", socket => {
   }
 
   socket.on("partyStartModeReady", data => {
-    startPartyReadyCheck(data?.mode || "duo");
+    startPartyReadyCheck(data?.mode || "duo", data || {});
   });
 
   socket.on("partyStartDuoReady", () => {
