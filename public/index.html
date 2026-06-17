@@ -4,7 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#03030c">
-    <title>Duelio - Play Now</title>
+
+    <title>Duelio - Free Online TCG Battle Royale Game</title>
+    <meta name="description" content="Play Duelio, a free browser-based TCG battle royale game with cards, creatures, loot, solos, duos, squads, survival strategy, and fast online matches.">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://duelio.lol/">
+
+    <meta property="og:site_name" content="Duelio">
+    <meta property="og:title" content="Duelio - Free Online TCG Battle Royale Game">
+    <meta property="og:description" content="Battle with cards, creatures, loot, solos, duos, squads, and survival strategy in Duelio, a free browser-based TCG battle royale game.">
+    <meta property="og:url" content="https://duelio.lol/">
+    <meta property="og:type" content="website">
+
+    <meta property="og:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+    <meta property="og:image:secure_url" content="https://duelio.lol/assets/DuelioThumbnail.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:alt" content="Duelio - Free Online TCG Battle Royale Game">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Duelio - Free Online TCG Battle Royale Game">
+    <meta name="twitter:description" content="Play Duelio, a free browser-based TCG battle royale game with cards, creatures, loot, solos, duos, and squads.">
+    <meta name="twitter:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+    <meta name="twitter:image:alt" content="Duelio - Free Online TCG Battle Royale Game">
+
+    <link rel="icon" type="image/png" href="/assets/DuelioThumbnail.png">
+    <link rel="apple-touch-icon" href="/assets/DuelioThumbnail.png">
 
     <style>
         :root {
@@ -466,6 +490,118 @@
             50% { transform: translateY(-7px); }
         }
 
+        .seo-info-panel {
+            position: relative;
+            z-index: 4;
+            width: min(1100px, calc(100vw - 28px));
+            margin: 0 auto 28px;
+            padding: 1px;
+            border-radius: 24px;
+            background:
+                linear-gradient(135deg, rgba(103, 232, 249, 0.42), rgba(250, 204, 21, 0.28), rgba(217, 70, 239, 0.34));
+            box-shadow: 0 0 34px rgba(14, 165, 233, 0.16), 0 24px 80px rgba(0, 0, 0, 0.34);
+        }
+
+        .seo-info-inner {
+            border-radius: 23px;
+            padding: clamp(20px, 3vw, 34px);
+            background:
+                radial-gradient(circle at 16% 12%, rgba(14, 165, 233, 0.16), transparent 34%),
+                radial-gradient(circle at 88% 20%, rgba(250, 204, 21, 0.10), transparent 34%),
+                linear-gradient(135deg, rgba(2, 6, 23, 0.94), rgba(15, 23, 42, 0.82));
+            color: #dbeafe;
+            text-align: center;
+        }
+
+        .seo-kicker {
+            margin: 0 0 8px;
+            color: #67e8f9;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+
+        .seo-info-inner h1 {
+            margin: 0;
+            color: #f8fafc;
+            font-size: clamp(26px, 4vw, 46px);
+            line-height: 1.05;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .seo-info-inner > p {
+            width: min(820px, 100%);
+            margin: 16px auto 0;
+            color: #cbd5e1;
+            font-size: clamp(15px, 1.6vw, 18px);
+            line-height: 1.65;
+        }
+
+        .seo-feature-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 22px;
+            text-align: left;
+        }
+
+        .seo-feature-grid article {
+            border: 1px solid rgba(103, 232, 249, 0.22);
+            border-radius: 18px;
+            padding: 16px;
+            background: rgba(2, 6, 23, 0.46);
+        }
+
+        .seo-feature-grid h2 {
+            margin: 0 0 8px;
+            color: #facc15;
+            font-size: 15px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .seo-feature-grid p {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .seo-play-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 22px;
+            padding: 12px 22px;
+            border-radius: 999px;
+            border: 1px solid rgba(250, 204, 21, 0.68);
+            background: rgba(113, 63, 18, 0.28);
+            color: #fde68a;
+            text-decoration: none;
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            box-shadow: 0 0 18px rgba(250, 204, 21, 0.16);
+        }
+
+        .seo-play-link:hover {
+            border-color: #facc15;
+            background: rgba(180, 83, 9, 0.34);
+        }
+
+        @media (max-width: 820px) {
+            .seo-feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .seo-info-panel {
+                margin-top: 14px;
+            }
+        }
+
         .site-loader {
             position: fixed;
             inset: 0;
@@ -759,6 +895,22 @@
                         </span>
                     </a>
                 </div>
+            </div>
+                        <p>Build your Card collection, Earn rewards, & Battle in 100 Player matches!</p>
+                    </article>
+
+                    <article>
+                        <h2>Survive the Arena</h2>
+                        <p>Loot crates, fight enemies, avoid the storm, and use strategy to survive each match.</p>
+                    </article>
+
+                    <article>
+                        <h2>Play Online</h2>
+                        <p>Queue for solo, duo, and squad-style matches.</p>
+                    </article>
+                </div>
+
+                <a class="seo-play-link" href="#game-frame-wrap" aria-label="Play Duelio now">Play Duelio Now</a>
             </div>
         </section>
     </main>
