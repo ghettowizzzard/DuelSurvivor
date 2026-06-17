@@ -12,14 +12,51 @@ app.use(express.json());
 
 const publicDir = path.join(__dirname, "public");
 
+const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://duelio.lol/</loc>
+    <lastmod>2026-06-17</lastmod>
+  </url>
+  <url>
+    <loc>https://duelio.lol/play</loc>
+    <lastmod>2026-06-17</lastmod>
+  </url>
+  <url>
+    <loc>https://duelio.lol/play.html</loc>
+    <lastmod>2026-06-17</lastmod>
+  </url>
+</urlset>`;
+
 app.get("/robots.txt", (req, res) => {
-  res.type("text/plain");
-  res.sendFile(path.join(publicDir, "robots.txt"));
+  res.status(200);
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send([
+    "User-agent: *",
+    "Allow: /",
+    "",
+    "Sitemap: https://duelio.lol/sitemap.xml",
+    "Sitemap: https://duelio.lol/sitemap-index.xml"
+  ].join("\n"));
 });
 
-app.get("/sitemap.xml", (req, res) => {
-  res.type("application/xml");
-  res.sendFile(path.join(publicDir, "sitemap.xml"));
+app.get(["/sitemap.xml", "/sitemap-index.xml"], (req, res) => {
+  res.status(200);
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send(SITEMAP_XML);
+});
+
+app.get("/sitemap.txt", (req, res) => {
+  res.status(200);
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "public, max-age=300");
+  res.send([
+    "https://duelio.lol/",
+    "https://duelio.lol/play",
+    "https://duelio.lol/play.html"
+  ].join("\n"));
 });
 
 app.use(express.static(publicDir));
