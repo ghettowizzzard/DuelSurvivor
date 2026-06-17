@@ -5,7 +5,22 @@ const path = require("path");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 
-const app = express();
+app.set("trust proxy", true);
+
+app.use((req, res, next) => {
+  const host = String(req.headers.host || "").toLowerCase();
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || req.protocol || "").toLowerCase();
+
+  const isDuelioDomain = host === "duelio.lol" || host === "www.duelio.lol";
+  const needsCanonicalHost = host === "www.duelio.lol";
+  const needsHttps = isDuelioDomain && forwardedProto && forwardedProto !== "https";
+
+  if (isDuelioDomain && (needsCanonicalHost || needsHttps)) {
+    return res.redirect(301, `https://duelio.lol${req.originalUrl}`);
+  }
+
+  next();
+});
 
 app.use(cors());
 app.use(express.json());
