@@ -694,6 +694,7 @@
             --ds-vh: 1vh;
             --ds-vw: 1vw;
             --ds-ui-scale: 1;
+            --ds-safe-bottom: env(safe-area-inset-bottom);
         }
 
         html,
@@ -701,15 +702,60 @@
             width: calc(var(--ds-vw) * 100);
             height: calc(var(--ds-vh) * 100);
             min-height: calc(var(--ds-vh) * 100);
+            max-height: calc(var(--ds-vh) * 100);
             overflow: hidden;
             overscroll-behavior: none;
         }
 
         #main-menu-ui,
         #game-layer {
+            width: calc(var(--ds-vw) * 100);
             height: calc(var(--ds-vh) * 100);
             min-height: calc(var(--ds-vh) * 100);
             max-height: calc(var(--ds-vh) * 100);
+            overflow: hidden;
+        }
+
+        #main-menu-ui {
+            display: grid !important;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+        }
+
+        #main-menu-ui > header,
+        #main-menu-ui > footer {
+            min-height: 0;
+            flex: 0 0 auto;
+        }
+
+        #main-menu-ui > main {
+            min-height: 0;
+            height: 100%;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            align-self: center;
+            overflow: visible;
+        }
+
+        .main-menu-footer {
+            flex: 0 0 auto;
+            min-height: 34px;
+        }
+
+        #game-layer:not(.hidden) {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .game-canvas-shell {
+            flex: 1 1 auto;
+            min-height: 0;
+            height: auto !important;
+            overflow: hidden;
+        }
+
+        #combat-card-bar {
+            bottom: max(10px, var(--ds-safe-bottom));
+            max-width: calc((var(--ds-vw) * 100) - 14px);
         }
 
         .main-menu-online-count {
@@ -1249,9 +1295,10 @@
             }
 
             #combat-card-bar {
+                bottom: max(8px, var(--ds-safe-bottom));
                 transform: translateX(-50%) scale(var(--ds-ui-scale));
                 transform-origin: bottom center;
-                max-width: calc(100vw / var(--ds-ui-scale) - 12px);
+                max-width: calc((var(--ds-vw) * 100) - 12px);
                 overflow-x: auto;
             }
 
@@ -1339,6 +1386,35 @@
 
             .main-feature-card {
                 max-height: calc((var(--ds-vh) * 100) - 150px);
+            }
+
+            #main-menu-ui > main {
+                min-height: 0;
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+            }
+
+            .main-menu-footer {
+                display: flex !important;
+                flex: 0 0 auto;
+                min-height: 30px;
+                padding: 6px 10px !important;
+                gap: 8px !important;
+                font-size: 10px !important;
+            }
+
+            .main-menu-footer > div {
+                min-width: 0;
+                gap: 8px !important;
+                flex-wrap: wrap;
+            }
+
+            .main-menu-footer a {
+                display: none;
+            }
+
+            #lobby-ticker {
+                max-width: 220px;
             }
         }
 
@@ -1435,6 +1511,15 @@
             }
 
             #main-menu-ui footer {
+                display: flex !important;
+                min-height: 28px;
+                padding: 5px 8px !important;
+                gap: 6px !important;
+                font-size: 9px !important;
+            }
+
+            #main-menu-ui footer a,
+            #main-menu-ui footer > div:first-child span {
                 display: none !important;
             }
         }
@@ -1937,7 +2022,7 @@
         </header>
 
         <!-- Main Live Canvas playing screen -->
-        <div class="relative w-full h-full flex-grow z-10">
+        <div class="game-canvas-shell relative w-full flex-1 min-h-0 z-10">
             <canvas id="game-canvas" class="absolute inset-0 w-full h-full block"></canvas>
 
             <div id="touch-control-layer" class="touch-control-layer hidden">
@@ -41087,9 +41172,29 @@ function resizeMinimapCanvas() {
         // CAPTURE ALL RESIZES
         function getDsViewportSize() {
             const viewport = window.visualViewport;
+            const doc = document.documentElement;
+            const body = document.body;
+
+            const widthCandidates = [
+                doc?.clientWidth,
+                body?.clientWidth,
+                window.innerWidth,
+                viewport?.width
+            ].filter(value => Number.isFinite(value) && value > 0);
+
+            const heightCandidates = [
+                doc?.clientHeight,
+                body?.clientHeight,
+                window.innerHeight,
+                viewport?.height
+            ].filter(value => Number.isFinite(value) && value > 0);
+
+            const width = Math.min(...widthCandidates);
+            const height = Math.min(...heightCandidates);
+
             return {
-                width: Math.max(320, Math.round(viewport?.width || document.documentElement.clientWidth || window.innerWidth || 320)),
-                height: Math.max(240, Math.round(viewport?.height || document.documentElement.clientHeight || window.innerHeight || 240))
+                width: Math.max(320, Math.round(width || 320)),
+                height: Math.max(240, Math.round(height || 240))
             };
         }
 
