@@ -2,16 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#03030c">
     <title>Duelio - Play Now</title>
 
     <style>
         :root {
             --site-vh: 1vh;
+            --site-vw: 1vw;
             --site-pad: clamp(10px, 2vw, 18px);
             --frame-radius: 18px;
             --frame-border: rgba(56, 189, 248, 0.45);
+            --site-safe-top: env(safe-area-inset-top);
+            --site-safe-right: env(safe-area-inset-right);
+            --site-safe-bottom: env(safe-area-inset-bottom);
+            --site-safe-left: env(safe-area-inset-left);
         }
 
         * {
@@ -68,7 +73,7 @@
         }
 
         .site-game-shell {
-            width: min(calc(100vw - (var(--site-pad) * 2)), 1600px);
+            width: min(calc((var(--site-vw) * 100) - (var(--site-pad) * 2)), 1600px);
             margin: 0 auto;
             display: grid;
             gap: 8px;
@@ -78,7 +83,7 @@
             position: relative;
             width: 100%;
             height: min(calc((var(--site-vh) * 100) - (var(--site-pad) * 2) - 42px), 900px);
-            min-height: 560px;
+            min-height: min(560px, calc((var(--site-vh) * 100) - 42px));
             border: 2px solid var(--frame-border);
             border-radius: var(--frame-radius);
             overflow: hidden;
@@ -213,6 +218,13 @@
 
         .site-banner-link {
             line-height: 0;
+            transform: translateY(0);
+            will-change: auto;
+        }
+
+        .site-banner-panel.banner-visible .site-banner-link {
+            animation: siteBannerFloat 4.8s ease-in-out infinite;
+            will-change: transform;
         }
 
         .site-banner-img {
@@ -222,6 +234,11 @@
             object-position: center;
             background: transparent;
             filter: drop-shadow(0 16px 34px rgba(0,0,0,0.42)) drop-shadow(0 0 18px rgba(14,165,233,0.16));
+        }
+
+        @keyframes siteBannerFloat {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-7px); }
         }
 
         .site-loader {
@@ -321,38 +338,63 @@
                 --frame-radius: 0px;
             }
 
+            html,
+            body {
+                width: calc(var(--site-vw) * 100);
+                min-height: calc(var(--site-vh) * 100);
+                overflow-x: hidden;
+            }
+
             .site-shell {
+                min-height: calc(var(--site-vh) * 100);
+                padding: 0;
                 gap: 0;
             }
 
             .site-game-shell {
-                width: 100vw;
-                gap: 6px;
+                width: calc(var(--site-vw) * 100);
+                gap: 0;
             }
 
             .game-frame-wrap {
-                width: 100vw;
-                height: calc((var(--site-vh) * 100) - 40px);
-                min-height: calc((var(--site-vh) * 100) - 40px);
+                width: calc(var(--site-vw) * 100);
+                height: calc(var(--site-vh) * 100);
+                min-height: calc(var(--site-vh) * 100);
                 border-radius: 0;
                 border: 0;
                 box-shadow: none;
             }
 
             .site-controls {
-                justify-content: center;
-                min-height: 34px;
-                padding-bottom: 6px;
+                position: fixed;
+                top: 50%;
+                right: 0;
+                z-index: 40;
+                min-height: 0;
+                padding: 0;
+                justify-content: flex-end;
+                pointer-events: auto;
+                transform: translate(78%, -50%);
+                opacity: 0.22;
+                transition: transform 0.22s ease, opacity 0.22s ease;
+            }
+
+            .site-controls:hover,
+            .site-controls:focus-within,
+            .site-controls:active {
+                transform: translate(0, -50%);
+                opacity: 1;
             }
 
             .site-control-btn {
-                padding: 8px 10px;
-                font-size: 10px;
-                background: rgba(2, 6, 23, 0.74);
+                border-radius: 999px 0 0 999px;
+                padding: 10px 11px;
+                font-size: 9px;
+                background: rgba(2, 6, 23, 0.66);
             }
 
             .site-banner-panel {
-                width: 100vw;
+                width: calc(var(--site-vw) * 100);
                 margin: 6px 0 0;
                 padding: 6px 10px 12px;
                 border-radius: 0;
@@ -373,6 +415,11 @@
 
             .site-loader {
                 transition: none;
+            }
+
+            .site-banner-panel.banner-visible .site-banner-link {
+                animation: none;
+                transform: none;
             }
         }
     </style>
@@ -417,8 +464,19 @@
             "./assets/BannerV2.png"
         ];
 
+        function getSiteViewportSize() {
+            const viewport = window.visualViewport;
+            return {
+                width: Math.max(320, Math.round(viewport?.width || document.documentElement.clientWidth || window.innerWidth || 320)),
+                height: Math.max(240, Math.round(viewport?.height || document.documentElement.clientHeight || window.innerHeight || 240))
+            };
+        }
+
         function setSiteViewportHeight() {
-            document.documentElement.style.setProperty("--site-vh", `${window.innerHeight * 0.01}px`);
+            const size = getSiteViewportSize();
+            document.documentElement.style.setProperty("--site-vw", `${size.width * 0.01}px`);
+            document.documentElement.style.setProperty("--site-vh", `${size.height * 0.01}px`);
+            document.documentElement.dataset.orientation = size.width > size.height ? "landscape" : "portrait";
         }
 
         function pickSiteBanner() {
@@ -466,12 +524,46 @@
             });
         }
 
+        function setupBannerVisibilityFloat() {
+            const panel = document.getElementById("site-banner-panel");
+            if (!panel) return;
+
+            if (!("IntersectionObserver" in window)) {
+                panel.classList.add("banner-visible");
+                return;
+            }
+
+            const observer = new IntersectionObserver(entries => {
+                const entry = entries[0];
+                panel.classList.toggle("banner-visible", !!entry?.isIntersecting && entry.intersectionRatio >= 0.28);
+            }, {
+                threshold: [0, 0.28, 0.55],
+                rootMargin: "-8% 0px -8% 0px"
+            });
+
+            observer.observe(panel);
+        }
+
         setSiteViewportHeight();
-        window.addEventListener("resize", setSiteViewportHeight, { passive: true });
-        window.addEventListener("orientationchange", () => setTimeout(setSiteViewportHeight, 180), { passive: true });
+
+        const refreshSiteViewportSoon = () => {
+            setSiteViewportHeight();
+            requestAnimationFrame(setSiteViewportHeight);
+            setTimeout(setSiteViewportHeight, 180);
+            setTimeout(setSiteViewportHeight, 420);
+        };
+
+        window.addEventListener("resize", refreshSiteViewportSoon, { passive: true });
+        window.addEventListener("orientationchange", refreshSiteViewportSoon, { passive: true });
+
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener("resize", refreshSiteViewportSoon, { passive: true });
+            window.visualViewport.addEventListener("scroll", refreshSiteViewportSoon, { passive: true });
+        }
 
         pickSiteBanner();
         setupFullscreenButton();
+        setupBannerVisibilityFloat();
 
         const frame = document.getElementById("duelio-frame");
         const loaderStart = performance.now();
