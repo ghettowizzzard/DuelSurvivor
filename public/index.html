@@ -2,50 +2,103 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#03030c">
     <title>Duelio - Play Now</title>
 
     <style>
+        :root {
+            --site-vh: 1vh;
+            --site-pad: clamp(10px, 2vw, 18px);
+            --frame-radius: 18px;
+            --frame-border: rgba(56, 189, 248, 0.45);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         html, body {
             margin: 0;
             width: 100%;
-            height: 100%;
+            min-height: 100%;
             background: #03030c;
-            overflow: hidden;
+            color: #e0f2fe;
+            overflow-x: hidden;
+            overflow-y: auto;
             font-family: Arial, sans-serif;
+            scroll-behavior: smooth;
         }
 
         body {
             background-image:
-                radial-gradient(circle at center, rgba(14, 165, 233, 0.14), rgba(0, 0, 0, 0.92)),
+                radial-gradient(circle at 20% 18%, rgba(14, 165, 233, 0.20), transparent 32%),
+                radial-gradient(circle at 84% 22%, rgba(217, 70, 239, 0.15), transparent 34%),
+                radial-gradient(circle at 50% 92%, rgba(250, 204, 21, 0.09), transparent 34%),
+                radial-gradient(circle at center, rgba(14, 165, 233, 0.10), rgba(0, 0, 0, 0.94)),
                 url("./assets/seamless-bg.png");
-            background-repeat: no-repeat, repeat;
-            background-size: cover, 512px 512px;
-            background-position: center, center;
+            background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat;
+            background-size: cover, cover, cover, cover, 512px 512px;
+            background-position: center, center, center, center, center;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background:
+                linear-gradient(rgba(103, 232, 249, 0.10) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(103, 232, 249, 0.08) 1px, transparent 1px);
+            background-size: 64px 64px;
+            mask-image: radial-gradient(circle at 50% 36%, black 0%, transparent 72%);
+            opacity: 0.16;
         }
 
         .site-shell {
-            width: 100vw;
-            height: 100vh;
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            min-height: calc(var(--site-vh) * 100);
             display: grid;
-            place-items: center;
-            padding: 18px;
-            box-sizing: border-box;
+            grid-template-rows: minmax(0, auto) auto;
+            gap: 16px;
+            padding: var(--site-pad);
         }
 
         .game-frame-wrap {
-            width: min(100vw - 36px, 1600px);
-            height: min(100vh - 36px, 900px);
-            border: 2px solid rgba(56, 189, 248, 0.45);
-            border-radius: 18px;
+            position: relative;
+            width: min(calc(100vw - (var(--site-pad) * 2)), 1600px);
+            height: min(calc((var(--site-vh) * 100) - (var(--site-pad) * 2)), 900px);
+            min-height: 560px;
+            margin: 0 auto;
+            border: 2px solid var(--frame-border);
+            border-radius: var(--frame-radius);
             overflow: hidden;
             box-shadow:
-                0 0 40px rgba(14, 165, 233, 0.28),
-                0 0 120px rgba(0, 0, 0, 0.75);
+                0 0 44px rgba(14, 165, 233, 0.30),
+                0 0 120px rgba(0, 0, 0, 0.75),
+                inset 0 0 24px rgba(255,255,255,0.035);
             background: #020617;
+            touch-action: none;
+        }
+
+        .game-frame-wrap::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            border-radius: inherit;
+            background:
+                linear-gradient(135deg, rgba(255,255,255,0.08), transparent 26%, transparent 74%, rgba(103,232,249,0.07)),
+                radial-gradient(circle at 72% 12%, rgba(250,204,21,0.09), transparent 28%);
         }
 
         iframe {
+            position: relative;
+            z-index: 1;
             width: 100%;
             height: 100%;
             border: 0;
@@ -53,30 +106,343 @@
             background: #03030c;
         }
 
+        .site-controls {
+            position: absolute;
+            z-index: 6;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        .site-control-btn {
+            pointer-events: auto;
+            border: 1px solid rgba(103, 232, 249, 0.46);
+            background: rgba(2, 6, 23, 0.70);
+            color: #e0f2fe;
+            border-radius: 999px;
+            padding: 9px 12px;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 0 22px rgba(14, 165, 233, 0.18);
+            transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+        }
+
+        .site-control-btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(250, 204, 21, 0.72);
+            background: rgba(15, 23, 42, 0.86);
+        }
+
+        .site-control-btn:active {
+            transform: translateY(1px) scale(0.97);
+        }
+
+        .site-banner-panel {
+            width: min(calc(100vw - (var(--site-pad) * 2)), 1600px);
+            margin: 0 auto 18px;
+            border: 1px solid rgba(56, 189, 248, 0.24);
+            border-radius: 18px;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 12% 10%, rgba(14, 165, 233, 0.16), transparent 34%),
+                linear-gradient(135deg, rgba(2, 6, 23, 0.86), rgba(15, 23, 42, 0.58));
+            box-shadow: 0 16px 44px rgba(0,0,0,0.38), inset 0 0 24px rgba(255,255,255,0.025);
+        }
+
+        .site-banner-link,
+        .site-banner-img {
+            display: block;
+            width: 100%;
+        }
+
+        .site-banner-img {
+            max-height: 210px;
+            object-fit: cover;
+            background: #020617;
+        }
+
+        .site-banner-caption {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 14px;
+            color: #94a3b8;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .site-loader {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            display: grid;
+            place-items: center;
+            background:
+                radial-gradient(circle at 50% 30%, rgba(14, 165, 233, 0.22), transparent 32%),
+                radial-gradient(circle at 64% 70%, rgba(217, 70, 239, 0.16), transparent 34%),
+                #03030c;
+            transition: opacity 0.42s ease, visibility 0.42s ease;
+        }
+
+        .site-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .loader-card {
+            width: min(420px, calc(100vw - 36px));
+            border: 1px solid rgba(103, 232, 249, 0.38);
+            border-radius: 24px;
+            padding: 26px;
+            text-align: center;
+            background:
+                radial-gradient(circle at 16% 0%, rgba(103, 232, 249, 0.16), transparent 40%),
+                linear-gradient(135deg, rgba(2, 6, 23, 0.92), rgba(15, 23, 42, 0.72));
+            box-shadow: 0 0 46px rgba(14, 165, 233, 0.24), 0 26px 90px rgba(0,0,0,0.55);
+        }
+
+        .loader-mark {
+            width: 58px;
+            height: 58px;
+            margin: 0 auto 14px;
+            border-radius: 18px;
+            display: grid;
+            place-items: center;
+            transform: rotate(45deg);
+            border: 1px solid rgba(103, 232, 249, 0.55);
+            background: linear-gradient(135deg, #0ea5e9, #06b6d4, #facc15);
+            box-shadow: 0 0 28px rgba(34, 211, 238, 0.34);
+        }
+
+        .loader-mark span {
+            transform: rotate(-45deg);
+            color: white;
+            font-weight: 900;
+            font-size: 20px;
+        }
+
+        .loader-title {
+            color: #f8fafc;
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+
+        .loader-subtitle {
+            margin-top: 8px;
+            color: #94a3b8;
+            font-size: 12px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .loader-bar {
+            position: relative;
+            height: 8px;
+            margin-top: 20px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(15, 23, 42, 0.96);
+            border: 1px solid rgba(103, 232, 249, 0.18);
+        }
+
+        .loader-bar::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            transform-origin: left center;
+            animation: loaderFill 1.15s ease-in-out forwards;
+            background: linear-gradient(90deg, #22d3ee, #a78bfa, #facc15);
+        }
+
+        @keyframes loaderFill {
+            from { transform: scaleX(0.05); }
+            to { transform: scaleX(1); }
+        }
+
         @media (max-width: 900px) {
+            :root {
+                --site-pad: 0px;
+                --frame-radius: 0px;
+            }
+
             .site-shell {
-                padding: 0;
+                gap: 0;
             }
 
             .game-frame-wrap {
                 width: 100vw;
-                height: 100vh;
+                height: calc(var(--site-vh) * 100);
+                min-height: calc(var(--site-vh) * 100);
                 border-radius: 0;
                 border: 0;
+                box-shadow: none;
+            }
+
+            .site-controls {
+                top: max(10px, env(safe-area-inset-top));
+                right: max(10px, env(safe-area-inset-right));
+            }
+
+            .site-control-btn {
+                padding: 8px 10px;
+                font-size: 10px;
+                background: rgba(2, 6, 23, 0.74);
+            }
+
+            .site-banner-panel {
+                width: 100vw;
+                margin: 0;
+                border-left: 0;
+                border-right: 0;
+                border-radius: 0;
+            }
+
+            .site-banner-img {
+                max-height: 150px;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 520px) {
+            .site-banner-panel {
+                display: none;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .loader-bar::before {
+                animation: none;
+                transform: scaleX(1);
+            }
+
+            .site-loader {
+                transition: none;
             }
         }
     </style>
 </head>
 <body>
+    <div id="site-loader" class="site-loader" aria-live="polite" aria-label="Loading Duelio">
+        <div class="loader-card">
+            <div class="loader-mark"><span>DS</span></div>
+            <div class="loader-title">Duel.io</div>
+            <div class="loader-subtitle">Preparing survivor portal...</div>
+            <div class="loader-bar"></div>
+        </div>
+    </div>
+
     <main class="site-shell">
-        <div class="game-frame-wrap">
+        <div id="game-frame-wrap" class="game-frame-wrap">
+            <div class="site-controls" aria-label="Game display controls">
+                <button id="fullscreen-btn" class="site-control-btn" type="button">FULLSCREEN</button>
+            </div>
             <iframe
+                id="duelio-frame"
                 src="./play.html"
                 title="Duelio Game"
                 allow="fullscreen; microphone; autoplay; gamepad"
                 allowfullscreen>
             </iframe>
         </div>
+
+        <section id="site-banner-panel" class="site-banner-panel" aria-label="Duelio update banner">
+            <a id="site-banner-link" class="site-banner-link" href="#game-frame-wrap" aria-label="Return to Duelio game">
+                <img id="site-banner-img" class="site-banner-img" alt="Duelio update banner">
+            </a>
+            <div class="site-banner-caption">
+                <span>Latest update banner</span>
+                <span id="site-banner-name">Season 01</span>
+            </div>
+        </section>
     </main>
+
+    <script>
+        const SITE_BANNERS = [
+            "./assets/BannerV1.png",
+            "./assets/BannerV2.png"
+        ];
+
+        function setSiteViewportHeight() {
+            document.documentElement.style.setProperty("--site-vh", `${window.innerHeight * 0.01}px`);
+        }
+
+        function pickSiteBanner() {
+            const panel = document.getElementById("site-banner-panel");
+            const img = document.getElementById("site-banner-img");
+            const name = document.getElementById("site-banner-name");
+            if (!panel || !img || !SITE_BANNERS.length) return;
+
+            const src = SITE_BANNERS[Math.floor(Math.random() * SITE_BANNERS.length)];
+            img.src = src;
+            if (name) name.textContent = src.split("/").pop()?.replace(/\.[^.]+$/, "") || "Duelio";
+
+            img.onerror = () => {
+                panel.style.display = "none";
+            };
+        }
+
+        function hideSiteLoader() {
+            const loader = document.getElementById("site-loader");
+            if (!loader) return;
+            loader.classList.add("hidden");
+            setTimeout(() => loader.remove(), 700);
+        }
+
+        function setupFullscreenButton() {
+            const button = document.getElementById("fullscreen-btn");
+            const frameWrap = document.getElementById("game-frame-wrap");
+            if (!button || !frameWrap) return;
+
+            button.addEventListener("click", async () => {
+                try {
+                    if (!document.fullscreenElement) {
+                        await frameWrap.requestFullscreen();
+                        button.textContent = "EXIT FULLSCREEN";
+                    } else {
+                        await document.exitFullscreen();
+                        button.textContent = "FULLSCREEN";
+                    }
+                } catch (error) {
+                    button.textContent = "FULLSCREEN BLOCKED";
+                    setTimeout(() => { button.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN"; }, 1200);
+                }
+            });
+
+            document.addEventListener("fullscreenchange", () => {
+                button.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN";
+            });
+        }
+
+        setSiteViewportHeight();
+        window.addEventListener("resize", setSiteViewportHeight, { passive: true });
+        window.addEventListener("orientationchange", () => setTimeout(setSiteViewportHeight, 180), { passive: true });
+
+        pickSiteBanner();
+        setupFullscreenButton();
+
+        const frame = document.getElementById("duelio-frame");
+        const loaderStart = performance.now();
+        const minLoaderMs = 850;
+        let loaderDone = false;
+
+        function finishLoaderOnce() {
+            if (loaderDone) return;
+            loaderDone = true;
+            const elapsed = performance.now() - loaderStart;
+            setTimeout(hideSiteLoader, Math.max(0, minLoaderMs - elapsed));
+        }
+
+        if (frame) frame.addEventListener("load", finishLoaderOnce, { once: true });
+        setTimeout(finishLoaderOnce, 2600);
+    </script>
 </body>
 </html>
