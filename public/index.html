@@ -547,6 +547,113 @@
             transform: rotate(208deg);
         }
 
+        /* --- BUY ME A COFFEE SUPPORT FIGHTERS ---
+           Matches the actual in-game top-down character style:
+           solid circular body, black outline, two small forward hands. */
+        .support-character {
+            --fighter-body: #22d3ee;
+            --fighter-hand: #38bdf8;
+            --fighter-outline: #020617;
+            --fighter-glow: rgba(56, 189, 248, 0.72);
+
+            position: absolute;
+            z-index: 4;
+            width: clamp(74px, 7.2vw, 108px);
+            aspect-ratio: 1;
+            pointer-events: none;
+            user-select: none;
+            transform-origin: 50% 50%;
+            filter:
+                drop-shadow(0 0 10px var(--fighter-glow))
+                drop-shadow(0 13px 16px rgba(0,0,0,0.42));
+        }
+
+        .support-character::before {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 64%;
+            aspect-ratio: 1;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 4px solid var(--fighter-outline);
+            background: var(--fighter-body);
+            box-shadow:
+                inset -5px -7px 0 rgba(0,0,0,0.16),
+                inset 4px 4px 0 rgba(255,255,255,0.10),
+                0 0 16px var(--fighter-glow);
+        }
+
+        .support-character::after {
+            content: "";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 64%;
+            aspect-ratio: 1;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.12);
+            box-shadow: inset 0 0 14px rgba(255,255,255,0.06);
+        }
+
+        .support-character .fighter-eye,
+        .support-character .fighter-brow {
+            display: none !important;
+        }
+
+        .fighter-arm,
+        .fighter-fist {
+            position: absolute;
+            z-index: 6;
+            width: 16%;
+            aspect-ratio: 1;
+            height: auto;
+            border-radius: 50%;
+            border: 3px solid var(--fighter-outline);
+            background: var(--fighter-hand);
+            box-shadow:
+                inset -2px -3px 0 rgba(0,0,0,0.18),
+                inset 2px 2px 0 rgba(255,255,255,0.14),
+                0 0 9px var(--fighter-glow);
+        }
+
+        .fighter-arm {
+            left: 67%;
+            top: 28%;
+        }
+
+        .fighter-fist {
+            left: 67%;
+            bottom: 28%;
+        }
+
+        .fighter-fist::before,
+        .fighter-fist::after {
+            display: none !important;
+        }
+
+        .support-character-blue {
+            --fighter-body: #22d3ee;
+            --fighter-hand: #38bdf8;
+            --fighter-glow: rgba(56, 189, 248, 0.72);
+
+            left: clamp(-20px, -1.6vw, -8px);
+            top: clamp(-34px, -2.6vw, -18px);
+            transform: rotate(42deg);
+        }
+
+        .support-character-red {
+            --fighter-body: #ef4444;
+            --fighter-hand: #f59e0b;
+            --fighter-glow: rgba(248, 113, 113, 0.72);
+
+            right: clamp(-20px, -1.6vw, -8px);
+            bottom: clamp(-34px, -2.6vw, -18px);
+            transform: rotate(-138deg);
+        }
+
         @keyframes siteBannerFloat {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-7px); }
@@ -734,30 +841,34 @@
             }
 
             .support-character {
-                width: clamp(62px, 18vw, 86px);
+                width: clamp(56px, 17vw, 78px);
             }
 
             .support-character-blue {
-                left: -12px;
-                top: -28px;
+                left: -7px;
+                top: -24px;
             }
 
             .support-character-red {
-                right: -12px;
-                bottom: -26px;
+                right: -7px;
+                bottom: -24px;
             }
 
+            .fighter-arm,
             .fighter-fist {
                 border-width: 2px;
             }
 
             .support-character::before {
-                border-width: 2px;
+                border-width: 3px;
                 box-shadow:
-                    inset -8px -10px 14px rgba(0,0,0,0.28),
-                    inset 5px 5px 10px rgba(255,255,255,0.18),
-                    0 0 0 4px rgba(2,6,23,0.82),
-                    0 0 18px var(--fighter-glow);
+                    inset -4px -6px 0 rgba(0,0,0,0.16),
+                    inset 3px 3px 0 rgba(255,255,255,0.10),
+                    0 0 12px var(--fighter-glow);
+            }
+
+            .support-character::after {
+                border-width: 1px;
             }
         }
 
