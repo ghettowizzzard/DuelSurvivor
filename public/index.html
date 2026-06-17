@@ -872,6 +872,171 @@
             }
         }
 
+        /* --- FINAL DUEL.IO SUPPORT CHARACTER OVERRIDE ---
+           This forces the website support characters to match the actual game/reference style:
+           large circular body, thick dark outline, two attached smaller hand circles, no face. */
+        .site-support-btn .support-character {
+            --duel-body-top: #67e8f9;
+            --duel-body-mid: #22d3ee;
+            --duel-body-bottom: #0ea5e9;
+            --duel-hand-top: #7dd3fc;
+            --duel-hand-mid: #38bdf8;
+            --duel-hand-bottom: #0284c7;
+            --duel-outline: #061426;
+            --duel-outer-line: rgba(56, 189, 248, 0.42);
+            --duel-glow: rgba(56, 189, 248, 0.48);
+
+            position: absolute !important;
+            z-index: 5 !important;
+            width: clamp(118px, 9vw, 154px) !important;
+            height: auto !important;
+            aspect-ratio: 1 / 1 !important;
+            pointer-events: none !important;
+            user-select: none !important;
+            transform-style: flat !important;
+            filter:
+                drop-shadow(0 0 10px var(--duel-glow))
+                drop-shadow(0 18px 18px rgba(0,0,0,0.42)) !important;
+        }
+
+        .site-support-btn .support-character::before {
+            content: "" !important;
+            position: absolute !important;
+            z-index: 4 !important;
+            left: 6% !important;
+            top: 6% !important;
+            width: 74% !important;
+            height: 74% !important;
+            border-radius: 50% !important;
+            border: clamp(8px, 0.7vw, 11px) solid var(--duel-outline) !important;
+            background:
+                radial-gradient(circle at 34% 24%, rgba(255,255,255,0.30), transparent 18%),
+                linear-gradient(180deg, var(--duel-body-top) 0%, var(--duel-body-mid) 48%, var(--duel-body-bottom) 100%) !important;
+            box-shadow:
+                inset 0 9px 0 rgba(255,255,255,0.13),
+                inset -8px -14px 0 rgba(0,0,0,0.10),
+                0 0 0 2px var(--duel-outer-line),
+                0 0 18px var(--duel-glow) !important;
+            transform: none !important;
+        }
+
+        .site-support-btn .support-character::after {
+            content: "" !important;
+            position: absolute !important;
+            z-index: 6 !important;
+            left: 15% !important;
+            top: 14% !important;
+            width: 56% !important;
+            height: 22% !important;
+            border-radius: 999px 999px 45% 45% !important;
+            border-top: clamp(4px, 0.38vw, 6px) solid rgba(255,255,255,0.48) !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            opacity: 0.88 !important;
+            pointer-events: none !important;
+            transform: rotate(-2deg) !important;
+        }
+
+        .site-support-btn .fighter-eye,
+        .site-support-btn .fighter-brow {
+            display: none !important;
+        }
+
+        .site-support-btn .fighter-arm,
+        .site-support-btn .fighter-fist {
+            position: absolute !important;
+            z-index: 3 !important;
+            width: 32% !important;
+            height: 32% !important;
+            aspect-ratio: 1 / 1 !important;
+            border-radius: 50% !important;
+            border: clamp(7px, 0.58vw, 10px) solid var(--duel-outline) !important;
+            background:
+                radial-gradient(circle at 34% 24%, rgba(255,255,255,0.34), transparent 20%),
+                linear-gradient(180deg, var(--duel-hand-top) 0%, var(--duel-hand-mid) 48%, var(--duel-hand-bottom) 100%) !important;
+            box-shadow:
+                inset 0 6px 0 rgba(255,255,255,0.14),
+                inset -5px -8px 0 rgba(0,0,0,0.11),
+                0 0 0 2px var(--duel-outer-line),
+                0 0 13px var(--duel-glow) !important;
+            transform: none !important;
+        }
+
+        .site-support-btn .fighter-arm::before,
+        .site-support-btn .fighter-arm::after,
+        .site-support-btn .fighter-fist::before,
+        .site-support-btn .fighter-fist::after {
+            display: none !important;
+            content: none !important;
+        }
+
+        .site-support-btn .fighter-arm {
+            left: 64% !important;
+            top: 41% !important;
+        }
+
+        .site-support-btn .fighter-fist {
+            left: 33% !important;
+            top: 66% !important;
+        }
+
+        .site-support-btn .support-character-blue {
+            --duel-body-top: #67e8f9;
+            --duel-body-mid: #22d3ee;
+            --duel-body-bottom: #0ea5e9;
+            --duel-hand-top: #7dd3fc;
+            --duel-hand-mid: #38bdf8;
+            --duel-hand-bottom: #0284c7;
+            --duel-outline: #061426;
+            --duel-outer-line: rgba(56, 189, 248, 0.42);
+            --duel-glow: rgba(56, 189, 248, 0.52);
+
+            left: clamp(-36px, -2.6vw, -14px) !important;
+            top: clamp(-52px, -3.8vw, -30px) !important;
+            transform: rotate(-5deg) !important;
+        }
+
+        .site-support-btn .support-character-red {
+            --duel-body-top: #fb7185;
+            --duel-body-mid: #ef233c;
+            --duel-body-bottom: #dc2626;
+            --duel-hand-top: #fbbf24;
+            --duel-hand-mid: #f59e0b;
+            --duel-hand-bottom: #d97706;
+            --duel-outline: #1a0608;
+            --duel-outer-line: rgba(248, 113, 113, 0.42);
+            --duel-glow: rgba(248, 113, 113, 0.52);
+
+            right: clamp(-36px, -2.6vw, -14px) !important;
+            bottom: clamp(-52px, -3.8vw, -30px) !important;
+            transform: rotate(175deg) !important;
+        }
+
+        @media (max-width: 900px) {
+            .site-support-btn .support-character {
+                width: clamp(86px, 25vw, 112px) !important;
+            }
+
+            .site-support-btn .support-character-blue {
+                left: -24px !important;
+                top: -38px !important;
+            }
+
+            .site-support-btn .support-character-red {
+                right: -24px !important;
+                bottom: -38px !important;
+            }
+
+            .site-support-btn .support-character::before {
+                border-width: 7px !important;
+            }
+
+            .site-support-btn .fighter-arm,
+            .site-support-btn .fighter-fist {
+                border-width: 6px !important;
+            }
+        }
+
         @media (orientation: landscape) and (max-height: 520px) {
             .site-banner-panel {
                 display: none;
