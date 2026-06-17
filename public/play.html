@@ -9254,6 +9254,54 @@ function mpApplySquadSpawnPosition(actor, index = 0, total = mpGetTeamSpawnTotal
             return { dx, dy };
         }
 
+        function resetTransientInputState() {
+            keys.w = false;
+            keys.a = false;
+            keys.s = false;
+            keys.d = false;
+            keys.e = false;
+
+            virtualInput.touchMoveX = 0;
+            virtualInput.touchMoveY = 0;
+            virtualInput.interactDown = false;
+            virtualInput.primaryDown = false;
+            virtualInput.magicDown = false;
+            virtualInput.pingHoldStartedAt = 0;
+            virtualInput.pingHoldCleared = false;
+
+            mpState.reviveTarget = null;
+            mpState.reviveHold = 0;
+        }
+
+        function refocusGameInputFromShell(reason = "shell-focus") {
+            try { window.focus(); } catch (e) {}
+
+            if (gameCanvas) {
+                if (!gameCanvas.hasAttribute("tabindex")) {
+                    gameCanvas.setAttribute("tabindex", "-1");
+                }
+
+                try { gameCanvas.focus({ preventScroll: true }); } catch (e) {}
+            }
+
+            if (typeof scheduleResizeGameCanvas === "function") {
+                scheduleResizeGameCanvas();
+            }
+        }
+
+        window.addEventListener("message", event => {
+            if (event.origin && event.origin !== window.location.origin) return;
+            if (event.data?.type !== "duelio:focusGame") return;
+
+            resetTransientInputState();
+            refocusGameInputFromShell(event.data.reason || "fullscreen");
+        });
+
+        window.addEventListener("blur", resetTransientInputState);
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) resetTransientInputState();
+        });
+
         // Lists of objects, bots, items, storm
 const bots = [];
         const items = [];
