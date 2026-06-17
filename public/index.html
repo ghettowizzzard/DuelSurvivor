@@ -333,33 +333,218 @@
         }
 
         .support-character {
+            --fighter-main: #38bdf8;
+            --fighter-dark: #075985;
+            --fighter-glow: rgba(56, 189, 248, 0.72);
+            --fighter-highlight: rgba(255, 255, 255, 0.42);
             position: absolute;
             z-index: 4;
-            width: clamp(76px, 8vw, 124px);
-            height: auto;
-            object-fit: contain;
+            width: clamp(82px, 8vw, 126px);
+            aspect-ratio: 1;
             pointer-events: none;
             user-select: none;
+            transform-style: preserve-3d;
+            filter:
+                drop-shadow(0 0 3px rgba(255,255,255,0.95))
+                drop-shadow(0 0 14px var(--fighter-glow))
+                drop-shadow(0 16px 18px rgba(0,0,0,0.38));
+        }
+
+        .support-character::before {
+            content: "";
+            position: absolute;
+            inset: 15%;
+            border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.92);
+            background:
+                radial-gradient(circle at 32% 24%, var(--fighter-highlight), transparent 22%),
+                radial-gradient(circle at 68% 76%, rgba(0,0,0,0.30), transparent 34%),
+                linear-gradient(135deg, var(--fighter-main), var(--fighter-dark));
+            box-shadow:
+                inset -10px -14px 18px rgba(0,0,0,0.28),
+                inset 7px 7px 12px rgba(255,255,255,0.20),
+                0 0 0 5px rgba(2,6,23,0.82),
+                0 0 24px var(--fighter-glow);
+        }
+
+        .support-character::after {
+            content: "";
+            position: absolute;
+            inset: 8%;
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.22);
+            box-shadow: inset 0 0 18px rgba(255,255,255,0.08);
+        }
+
+        .fighter-eye {
+            position: absolute;
+            z-index: 3;
+            width: 13%;
+            height: 13%;
+            border-radius: 50%;
+            background: #f8fafc;
+            box-shadow: 0 0 0 2px rgba(2,6,23,0.82), 0 0 8px rgba(255,255,255,0.36);
+        }
+
+        .fighter-eye::after {
+            content: "";
+            position: absolute;
+            width: 45%;
+            height: 45%;
+            border-radius: 50%;
+            background: #020617;
+        }
+
+        .fighter-brow {
+            position: absolute;
+            z-index: 4;
+            width: 18%;
+            height: 4%;
+            border-radius: 999px;
+            background: rgba(2, 6, 23, 0.86);
+            box-shadow: 0 0 6px rgba(0,0,0,0.28);
+        }
+
+        .fighter-arm {
+            position: absolute;
+            z-index: 2;
+            width: 38%;
+            height: 14%;
+            border-radius: 999px;
+            border: 2px solid rgba(255,255,255,0.82);
+            background: linear-gradient(135deg, var(--fighter-main), var(--fighter-dark));
+            box-shadow: inset -6px -5px 9px rgba(0,0,0,0.22), 0 0 12px var(--fighter-glow);
+        }
+
+        .fighter-fist {
+            position: absolute;
+            z-index: 5;
+            width: 30%;
+            height: 30%;
+            border-radius: 42% 48% 45% 50%;
+            border: 3px solid rgba(255,255,255,0.92);
+            background:
+                radial-gradient(circle at 30% 28%, rgba(255,255,255,0.42), transparent 22%),
+                linear-gradient(135deg, var(--fighter-main), var(--fighter-dark));
+            box-shadow:
+                inset -7px -8px 10px rgba(0,0,0,0.25),
+                0 0 0 4px rgba(2,6,23,0.78),
+                0 0 16px var(--fighter-glow);
+        }
+
+        .fighter-fist::before,
+        .fighter-fist::after {
+            content: "";
+            position: absolute;
+            top: 18%;
+            width: 23%;
+            height: 28%;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.28);
+        }
+
+        .fighter-fist::before {
+            left: 22%;
+        }
+
+        .fighter-fist::after {
+            right: 22%;
         }
 
         .support-character-blue {
-            left: clamp(-26px, -2vw, -10px);
-            top: clamp(-38px, -3vw, -22px);
+            --fighter-main: #38bdf8;
+            --fighter-dark: #075985;
+            --fighter-glow: rgba(56, 189, 248, 0.72);
+            left: clamp(-28px, -2vw, -10px);
+            top: clamp(-42px, -3vw, -24px);
             transform: rotate(-12deg);
-            filter:
-                drop-shadow(0 0 3px rgba(255,255,255,0.95))
-                drop-shadow(0 0 12px rgba(56,189,248,0.70))
-                drop-shadow(0 16px 18px rgba(0,0,0,0.38));
+        }
+
+        .support-character-blue .fighter-eye-left {
+            left: 41%;
+            top: 39%;
+        }
+
+        .support-character-blue .fighter-eye-right {
+            left: 58%;
+            top: 49%;
+        }
+
+        .support-character-blue .fighter-eye::after {
+            right: 8%;
+            bottom: 8%;
+        }
+
+        .support-character-blue .fighter-brow-left {
+            left: 37%;
+            top: 34%;
+            transform: rotate(22deg);
+        }
+
+        .support-character-blue .fighter-brow-right {
+            left: 55%;
+            top: 43%;
+            transform: rotate(22deg);
+        }
+
+        .support-character-blue .fighter-arm {
+            right: 5%;
+            bottom: 18%;
+            transform: rotate(35deg);
+        }
+
+        .support-character-blue .fighter-fist {
+            right: -6%;
+            bottom: 6%;
+            transform: rotate(28deg);
         }
 
         .support-character-red {
-            right: clamp(-26px, -2vw, -10px);
-            bottom: clamp(-34px, -3vw, -20px);
-            transform: rotate(168deg);
-            filter:
-                drop-shadow(0 0 3px rgba(255,255,255,0.95))
-                drop-shadow(0 0 12px rgba(248,113,113,0.72))
-                drop-shadow(0 16px 18px rgba(0,0,0,0.38));
+            --fighter-main: #fb7185;
+            --fighter-dark: #991b1b;
+            --fighter-glow: rgba(248, 113, 113, 0.72);
+            right: clamp(-28px, -2vw, -10px);
+            bottom: clamp(-38px, -3vw, -22px);
+            transform: rotate(12deg);
+        }
+
+        .support-character-red .fighter-eye-left {
+            right: 58%;
+            bottom: 49%;
+        }
+
+        .support-character-red .fighter-eye-right {
+            right: 41%;
+            bottom: 39%;
+        }
+
+        .support-character-red .fighter-eye::after {
+            left: 8%;
+            top: 8%;
+        }
+
+        .support-character-red .fighter-brow-left {
+            right: 55%;
+            bottom: 43%;
+            transform: rotate(22deg);
+        }
+
+        .support-character-red .fighter-brow-right {
+            right: 37%;
+            bottom: 34%;
+            transform: rotate(22deg);
+        }
+
+        .support-character-red .fighter-arm {
+            left: 5%;
+            top: 18%;
+            transform: rotate(35deg);
+        }
+
+        .support-character-red .fighter-fist {
+            left: -6%;
+            top: 6%;
+            transform: rotate(208deg);
         }
 
         @keyframes siteBannerFloat {
@@ -549,17 +734,30 @@
             }
 
             .support-character {
-                width: clamp(58px, 18vw, 84px);
+                width: clamp(62px, 18vw, 86px);
             }
 
             .support-character-blue {
                 left: -12px;
-                top: -26px;
+                top: -28px;
             }
 
             .support-character-red {
                 right: -12px;
-                bottom: -24px;
+                bottom: -26px;
+            }
+
+            .fighter-fist {
+                border-width: 2px;
+            }
+
+            .support-character::before {
+                border-width: 2px;
+                box-shadow:
+                    inset -8px -10px 14px rgba(0,0,0,0.28),
+                    inset 5px 5px 10px rgba(255,255,255,0.18),
+                    0 0 0 4px rgba(2,6,23,0.82),
+                    0 0 18px var(--fighter-glow);
             }
         }
 
@@ -627,13 +825,14 @@
                         rel="noopener noreferrer"
                         aria-label="Support Duel.io server costs on Buy Me a Coffee">
 
-                        <img
-                            class="support-character support-character-blue"
-                            src="./assets/SupportBlue.png"
-                            alt=""
-                            aria-hidden="true"
-                            loading="lazy"
-                            onerror="this.style.display='none'">
+                        <span class="support-character support-character-blue" aria-hidden="true">
+                            <span class="fighter-eye fighter-eye-left"></span>
+                            <span class="fighter-eye fighter-eye-right"></span>
+                            <span class="fighter-brow fighter-brow-left"></span>
+                            <span class="fighter-brow fighter-brow-right"></span>
+                            <span class="fighter-arm"></span>
+                            <span class="fighter-fist"></span>
+                        </span>
 
                         <span class="support-copy">
                             <span class="support-kicker">Support the server</span>
@@ -641,13 +840,14 @@
                             <span class="support-subtitle">Helps keep Duel.io online</span>
                         </span>
 
-                        <img
-                            class="support-character support-character-red"
-                            src="./assets/SupportRed.png"
-                            alt=""
-                            aria-hidden="true"
-                            loading="lazy"
-                            onerror="this.style.display='none'">
+                        <span class="support-character support-character-red" aria-hidden="true">
+                            <span class="fighter-eye fighter-eye-left"></span>
+                            <span class="fighter-eye fighter-eye-right"></span>
+                            <span class="fighter-brow fighter-brow-left"></span>
+                            <span class="fighter-brow fighter-brow-right"></span>
+                            <span class="fighter-arm"></span>
+                            <span class="fighter-fist"></span>
+                        </span>
                     </a>
                 </div>
             </div>
