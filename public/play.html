@@ -310,9 +310,12 @@
             width: 100% !important;
             max-width: 1450px !important;
             min-width: 0;
+            height: 100%;
+            max-height: 100%;
+            align-self: stretch;
             padding-left: clamp(12px, 1.6vw, 24px) !important;
             padding-right: clamp(12px, 1.6vw, 24px) !important;
-            overflow: visible;
+            overflow: hidden;
         }
 
         .main-menu-stage::before {
@@ -709,7 +712,21 @@
             overscroll-behavior: none;
         }
 
-        #main-menu-ui,
+        #main-menu-ui {
+            left: 0;
+            right: 0;
+            width: 100%;
+            min-width: 100%;
+            max-width: 100%;
+            height: calc(var(--ds-vh) * 100);
+            min-height: calc(var(--ds-vh) * 100);
+            max-height: calc(var(--ds-vh) * 100);
+            overflow: hidden;
+            display: grid !important;
+            grid-template-rows: auto minmax(0, 1fr) 36px;
+            align-items: stretch;
+        }
+
         #game-layer {
             left: 0;
             right: 0;
@@ -729,6 +746,28 @@
             max-width: none !important;
             flex-shrink: 0;
             box-sizing: border-box;
+        }
+
+        #main-menu-ui > main {
+            min-height: 0;
+            height: 100%;
+            max-height: 100%;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            align-self: stretch;
+            overflow: hidden;
+        }
+
+        #main-menu-ui > footer {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            height: 36px !important;
+            min-height: 36px !important;
+            max-height: 36px !important;
+            overflow: hidden;
+            position: relative;
+            z-index: 50;
         }
 
         .main-menu-online-count {
@@ -1295,9 +1334,10 @@
 
         @media (max-width: 1366px), (max-height: 760px) {
             #main-menu-ui {
-                display: flex !important;
-                flex-direction: column;
-                justify-content: space-between;
+                display: grid !important;
+                grid-template-rows: auto minmax(0, 1fr) 36px;
+                align-items: stretch;
+                justify-content: initial;
             }
 
             .main-menu-topbar,
@@ -1349,15 +1389,16 @@
             }
 
             .main-menu-stage {
-                flex: 1 1 auto;
                 min-height: 0;
+                height: 100%;
+                max-height: 100%;
                 width: 100% !important;
                 max-width: 1450px !important;
-                padding: 8px 14px !important;
-                gap: 16px !important;
+                padding: 4px 14px !important;
+                gap: 12px !important;
                 margin-top: 0 !important;
                 margin-bottom: 0 !important;
-                overflow: visible;
+                overflow: hidden;
             }
 
             .main-menu-copy {
@@ -1430,8 +1471,13 @@
             }
 
             .main-menu-footer {
-                min-height: 36px;
-                padding: 7px 12px !important;
+                display: flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                height: 36px !important;
+                min-height: 36px !important;
+                max-height: 36px !important;
+                padding: 5px 10px !important;
                 gap: 8px !important;
                 font-size: 10px !important;
                 flex-direction: row !important;
@@ -1548,7 +1594,35 @@
             }
 
             #main-menu-ui footer {
+                display: flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                height: 32px !important;
+                min-height: 32px !important;
+                max-height: 32px !important;
+                padding: 4px 8px !important;
+                gap: 6px !important;
+                font-size: 8px !important;
+                flex-direction: row !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                overflow: hidden;
+            }
+
+            #main-menu-ui footer a,
+            #main-menu-ui footer > div:first-child span,
+            #main-menu-ui footer > div:last-child span:last-child {
                 display: none !important;
+            }
+
+            #main-menu-ui footer > div {
+                min-width: 0;
+                gap: 6px !important;
+                white-space: nowrap;
+            }
+
+            #lobby-ticker {
+                max-width: 155px;
             }
         }
 
@@ -1781,7 +1855,7 @@
         </header>
 
         <!-- MAIN INTERACTIVE WORKSPACE -->
-        <main class="main-menu-stage relative z-20 w-full max-w-[1450px] mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center py-6 my-auto">
+        <main class="main-menu-stage relative z-20 w-full max-w-[1450px] mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-center py-2 my-0 min-h-0">
             <div class="main-menu-copy lg:col-span-5 flex flex-col justify-center space-y-8 select-none">
                 <div class="main-menu-hero-copy space-y-2">
                     <div class="main-menu-kicker flex items-center space-x-2 text-cyan-400 tracking-widest text-sm font-orbitron font-bold">
@@ -1986,7 +2060,7 @@
         </main>
 
         <!-- FOOTER / CONTROLS PANEL -->
-        <footer class="main-menu-footer relative z-20 w-full px-6 py-4 bg-gradient-to-t from-black/80 to-transparent flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-500 border-t border-slate-900/40">
+        <footer class="main-menu-footer relative z-50 w-full h-9 min-h-9 max-h-9 px-3 py-1 bg-gradient-to-t from-black/80 to-transparent flex flex-row justify-between items-center gap-2 text-[10px] text-slate-500 border-t border-slate-900/40 overflow-hidden">
             <div class="flex items-center space-x-6">
                 <span>© 2026 Duel.io Inc. All rights reserved.</span>
                 <a href="#" class="hover:text-slate-300 transition-colors">Privacy Policy</a>
