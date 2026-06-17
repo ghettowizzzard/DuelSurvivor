@@ -73,8 +73,10 @@
         }
 
         .site-game-shell {
-            width: min(calc((var(--site-vw) * 100) - (var(--site-pad) * 2)), 1600px);
-            margin: 0 auto;
+            width: calc(var(--site-vw) * 100);
+            max-width: none;
+            margin-left: calc(var(--site-pad) * -1);
+            margin-right: calc(var(--site-pad) * -1);
             display: grid;
             gap: 8px;
         }
