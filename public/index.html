@@ -210,6 +210,18 @@
                 radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.10), transparent 58%);
         }
 
+        .site-banner-float-wrap {
+            position: relative;
+            width: 100%;
+            transform: translateY(0);
+            will-change: auto;
+        }
+
+        .site-banner-panel.banner-visible .site-banner-float-wrap {
+            animation: siteBannerFloat 4.8s ease-in-out infinite;
+            will-change: transform;
+        }
+
         .site-banner-link,
         .site-banner-img {
             display: block;
@@ -218,13 +230,6 @@
 
         .site-banner-link {
             line-height: 0;
-            transform: translateY(0);
-            will-change: auto;
-        }
-
-        .site-banner-panel.banner-visible .site-banner-link {
-            animation: siteBannerFloat 4.8s ease-in-out infinite;
-            will-change: transform;
         }
 
         .site-banner-img {
@@ -234,6 +239,127 @@
             object-position: center;
             background: transparent;
             filter: drop-shadow(0 16px 34px rgba(0,0,0,0.42)) drop-shadow(0 0 18px rgba(14,165,233,0.16));
+        }
+
+        .site-support-wrap {
+            position: relative;
+            z-index: 5;
+            width: min(620px, calc(100% - 32px));
+            margin: clamp(-14px, -1.4vw, -8px) auto 0;
+            display: flex;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .site-support-btn {
+            position: relative;
+            isolation: isolate;
+            min-height: 74px;
+            width: min(520px, 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 16px 92px;
+            border-radius: 999px;
+            border: 1px solid rgba(250, 204, 21, 0.62);
+            background:
+                radial-gradient(circle at 18% 12%, rgba(56, 189, 248, 0.28), transparent 34%),
+                radial-gradient(circle at 82% 88%, rgba(248, 113, 113, 0.24), transparent 36%),
+                linear-gradient(135deg, rgba(2, 6, 23, 0.94), rgba(15, 23, 42, 0.82));
+            color: #f8fafc;
+            text-decoration: none;
+            overflow: visible;
+            pointer-events: auto;
+            box-shadow:
+                0 18px 44px rgba(0,0,0,0.42),
+                0 0 26px rgba(250, 204, 21, 0.18),
+                inset 0 0 22px rgba(255,255,255,0.04);
+            transition: transform 0.18s ease, border-color 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .site-support-btn::before {
+            content: "";
+            position: absolute;
+            inset: 3px;
+            z-index: -1;
+            border-radius: inherit;
+            background:
+                linear-gradient(90deg, rgba(34,211,238,0.18), transparent 34%, transparent 66%, rgba(248,113,113,0.18));
+            opacity: 0.9;
+        }
+
+        .site-support-btn:hover {
+            transform: translateY(-2px) scale(1.018);
+            border-color: rgba(250, 204, 21, 0.92);
+            filter: brightness(1.08);
+            box-shadow:
+                0 22px 52px rgba(0,0,0,0.48),
+                0 0 34px rgba(250, 204, 21, 0.28),
+                0 0 24px rgba(56, 189, 248, 0.16);
+        }
+
+        .site-support-btn:active {
+            transform: translateY(1px) scale(0.985);
+        }
+
+        .support-copy {
+            display: grid;
+            gap: 2px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        .support-kicker {
+            color: #67e8f9;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.18em;
+        }
+
+        .support-title {
+            color: #facc15;
+            font-size: clamp(18px, 2vw, 26px);
+            font-weight: 900;
+            letter-spacing: 0.10em;
+            text-shadow: 0 0 18px rgba(250, 204, 21, 0.32);
+        }
+
+        .support-subtitle {
+            color: #cbd5e1;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+        }
+
+        .support-character {
+            position: absolute;
+            z-index: 4;
+            width: clamp(76px, 8vw, 124px);
+            height: auto;
+            object-fit: contain;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .support-character-blue {
+            left: clamp(-26px, -2vw, -10px);
+            top: clamp(-38px, -3vw, -22px);
+            transform: rotate(-12deg);
+            filter:
+                drop-shadow(0 0 3px rgba(255,255,255,0.95))
+                drop-shadow(0 0 12px rgba(56,189,248,0.70))
+                drop-shadow(0 16px 18px rgba(0,0,0,0.38));
+        }
+
+        .support-character-red {
+            right: clamp(-26px, -2vw, -10px);
+            bottom: clamp(-34px, -3vw, -20px);
+            transform: rotate(168deg);
+            filter:
+                drop-shadow(0 0 3px rgba(255,255,255,0.95))
+                drop-shadow(0 0 12px rgba(248,113,113,0.72))
+                drop-shadow(0 16px 18px rgba(0,0,0,0.38));
         }
 
         @keyframes siteBannerFloat {
@@ -396,8 +522,44 @@
             .site-banner-panel {
                 width: calc(var(--site-vw) * 100);
                 margin: 6px 0 0;
-                padding: 6px 10px 12px;
+                padding: 6px 10px 18px;
                 border-radius: 0;
+            }
+
+            .site-support-wrap {
+                width: min(94vw, 520px);
+                margin-top: -4px;
+            }
+
+            .site-support-btn {
+                min-height: 62px;
+                padding: 12px 68px;
+            }
+
+            .support-kicker {
+                font-size: 8px;
+            }
+
+            .support-title {
+                font-size: clamp(15px, 5vw, 20px);
+            }
+
+            .support-subtitle {
+                display: none;
+            }
+
+            .support-character {
+                width: clamp(58px, 18vw, 84px);
+            }
+
+            .support-character-blue {
+                left: -12px;
+                top: -26px;
+            }
+
+            .support-character-red {
+                right: -12px;
+                bottom: -24px;
             }
         }
 
@@ -417,7 +579,7 @@
                 transition: none;
             }
 
-            .site-banner-panel.banner-visible .site-banner-link {
+            .site-banner-panel.banner-visible .site-banner-float-wrap {
                 animation: none;
                 transform: none;
             }
@@ -451,10 +613,44 @@
             </div>
         </div>
 
-        <section id="site-banner-panel" class="site-banner-panel" aria-label="Duelio update banner">
-            <a id="site-banner-link" class="site-banner-link" href="#game-frame-wrap" aria-label="Return to Duelio game">
-                <img id="site-banner-img" class="site-banner-img" alt="Duelio update banner" loading="lazy">
-            </a>
+        <section id="site-banner-panel" class="site-banner-panel" aria-label="Duelio update banner and support link">
+            <div class="site-banner-float-wrap">
+                <a id="site-banner-link" class="site-banner-link" href="#game-frame-wrap" aria-label="Return to Duelio game">
+                    <img id="site-banner-img" class="site-banner-img" alt="Duelio update banner" loading="lazy">
+                </a>
+
+                <div class="site-support-wrap">
+                    <a
+                        class="site-support-btn"
+                        href="https://buymeacoffee.com/ghettowizard"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Support Duel.io server costs on Buy Me a Coffee">
+
+                        <img
+                            class="support-character support-character-blue"
+                            src="./assets/SupportBlue.png"
+                            alt=""
+                            aria-hidden="true"
+                            loading="lazy"
+                            onerror="this.style.display='none'">
+
+                        <span class="support-copy">
+                            <span class="support-kicker">Support the server</span>
+                            <span class="support-title">Buy Me a Coffee</span>
+                            <span class="support-subtitle">Helps keep Duel.io online</span>
+                        </span>
+
+                        <img
+                            class="support-character support-character-red"
+                            src="./assets/SupportRed.png"
+                            alt=""
+                            aria-hidden="true"
+                            loading="lazy"
+                            onerror="this.style.display='none'">
+                    </a>
+                </div>
+            </div>
         </section>
     </main>
 
