@@ -63,16 +63,22 @@
             min-height: calc(var(--site-vh) * 100);
             display: grid;
             grid-template-rows: minmax(0, auto) auto;
-            gap: 16px;
+            gap: 14px;
             padding: var(--site-pad);
+        }
+
+        .site-game-shell {
+            width: min(calc(100vw - (var(--site-pad) * 2)), 1600px);
+            margin: 0 auto;
+            display: grid;
+            gap: 8px;
         }
 
         .game-frame-wrap {
             position: relative;
-            width: min(calc(100vw - (var(--site-pad) * 2)), 1600px);
-            height: min(calc((var(--site-vh) * 100) - (var(--site-pad) * 2)), 900px);
+            width: 100%;
+            height: min(calc((var(--site-vh) * 100) - (var(--site-pad) * 2) - 42px), 900px);
             min-height: 560px;
-            margin: 0 auto;
             border: 2px solid var(--frame-border);
             border-radius: var(--frame-radius);
             overflow: hidden;
@@ -107,29 +113,29 @@
         }
 
         .site-controls {
-            position: absolute;
+            position: relative;
             z-index: 6;
-            top: 12px;
-            right: 12px;
             display: flex;
+            justify-content: flex-end;
             gap: 8px;
+            min-height: 34px;
             pointer-events: none;
         }
 
         .site-control-btn {
             pointer-events: auto;
             border: 1px solid rgba(103, 232, 249, 0.46);
-            background: rgba(2, 6, 23, 0.70);
+            background: rgba(2, 6, 23, 0.72);
             color: #e0f2fe;
             border-radius: 999px;
-            padding: 9px 12px;
-            font-size: 11px;
+            padding: 8px 12px;
+            font-size: 10px;
             font-weight: 900;
             letter-spacing: 0.08em;
             cursor: pointer;
             backdrop-filter: blur(12px);
             box-shadow: 0 0 22px rgba(14, 165, 233, 0.18);
-            transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+            transition: transform 0.16s ease, opacity 0.18s ease, border-color 0.16s ease, background 0.16s ease;
         }
 
         .site-control-btn:hover {
@@ -142,16 +148,61 @@
             transform: translateY(1px) scale(0.97);
         }
 
+        .site-game-shell:fullscreen,
+        .site-game-shell:-webkit-full-screen {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            background: #03030c;
+        }
+
+        .site-game-shell:fullscreen .game-frame-wrap,
+        .site-game-shell:-webkit-full-screen .game-frame-wrap {
+            width: 100vw;
+            height: 100vh;
+            min-height: 100vh;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+        }
+
+        .site-game-shell:fullscreen .site-controls,
+        .site-game-shell:-webkit-full-screen .site-controls {
+            position: fixed;
+            top: 50%;
+            right: 0;
+            z-index: 20;
+            min-height: 0;
+            padding: 0;
+            transform: translate(82%, -50%);
+            opacity: 0.20;
+            transition: transform 0.22s ease, opacity 0.22s ease;
+        }
+
+        .site-game-shell:fullscreen .site-controls:hover,
+        .site-game-shell:fullscreen .site-controls:focus-within,
+        .site-game-shell:-webkit-full-screen .site-controls:hover,
+        .site-game-shell:-webkit-full-screen .site-controls:focus-within {
+            transform: translate(0, -50%);
+            opacity: 1;
+        }
+
+        .site-game-shell:fullscreen .site-control-btn,
+        .site-game-shell:-webkit-full-screen .site-control-btn {
+            border-radius: 999px 0 0 999px;
+            padding: 10px 12px;
+            background: rgba(2, 6, 23, 0.66);
+        }
+
         .site-banner-panel {
             width: min(calc(100vw - (var(--site-pad) * 2)), 1600px);
-            margin: 0 auto 18px;
-            border: 1px solid rgba(56, 189, 248, 0.24);
-            border-radius: 18px;
-            overflow: hidden;
+            margin: 2px auto 20px;
+            padding: clamp(6px, 1vw, 12px);
+            border: 0;
+            border-radius: 20px;
+            overflow: visible;
             background:
-                radial-gradient(circle at 12% 10%, rgba(14, 165, 233, 0.16), transparent 34%),
-                linear-gradient(135deg, rgba(2, 6, 23, 0.86), rgba(15, 23, 42, 0.58));
-            box-shadow: 0 16px 44px rgba(0,0,0,0.38), inset 0 0 24px rgba(255,255,255,0.025);
+                radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.10), transparent 58%);
         }
 
         .site-banner-link,
@@ -160,22 +211,17 @@
             width: 100%;
         }
 
-        .site-banner-img {
-            max-height: 210px;
-            object-fit: cover;
-            background: #020617;
+        .site-banner-link {
+            line-height: 0;
         }
 
-        .site-banner-caption {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 10px 14px;
-            color: #94a3b8;
-            font-size: 11px;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
+        .site-banner-img {
+            height: auto;
+            max-height: none;
+            object-fit: contain;
+            object-position: center;
+            background: transparent;
+            filter: drop-shadow(0 16px 34px rgba(0,0,0,0.42)) drop-shadow(0 0 18px rgba(14,165,233,0.16));
         }
 
         .site-loader {
@@ -279,18 +325,24 @@
                 gap: 0;
             }
 
+            .site-game-shell {
+                width: 100vw;
+                gap: 6px;
+            }
+
             .game-frame-wrap {
                 width: 100vw;
-                height: calc(var(--site-vh) * 100);
-                min-height: calc(var(--site-vh) * 100);
+                height: calc((var(--site-vh) * 100) - 40px);
+                min-height: calc((var(--site-vh) * 100) - 40px);
                 border-radius: 0;
                 border: 0;
                 box-shadow: none;
             }
 
             .site-controls {
-                top: max(10px, env(safe-area-inset-top));
-                right: max(10px, env(safe-area-inset-right));
+                justify-content: center;
+                min-height: 34px;
+                padding-bottom: 6px;
             }
 
             .site-control-btn {
@@ -301,14 +353,9 @@
 
             .site-banner-panel {
                 width: 100vw;
-                margin: 0;
-                border-left: 0;
-                border-right: 0;
+                margin: 6px 0 0;
+                padding: 6px 10px 12px;
                 border-radius: 0;
-            }
-
-            .site-banner-img {
-                max-height: 150px;
             }
         }
 
@@ -341,27 +388,26 @@
     </div>
 
     <main class="site-shell">
-        <div id="game-frame-wrap" class="game-frame-wrap">
+        <div id="site-game-shell" class="site-game-shell">
+            <div id="game-frame-wrap" class="game-frame-wrap">
+                <iframe
+                    id="duelio-frame"
+                    src="./play.html"
+                    title="Duelio Game"
+                    allow="fullscreen; microphone; autoplay; gamepad"
+                    allowfullscreen>
+                </iframe>
+            </div>
+
             <div class="site-controls" aria-label="Game display controls">
                 <button id="fullscreen-btn" class="site-control-btn" type="button">FULLSCREEN</button>
             </div>
-            <iframe
-                id="duelio-frame"
-                src="./play.html"
-                title="Duelio Game"
-                allow="fullscreen; microphone; autoplay; gamepad"
-                allowfullscreen>
-            </iframe>
         </div>
 
         <section id="site-banner-panel" class="site-banner-panel" aria-label="Duelio update banner">
             <a id="site-banner-link" class="site-banner-link" href="#game-frame-wrap" aria-label="Return to Duelio game">
-                <img id="site-banner-img" class="site-banner-img" alt="Duelio update banner">
+                <img id="site-banner-img" class="site-banner-img" alt="Duelio update banner" loading="lazy">
             </a>
-            <div class="site-banner-caption">
-                <span>Latest update banner</span>
-                <span id="site-banner-name">Season 01</span>
-            </div>
         </section>
     </main>
 
@@ -378,12 +424,10 @@
         function pickSiteBanner() {
             const panel = document.getElementById("site-banner-panel");
             const img = document.getElementById("site-banner-img");
-            const name = document.getElementById("site-banner-name");
             if (!panel || !img || !SITE_BANNERS.length) return;
 
             const src = SITE_BANNERS[Math.floor(Math.random() * SITE_BANNERS.length)];
             img.src = src;
-            if (name) name.textContent = src.split("/").pop()?.replace(/\.[^.]+$/, "") || "Duelio";
 
             img.onerror = () => {
                 panel.style.display = "none";
@@ -399,13 +443,13 @@
 
         function setupFullscreenButton() {
             const button = document.getElementById("fullscreen-btn");
-            const frameWrap = document.getElementById("game-frame-wrap");
-            if (!button || !frameWrap) return;
+            const shell = document.getElementById("site-game-shell");
+            if (!button || !shell) return;
 
             button.addEventListener("click", async () => {
                 try {
                     if (!document.fullscreenElement) {
-                        await frameWrap.requestFullscreen();
+                        await shell.requestFullscreen();
                         button.textContent = "EXIT FULLSCREEN";
                     } else {
                         await document.exitFullscreen();
