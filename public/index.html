@@ -30,6 +30,30 @@
     <link rel="icon" type="image/png" href="/assets/DuelioThumbnail.png">
     <link rel="apple-touch-icon" href="/assets/DuelioThumbnail.png">
 
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Duel.io",
+      "alternateName": ["Duelio", "Duelio lol"],
+      "url": "https://duelio.lol/",
+      "image": "https://duelio.lol/assets/DuelioThumbnail.png",
+      "description": "Duel.io is a free browser-based TCG battle royale game with cards, creatures, loot, solo, duo, and squad matches.",
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Web Browser",
+      "genre": ["Trading Card Game", "Battle Royale", "Browser Game", "Card Game"],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "sameAs": [
+        "https://gamejolt.com/games/duelio/1077325",
+        "https://i-am-wizard.itch.io/duelio"
+      ]
+    }
+    </script>
+
     <style>
         :root {
             --site-vh: 1vh;
@@ -592,6 +616,44 @@
             background: rgba(180, 83, 9, 0.34);
         }
 
+        .seo-link-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            margin: 22px auto 0;
+            width: min(900px, 100%);
+        }
+
+        .seo-link-grid a {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 46px;
+            padding: 10px 12px;
+            border: 1px solid rgba(103, 232, 249, 0.28);
+            border-radius: 14px;
+            background: rgba(2, 6, 23, 0.48);
+            color: #e0f2fe;
+            text-decoration: none;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            box-shadow: inset 0 0 14px rgba(255,255,255,0.025);
+        }
+
+        .seo-link-grid a:hover {
+            border-color: rgba(250, 204, 21, 0.72);
+            color: #fde68a;
+            background: rgba(15, 23, 42, 0.72);
+        }
+
+        @media (max-width: 820px) {
+            .seo-link-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .store-embed-section {
             margin-top: 26px;
             padding-top: 24px;
@@ -1089,6 +1151,7 @@
                     id="duelio-frame"
                     src="./play.html"
                     title="Duel.io Game"
+                    tabindex="-1"
                     allow="fullscreen; microphone; autoplay; gamepad"
                     allowfullscreen>
                 </iframe>
@@ -1229,6 +1292,13 @@
                     </div>
                 </section>
 
+                <nav class="seo-link-grid" aria-label="Explore Duel.io pages">
+                    <a href="/play" aria-label="Play Duel.io online">Play Now</a>
+                    <a href="/how-to-play/" aria-label="Learn how Duel.io works">How It Works</a>
+                    <a href="/cards-and-creatures/" aria-label="Explore Duel.io cards and creatures">Cards & Creatures</a>
+                    <a href="/updates/" aria-label="Read Duel.io updates">Updates</a>
+                </nav>
+
                 <a class="seo-play-link" href="#game-frame-wrap" aria-label="Play Duel.io now">Play Duel.io Now</a>
             </div>
         </section>
@@ -1275,28 +1345,62 @@
             setTimeout(() => loader.remove(), 700);
         }
 
-        function setupFullscreenButton() {
+       function setupFullscreenButton() {
             const button = document.getElementById("fullscreen-btn");
             const shell = document.getElementById("site-game-shell");
+            const frame = document.getElementById("duelio-frame");
             if (!button || !shell) return;
+
+            function focusGameFrame(reason = "fullscreen") {
+                button.blur();
+
+                const focusOnce = () => {
+                    try { frame?.focus({ preventScroll: true }); } catch (e) {}
+                    try { frame?.contentWindow?.focus(); } catch (e) {}
+                    try {
+                        frame?.contentWindow?.postMessage({
+                            type: "duelio:focusGame",
+                            reason
+                        }, window.location.origin);
+                    } catch (e) {}
+                };
+
+                focusOnce();
+                requestAnimationFrame(focusOnce);
+                setTimeout(focusOnce, 80);
+                setTimeout(focusOnce, 260);
+            }
+
+            button.addEventListener("pointerdown", event => {
+                event.preventDefault();
+            });
 
             button.addEventListener("click", async () => {
                 try {
                     if (!document.fullscreenElement) {
                         await shell.requestFullscreen();
                         button.textContent = "EXIT FULLSCREEN";
+                        refreshSiteViewportSoon();
+                        focusGameFrame("entered-fullscreen");
                     } else {
                         await document.exitFullscreen();
                         button.textContent = "FULLSCREEN";
+                        refreshSiteViewportSoon();
+                        focusGameFrame("exited-fullscreen");
                     }
                 } catch (error) {
                     button.textContent = "FULLSCREEN BLOCKED";
-                    setTimeout(() => { button.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN"; }, 1200);
+                    setTimeout(() => {
+                        button.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN";
+                        focusGameFrame("fullscreen-blocked");
+                    }, 1200);
                 }
             });
 
             document.addEventListener("fullscreenchange", () => {
                 button.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN";
+                refreshSiteViewportSoon();
+                focusGameFrame(document.fullscreenElement ? "fullscreenchange-enter" : "fullscreenchange-exit");
             });
         }
 
