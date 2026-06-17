@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1.0, user-scalable=no">
     <title>Duel.io - Main Menu & TCG Battle Royale</title>
     <!-- Tailwind CSS for utility styles -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -669,7 +669,24 @@
 
         :root {
             --ds-vh: 1vh;
+            --ds-vw: 1vw;
             --ds-ui-scale: 1;
+        }
+
+        html,
+        body {
+            width: calc(var(--ds-vw) * 100);
+            height: calc(var(--ds-vh) * 100);
+            min-height: calc(var(--ds-vh) * 100);
+            overflow: hidden;
+            overscroll-behavior: none;
+        }
+
+        #main-menu-ui,
+        #game-layer {
+            height: calc(var(--ds-vh) * 100);
+            min-height: calc(var(--ds-vh) * 100);
+            max-height: calc(var(--ds-vh) * 100);
         }
 
         .main-menu-online-count {
@@ -1139,10 +1156,50 @@
         @media (max-width: 900px), (max-height: 680px) {
             :root { --ds-ui-scale: 0.86; }
 
+            #main-menu-ui {
+                height: calc(var(--ds-vh) * 100);
+                max-height: calc(var(--ds-vh) * 100);
+                overflow: hidden;
+            }
+
             #main-menu-ui > header,
             #game-hud-header {
                 padding: 10px 12px !important;
                 gap: 10px;
+            }
+
+            #main-menu-ui > main {
+                width: calc(100vw / var(--ds-ui-scale));
+                max-width: calc(1450px / var(--ds-ui-scale));
+                transform: scale(var(--ds-ui-scale));
+                transform-origin: center center;
+                padding: 10px 14px !important;
+                gap: 14px !important;
+            }
+
+            .main-menu-copy > * + * {
+                margin-top: 14px !important;
+            }
+
+            #menu-container > * + * {
+                margin-top: 10px !important;
+            }
+
+            .main-menu-hero-copy {
+                padding: 12px 14px;
+            }
+
+            .main-menu-nav {
+                max-width: 30rem;
+            }
+
+            .menu-btn {
+                padding: 0.85rem 1.1rem !important;
+            }
+
+            .main-feature-card {
+                max-width: min(45vw, 32rem);
+                max-height: calc((var(--ds-vh) * 100) - 150px);
             }
 
             #combat-card-bar {
@@ -1193,30 +1250,215 @@
         }
 
         @media (max-width: 640px) {
-            :root { --ds-ui-scale: 0.74; }
+            :root { --ds-ui-scale: 0.82; }
 
             .main-menu-online-count {
                 padding: 0 7px;
                 font-size: 9px;
             }
 
+            #main-menu-ui {
+                overflow: hidden;
+            }
+
             #main-menu-ui > header {
                 align-items: flex-start !important;
+                max-height: 24vh;
+                overflow: hidden;
+                padding: 8px 10px !important;
+            }
+
+            #main-menu-ui > main {
+                width: 100%;
+                max-width: 100%;
+                transform: none;
+                padding: 8px 12px !important;
+                gap: 10px !important;
+                display: flex !important;
+                flex-direction: column;
+                justify-content: flex-start;
+                align-items: stretch;
+                overflow: hidden;
+            }
+
+            .main-menu-copy {
+                width: 100%;
+                margin-left: 0 !important;
+            }
+
+            .main-menu-copy > * + * {
+                margin-top: 10px !important;
             }
 
             .main-menu-hero-copy {
-                padding: 12px 14px;
+                padding: 10px 12px;
                 border-radius: 18px;
             }
 
-            .main-feature-card::before,
-            #main-menu-ui::after {
+            .main-menu-hero-copy p {
                 display: none;
             }
 
+            .game-title {
+                font-size: clamp(2rem, 11vw, 3.1rem) !important;
+                line-height: 0.95 !important;
+            }
+
+            #menu-container {
+                width: 100%;
+                max-width: 100%;
+            }
+
+            #menu-container > * + * {
+                margin-top: 8px !important;
+            }
+
+            .menu-btn {
+                padding: 0.65rem 0.85rem !important;
+            }
+
+            .menu-btn-text {
+                gap: 0.75rem !important;
+            }
+
+            .menu-btn-text > span:first-child {
+                width: 2rem !important;
+                height: 2rem !important;
+            }
+
+            .menu-btn .text-xl {
+                font-size: 1rem !important;
+                line-height: 1.1 !important;
+            }
+
+            .menu-btn .text-left > div:nth-child(2) {
+                font-size: 8px !important;
+            }
+
+            .main-feature-card,
+            .main-feature-card::before,
+            #main-menu-ui::after {
+                display: none !important;
+            }
+
             #main-menu-ui footer {
-                font-size: 10px;
-                padding: 10px 12px !important;
+                display: none !important;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 520px) {
+            :root { --ds-ui-scale: 1; }
+
+            #main-menu-ui {
+                height: calc(var(--ds-vh) * 100);
+                max-height: calc(var(--ds-vh) * 100);
+                overflow: hidden;
+            }
+
+            #main-menu-ui > header {
+                max-height: 58px;
+                padding: 6px 8px !important;
+                overflow: hidden;
+            }
+
+            #season-build-label {
+                display: none;
+            }
+
+            .main-profile-widget {
+                transform: scale(0.82);
+                transform-origin: right center;
+            }
+
+            #main-menu-ui > main {
+                position: absolute;
+                inset: 58px 0 0 0;
+                width: 100%;
+                max-width: 100%;
+                transform: none;
+                display: grid !important;
+                grid-template-columns: minmax(240px, 0.95fr) minmax(0, 1fr);
+                align-items: center;
+                padding: 4px 10px !important;
+                gap: 10px !important;
+                overflow: hidden;
+            }
+
+            .main-menu-copy {
+                width: 100%;
+                margin-left: 0 !important;
+            }
+
+            .main-menu-copy > * + * {
+                margin-top: 8px !important;
+            }
+
+            .main-menu-hero-copy {
+                padding: 8px 10px;
+                border-radius: 14px;
+            }
+
+            .main-menu-kicker {
+                font-size: 8px !important;
+            }
+
+            .game-title {
+                font-size: clamp(1.35rem, 5.5vw, 2.2rem) !important;
+                line-height: 0.95 !important;
+                letter-spacing: 0.12em !important;
+            }
+
+            .main-menu-hero-copy p {
+                display: none;
+            }
+
+            #menu-container {
+                width: 100%;
+                max-width: 100%;
+            }
+
+            #menu-container > * + * {
+                margin-top: 5px !important;
+            }
+
+            .menu-btn {
+                min-height: 42px;
+                padding: 0.42rem 0.7rem !important;
+            }
+
+            .menu-btn-text {
+                gap: 0.55rem !important;
+            }
+
+            .menu-btn-text > span:first-child {
+                width: 1.8rem !important;
+                height: 1.8rem !important;
+            }
+
+            .menu-btn .text-xl {
+                font-size: 0.82rem !important;
+                line-height: 1.05 !important;
+            }
+
+            .menu-btn .text-left > div:nth-child(2) {
+                font-size: 7px !important;
+            }
+
+            [data-ranked-toggle] {
+                padding: 0.35rem 0.5rem !important;
+                font-size: 8px !important;
+            }
+
+            .main-feature-card {
+                display: none !important;
+            }
+
+            .corner-light {
+                opacity: 0.18;
+            }
+
+            #main-menu-ui footer {
+                display: none !important;
             }
         }
     </style>
@@ -40750,19 +40992,32 @@ function resizeMinimapCanvas() {
 
 
         // CAPTURE ALL RESIZES
+        function getDsViewportSize() {
+            const viewport = window.visualViewport;
+            return {
+                width: Math.max(320, Math.round(viewport?.width || document.documentElement.clientWidth || window.innerWidth || 320)),
+                height: Math.max(240, Math.round(viewport?.height || document.documentElement.clientHeight || window.innerHeight || 240))
+            };
+        }
+
+        function setDsViewportVars() {
+            const size = getDsViewportSize();
+            document.documentElement.style.setProperty("--ds-vw", `${size.width * 0.01}px`);
+            document.documentElement.style.setProperty("--ds-vh", `${size.height * 0.01}px`);
+            document.documentElement.dataset.orientation = size.width > size.height ? "landscape" : "portrait";
+        }
+
         function resizeGameCanvas() {
+            setDsViewportVars();
+
             if (!gameCanvas) return;
 
             const parentRect = gameCanvas.parentElement.getBoundingClientRect();
-            const viewport = window.visualViewport;
-            const viewportWidth = viewport?.width || window.innerWidth || parentRect.width;
-            const viewportHeight = viewport?.height || window.innerHeight || parentRect.height;
-
-            document.documentElement.style.setProperty("--ds-vh", `${viewportHeight * 0.01}px`);
+            const viewportSize = getDsViewportSize();
 
             const scale = perfSettings?.renderScale || 1;
-            const logicalWidth = Math.max(320, Math.floor(parentRect.width || viewportWidth));
-            const logicalHeight = Math.max(240, Math.floor(parentRect.height || viewportHeight));
+            const logicalWidth = Math.max(320, Math.floor(parentRect.width || viewportSize.width));
+            const logicalHeight = Math.max(240, Math.floor(parentRect.height || viewportSize.height));
 
             gameCanvas.width = Math.max(320, Math.floor(logicalWidth * scale));
             gameCanvas.height = Math.max(240, Math.floor(logicalHeight * scale));
@@ -40776,11 +41031,20 @@ function resizeMinimapCanvas() {
                 perfState.renderScaleActual = gameCanvas.width / Math.max(1, logicalWidth);
             }
         }
-        window.addEventListener('resize', resizeGameCanvas);
-        window.addEventListener('orientationchange', () => setTimeout(resizeGameCanvas, 80));
+
+        function scheduleResizeGameCanvas() {
+            resizeGameCanvas();
+            requestAnimationFrame(resizeGameCanvas);
+            setTimeout(resizeGameCanvas, 120);
+            setTimeout(resizeGameCanvas, 360);
+        }
+
+        setDsViewportVars();
+        window.addEventListener('resize', scheduleResizeGameCanvas, { passive: true });
+        window.addEventListener('orientationchange', scheduleResizeGameCanvas, { passive: true });
         if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', resizeGameCanvas);
-            window.visualViewport.addEventListener('scroll', resizeGameCanvas);
+            window.visualViewport.addEventListener('resize', scheduleResizeGameCanvas, { passive: true });
+            window.visualViewport.addEventListener('scroll', scheduleResizeGameCanvas, { passive: true });
         }
 
 
