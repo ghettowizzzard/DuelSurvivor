@@ -5440,6 +5440,9 @@
                 } : null;
                 mpState.teamSize = data.teamSize || mpTeamSizeForMode(mpState.matchMode);
                 mpState.teammates = data.teammates || [];
+                mpState.botFillSlots = Number.isFinite(Number(data.botFillSlots))
+                    ? Number(data.botFillSlots)
+                    : Math.max(0, mpState.teamSize - (mpState.teammates.length || 1));
                 mpState.remotePlayers.clear();
 
                 const now = performance.now();
@@ -5455,6 +5458,26 @@
 
                 mpNotify("Online match found. Deploying together!");
                 mpTransitionToQueue(mpState.matchMode);
+            });
+
+            mpSocket.on("matchTeamUpdate", data => {
+                if (!data || data.matchId !== mpState.matchId) return;
+
+                mpState.teamSize = data.teamSize || mpState.teamSize || mpTeamSizeForMode(mpState.matchMode);
+                mpState.teammates = data.teammates || mpState.teammates || [];
+                mpState.botFillSlots = Number.isFinite(Number(data.botFillSlots))
+                    ? Number(data.botFillSlots)
+                    : Math.max(0, mpState.teamSize - (mpState.teammates.length || 1));
+
+                mpState.serverHumanCount = data.humanCount ?? mpState.serverHumanCount ?? 1;
+                mpState.serverBotCount = data.botCount ?? mpState.serverBotCount ?? 0;
+                mpState.worldAuthoritySocketId = data.worldAuthoritySocketId || mpState.worldAuthoritySocketId;
+
+                if (currentGameState === GAME_STATES.QUEUE_LOBBY || currentGameState === GAME_STATES.MATCH) {
+                    mpSeedRemoteTeammatePlaceholders();
+                    updatePlayerHealthHud();
+                    refreshLobbyPlayerCountHud();
+                }
             });
 
             mpSocket.on("matchState", state => {
@@ -6596,6 +6619,75 @@ ${mpState.connectionError ? `
         function resetVictoryTimeSlowdown() {
             victoryTimeScaleState.active = false;
             victoryTimeScaleState.startTime = 0;
+        }
+
+        function resetPostMatchRuntimeState(reason = "reset", options = {}) {
+            // Fixes rare post-victory bleed-over where slow-mo / winner / snapshot state
+            // can make the next queue lobby look frozen until deployment.
+            resetVictoryTimeSlowdown();
+
+            matchWinState.resolved = false;
+            matchWinState.lastCheckTime = 0;
+            matchWinState.matchStartedAt = 0;
+
+            lastTime = performance.now();
+
+            lobbyFillPhase = "idle";
+            lobbyQueueStartTime = 0;
+            lobbyNextBotFillAt = 0;
+            lastCountdownTime = performance.now();
+
+            // Important for online queues:
+            // new matches often start snapshot seq back at 1, so never carry old seq ids.
+            mpState.lastWorldSnapshotReceived = 0;
+            mpState.lastWorldSnapshotSeq = 0;
+            mpState.lastWorldSnapshotEmit = 0;
+
+            if (options.clearOnlineRefs) {
+                mpState.worldAuthoritySocketId = null;
+                mpState.onlineQueueStartAt = 0;
+                mpState.onlineQueueDeployAt = 0;
+                mpState.serverDeployAt = 0;
+                mpState.serverHumanCount = 1;
+                mpState.serverBotCount = 0;
+            }
+
+            // Soft-unfreeze anything still hanging around before the next lobby rebuilds.
+            for (const bot of bots) {
+                if (!bot) continue;
+
+                bot.networkReplica = false;
+                bot.rootTimer = 0;
+                bot.shockTimer = 0;
+                bot.slowTimer = 0;
+                bot.slowMultiplier = 1;
+                bot.aiTarget = null;
+                bot.aiTargetCrate = null;
+                bot.aiTargetLootItem = null;
+                bot.queuePauseUntil = 0;
+                bot.queueBehaviorTimer = 0;
+                bot.perfNextLiteMoveTime = 0;
+                bot.perfLastLiteMoveTime = performance.now();
+                bot.perfLastMovedAt = performance.now();
+                bot.perfIdleKickTime = 0;
+
+                if (!bot.isEliminated) {
+                    bot.alive = true;
+                    bot.takesDamage = true;
+                    bot.isDowned = false;
+                }
+            }
+
+            if (options.clearWorldArrays) {
+                bots.length = 0;
+                mpState.remotePlayers.clear();
+                mpState.remoteProjectiles.length = 0;
+                items.length = 0;
+                crates.length = 0;
+                trees.length = 0;
+                rocks.length = 0;
+                houses.length = 0;
+            }
         }
 
         function getVictoryTimeScale(time = performance.now()) {
@@ -29037,6 +29129,11 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
         // Trigger Lobby Matchmaking setup
         function initQueueLobby() {
+            resetPostMatchRuntimeState("queue_start", {
+                clearOnlineRefs: false,
+                clearWorldArrays: false
+            });
+
             currentGameState = GAME_STATES.QUEUE_LOBBY;
             setControlHintVisible(true);
             worldWidth = 1200;
@@ -29583,7 +29680,10 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
 
 function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             currentGameState = GAME_STATES.MENU;
-            resetVictoryTimeSlowdown();
+            resetPostMatchRuntimeState("menu_return", {
+                clearOnlineRefs: true,
+                clearWorldArrays: true
+            });
 
             clearMatchSearchTimers();
             hideActionOverlay();
@@ -32547,6 +32647,7 @@ function mpDrawRemotePlayers() {
             mpState.lastWorldSnapshotSeq = (mpState.lastWorldSnapshotSeq || 0) + 1;
 
             mpSocket.emit("matchWorldSnapshot", {
+                matchId: mpState.matchId,
                 seq: mpState.lastWorldSnapshotSeq,
                 state: currentGameState,
                 bots: bots.map(bot => ({
@@ -32606,6 +32707,14 @@ function mpDrawRemotePlayers() {
 
         function mpApplyWorldSnapshot(snapshot) {
             if (!snapshot || !mpIsOnlineMatch() || mpIsWorldAuthority()) return;
+
+            // Never let an old match snapshot overwrite the next queue lobby.
+            if (snapshot.matchId && snapshot.matchId !== mpState.matchId) return;
+
+            // Also reject phase-mismatched snapshots, which can happen during fast menu/queue transitions.
+            if (snapshot.state && currentGameState === GAME_STATES.QUEUE_LOBBY && snapshot.state !== GAME_STATES.QUEUE_LOBBY) return;
+            if (snapshot.state && currentGameState === GAME_STATES.MATCH && snapshot.state !== GAME_STATES.MATCH) return;
+
             if (snapshot.seq && snapshot.seq <= (mpState.lastWorldSnapshotReceived || 0)) return;
             mpState.lastWorldSnapshotReceived = snapshot.seq || (mpState.lastWorldSnapshotReceived + 1);
 
@@ -43891,6 +44000,52 @@ function resizeMinimapCanvas() {
             return min + Math.random() * Math.max(1000, adjustedMax - min);
         }
 
+                function mpRequestQuickMatch(action, fallbackMode, options = {}) {
+            const cleanMode = action === "team" ? "team" : "duo";
+
+            if (!mpSocket || !mpState.connected || !["duo", "team"].includes(cleanMode)) {
+                mpTransitionToQueue(fallbackMode);
+                return;
+            }
+
+            overlayTitle.textContent = "JOINING ONLINE LOBBY";
+            overlayDesc.innerHTML = `
+                <span class="text-cyan-300 font-orbitron font-black">REAL PLAYER MATCHMAKING</span><br>
+                <span class="text-slate-300">Checking open ${cleanMode === "team" ? "Squad" : "Duo"} queues before creating a fresh NPC lobby...</span>
+            `;
+
+            let completed = false;
+
+            const fallbackTimer = setTimeout(() => {
+                if (completed) return;
+                completed = true;
+
+                triggerNotification("Online queue did not respond. Starting NPC-filled lobby.");
+                mpTransitionToQueue(fallbackMode);
+            }, 4500);
+
+            mpSocket.emit("quickMatch", {
+                mode: cleanMode,
+                ranked: !!options.ranked
+            }, res => {
+                if (completed) return;
+                completed = true;
+                clearTimeout(fallbackTimer);
+
+                if (!res || !res.ok) {
+                    triggerNotification(res?.error || "No online lobby found. Starting NPC-filled lobby.");
+                    mpTransitionToQueue(fallbackMode);
+                    return;
+                }
+
+                // Server will emit partyMatchStart, which transitions into duo-online/team-online.
+                overlayDesc.innerHTML = `
+                    <span class="text-emerald-300 font-orbitron font-black">${res.joinedExisting ? "JOINED OPEN PLAYER LOBBY" : "CREATED ONLINE LOBBY"}</span><br>
+                    <span class="text-slate-300">Waiting for server deployment sync...</span>
+                `;
+            });
+        }
+
         function beginMatchSearch(action, mode, options = {}) {
             if (currentGameState !== GAME_STATES.MENU || !gameLayer.classList.contains("hidden")) {
                 clearMatchSearchTimers();
@@ -43904,6 +44059,13 @@ function resizeMinimapCanvas() {
             const rankedLaunch = !!options.ranked;
             const startedAt = performance.now();
             let targetMs = rollMatchSearchDurationMs(rankedLaunch ? `ranked-${action}` : action);
+
+            // For real-player Duo/Squad quick-match, do not wait 30-45 seconds locally.
+            // The server needs the player in the queue while other players are still joinable.
+            if (options.onlineQuickMatch) {
+                targetMs = 1600 + Math.random() * 1400;
+            }
+
             let initialCandidates = getMatchSearchOnlineCandidateCount();
             const actionLabel = rankedLaunch ? `RANKED ${String(action || "solo").toUpperCase()}` : action === "team" ? "SQUAD" : String(action || "solo").toUpperCase();
             const iconClass = action === "team"
@@ -43945,7 +44107,11 @@ function resizeMinimapCanvas() {
                         startedAt: Date.now()
                     } : null;
 
-                    mpTransitionToQueue(mode);
+                    if (options.onlineQuickMatch) {
+                        mpRequestQuickMatch(action, mode, { ranked: rankedLaunch });
+                    } else {
+                        mpTransitionToQueue(mode);
+                    }
                 }, 550);
             }
 
@@ -44098,7 +44264,16 @@ function resizeMinimapCanvas() {
                     }
 
                     const queuedMode = action === "duo" ? "duo-bot" : action === "team" ? "team-bot" : action;
-                    beginMatchSearch(action, queuedMode, { ranked: mpIsRankedQueueEnabled(action) });
+                    const onlineQuickMatch =
+                        !inParty &&
+                        mpState.connected &&
+                        !mpIsRankedQueueEnabled(action) &&
+                        (action === "duo" || action === "team");
+
+                    beginMatchSearch(action, queuedMode, {
+                        ranked: mpIsRankedQueueEnabled(action),
+                        onlineQuickMatch
+                    });
                 } else {
                     setTimeout(() => {
                         hideActionOverlay();
