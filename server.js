@@ -5,6 +5,8 @@ const path = require("path");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
 
+const app = express();
+
 app.set("trust proxy", true);
 
 app.use((req, res, next) => {
