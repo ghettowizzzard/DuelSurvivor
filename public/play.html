@@ -307,15 +307,10 @@
 
         .main-menu-stage {
             position: relative;
-            width: 100% !important;
-            max-width: 1450px !important;
-            min-width: 0;
-            height: 100%;
-            max-height: 100%;
-            align-self: stretch;
-            padding-left: clamp(12px, 1.6vw, 24px) !important;
-            padding-right: clamp(12px, 1.6vw, 24px) !important;
-            overflow: hidden;
+            max-width: min(1450px, calc(100vw - 24px)) !important;
+            padding-left: clamp(10px, 1.4vw, 24px) !important;
+            padding-right: clamp(10px, 1.4vw, 24px) !important;
+            overflow: visible;
         }
 
         .main-menu-stage::before {
@@ -712,21 +707,7 @@
             overscroll-behavior: none;
         }
 
-        #main-menu-ui {
-            left: 0;
-            right: 0;
-            width: 100%;
-            min-width: 100%;
-            max-width: 100%;
-            height: calc(var(--ds-vh) * 100);
-            min-height: calc(var(--ds-vh) * 100);
-            max-height: calc(var(--ds-vh) * 100);
-            overflow: hidden;
-            display: grid !important;
-            grid-template-rows: auto minmax(0, 1fr) 36px;
-            align-items: stretch;
-        }
-
+        #main-menu-ui,
         #game-layer {
             left: 0;
             right: 0;
@@ -739,35 +720,30 @@
             overflow: hidden;
         }
 
+        #main-menu-ui {
+            display: flex !important;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: stretch;
+        }
+
         #main-menu-ui > header,
         #main-menu-ui > footer,
         #game-hud-header {
             width: 100% !important;
             max-width: none !important;
-            flex-shrink: 0;
             box-sizing: border-box;
+            flex-shrink: 0;
         }
 
         #main-menu-ui > main {
-            min-height: 0;
-            height: 100%;
-            max-height: 100%;
-            margin-top: 0 !important;
-            margin-bottom: 0 !important;
-            align-self: stretch;
-            overflow: hidden;
+            flex: 0 1 auto;
         }
 
         #main-menu-ui > footer {
             display: flex !important;
             visibility: visible !important;
             opacity: 1 !important;
-            height: 36px !important;
-            min-height: 36px !important;
-            max-height: 36px !important;
-            overflow: hidden;
-            position: relative;
-            z-index: 50;
         }
 
         .main-menu-online-count {
@@ -1373,32 +1349,24 @@
                 flex: 0 0 auto;
                 min-width: max-content;
                 transform: none !important;
-                padding: 0.35rem 0.55rem !important;
-                gap: 0.55rem !important;
             }
 
             .main-profile-widget img {
-                width: 2.15rem !important;
-                height: 2.15rem !important;
-                min-width: 2.15rem !important;
-                min-height: 2.15rem !important;
+                width: 2.5rem !important;
+                height: 2.5rem !important;
+                min-width: 2.5rem !important;
+                min-height: 2.5rem !important;
             }
 
             .main-profile-widget .min-w-44 {
-                min-width: 7.8rem !important;
+                min-width: 11rem !important;
             }
 
             .main-menu-stage {
-                min-height: 0;
-                height: 100%;
-                max-height: 100%;
-                width: 100% !important;
-                max-width: 1450px !important;
-                padding: 4px 14px !important;
-                gap: 12px !important;
-                margin-top: 0 !important;
-                margin-bottom: 0 !important;
-                overflow: hidden;
+                max-width: min(1450px, calc(100vw - 24px)) !important;
+                padding-left: clamp(10px, 1.4vw, 24px) !important;
+                padding-right: clamp(10px, 1.4vw, 24px) !important;
+                overflow: visible;
             }
 
             .main-menu-copy {
@@ -1855,7 +1823,7 @@
         </header>
 
         <!-- MAIN INTERACTIVE WORKSPACE -->
-        <main class="main-menu-stage relative z-20 w-full max-w-[1450px] mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 items-center py-2 my-0 min-h-0">
+        <main class="main-menu-stage relative z-20 w-full max-w-[1450px] mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center py-6 my-auto">
             <div class="main-menu-copy lg:col-span-5 flex flex-col justify-center space-y-8 select-none">
                 <div class="main-menu-hero-copy space-y-2">
                     <div class="main-menu-kicker flex items-center space-x-2 text-cyan-400 tracking-widest text-sm font-orbitron font-bold">
@@ -2060,7 +2028,7 @@
         </main>
 
         <!-- FOOTER / CONTROLS PANEL -->
-        <footer class="main-menu-footer relative z-50 w-full h-9 min-h-9 max-h-9 px-3 py-1 bg-gradient-to-t from-black/80 to-transparent flex flex-row justify-between items-center gap-2 text-[10px] text-slate-500 border-t border-slate-900/40 overflow-hidden">
+        <footer class="main-menu-footer relative z-20 w-full px-6 py-4 bg-gradient-to-t from-black/80 to-transparent flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-500 border-t border-slate-900/40">
             <div class="flex items-center space-x-6">
                 <span>© 2026 Duel.io Inc. All rights reserved.</span>
                 <a href="#" class="hover:text-slate-300 transition-colors">Privacy Policy</a>
