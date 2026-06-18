@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#03030c">
+  <title>Duel.io Updates - Patch Notes, Cards, Rewards, and News</title>
+  <meta name="description" content="Follow Duel.io updates, patch notes, card changes, browser game improvements, ranked rewards, and development news.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://duelio.lol/updates/">
+  <meta property="og:site_name" content="Duel.io">
+  <meta property="og:title" content="Duel.io Updates - Patch Notes, Cards, Rewards, and News">
+  <meta property="og:description" content="Follow Duel.io updates, patch notes, card changes, browser game improvements, ranked rewards, and development news.">
+  <meta property="og:url" content="https://duelio.lol/updates/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Duel.io Updates - Patch Notes, Cards, Rewards, and News">
+  <meta name="twitter:description" content="Follow Duel.io updates, patch notes, card changes, browser game improvements, ranked rewards, and development news.">
+  <meta name="twitter:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+  <link rel="icon" type="image/png" href="/assets/DuelioThumbnail.png">
+  <link rel="apple-touch-icon" href="/assets/DuelioThumbnail.png">
+  <link rel="stylesheet" href="/assets/landing.css">
+
+  <style>
+    .updates-hero {
+      position: relative;
+      overflow: hidden;
+      border-radius: 28px;
+      border: 1px solid rgba(103, 232, 249, 0.34);
+      background:
+        radial-gradient(circle at 14% 14%, rgba(14, 165, 233, 0.20), transparent 34%),
+        radial-gradient(circle at 86% 18%, rgba(217, 70, 239, 0.16), transparent 34%),
+        linear-gradient(135deg, rgba(2, 6, 23, 0.96), rgba(15, 23, 42, 0.80));
+      box-shadow:
+        0 0 38px rgba(14, 165, 233, 0.18),
+        0 24px 80px rgba(0, 0, 0, 0.34),
+        inset 0 0 24px rgba(255,255,255,0.035);
+      padding: clamp(22px, 4vw, 44px);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 430px);
+      gap: clamp(20px, 3vw, 34px);
+      align-items: center;
+      isolation: isolate;
+    }
+
+    .updates-hero::before {
+      content: "";
+      position: absolute;
+      inset: -24%;
+      background: conic-gradient(from 120deg, transparent, rgba(103,232,249,.08), transparent, rgba(250,204,21,.06), transparent);
+      animation: updatesSpin 18s linear infinite;
+      opacity: .7;
+      pointer-events: none;
+    }
+
+    @keyframes updatesSpin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .updates-hero > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .updates-hero-copy p {
+      max-width: 760px;
+    }
+
+    .updates-hero-card {
+      position: relative;
+      border-radius: 24px;
+      border: 1px solid rgba(103, 232, 249, 0.28);
+      padding: 22px;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(56, 189, 248, 0.16), transparent 30%),
+        linear-gradient(135deg, rgba(2, 6, 23, 0.92), rgba(15, 23, 42, 0.78));
+      box-shadow:
+        inset 0 0 22px rgba(255,255,255,0.03),
+        0 16px 40px rgba(0,0,0,0.26);
+    }
+
+    .updates-hero-card .patch-mini-kicker {
+      margin: 0 0 8px;
+      color: #67e8f9;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .updates-hero-card h2 {
+      margin: 0;
+      color: #f8fafc;
+      font-size: clamp(24px, 3vw, 34px);
+      line-height: 1.05;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .updates-hero-card p {
+      margin: 10px 0 0;
+      color: #cbd5e1;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .updates-hero-pills {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .updates-hero-pills span {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(103,232,249,.24);
+      background: rgba(2,6,23,.56);
+      color: #dbeafe;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      box-shadow: inset 0 0 14px rgba(255,255,255,.025);
+    }
+
+    .updates-intro {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 4px;
+    }
+
+    .updates-intro-card {
+      border-radius: 20px;
+      border: 1px solid rgba(103,232,249,.18);
+      background: rgba(2,6,23,.42);
+      padding: 18px;
+    }
+
+    .updates-intro-card h3 {
+      margin: 0 0 8px;
+      color: #facc15;
+      font-size: 15px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .updates-intro-card p {
+      margin: 0;
+      color: #94a3b8;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .patch-timeline {
+      display: grid;
+      gap: 22px;
+    }
+
+    .patch-card {
+      position: relative;
+      overflow: hidden;
+      border-radius: 26px;
+      border: 1px solid rgba(103,232,249,.26);
+      background:
+        radial-gradient(circle at 12% 10%, rgba(14,165,233,.14), transparent 32%),
+        radial-gradient(circle at 88% 18%, rgba(250,204,21,.08), transparent 30%),
+        linear-gradient(135deg, rgba(2,6,23,.94), rgba(15,23,42,.80));
+      box-shadow:
+        0 18px 58px rgba(0,0,0,.28),
+        inset 0 0 22px rgba(255,255,255,.03);
+      padding: clamp(22px, 3vw, 32px);
+    }
+
+    .patch-card.old-release {
+      border-color: rgba(248,113,113,.24);
+      background:
+        radial-gradient(circle at 86% 90%, rgba(248,113,113,.12), transparent 32%),
+        radial-gradient(circle at 12% 10%, rgba(14,165,233,.10), transparent 32%),
+        linear-gradient(135deg, rgba(2,6,23,.94), rgba(15,23,42,.80));
+    }
+
+    .patch-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .patch-card-head h2 {
+      margin: 0;
+      color: #f8fafc;
+      font-size: clamp(26px, 3vw, 36px);
+      line-height: 1.05;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .patch-card-head p {
+      margin: 8px 0 0;
+      color: #cbd5e1;
+      line-height: 1.6;
+      font-size: 15px;
+      max-width: 820px;
+    }
+
+    .patch-version-badge {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(250,204,21,.58);
+      background: rgba(113,63,18,.24);
+      color: #fde68a;
+      font-size: 12px;
+      font-weight: 1000;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      box-shadow: 0 0 18px rgba(250,204,21,.12);
+    }
+
+    .patch-kicker {
+      margin: 0 0 8px;
+      color: #67e8f9;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .patch-feature-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .patch-feature {
+      border-radius: 18px;
+      border: 1px solid rgba(103,232,249,.16);
+      background: rgba(2,6,23,.42);
+      padding: 14px 15px;
+    }
+
+    .patch-feature strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #f8fafc;
+      font-size: 13px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .patch-feature span {
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .patch-callout {
+      margin-top: 18px;
+      border-left: 3px solid rgba(250,204,21,.55);
+      padding-left: 14px;
+      color: #cbd5e1;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .patch-shot-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .patch-shot {
+      display: grid;
+      gap: 8px;
+    }
+
+    .patch-shot-frame {
+      position: relative;
+      aspect-ratio: 4 / 3;
+      border-radius: 18px;
+      border: 1px solid rgba(103,232,249,.22);
+      background:
+        radial-gradient(circle at 50% 35%, rgba(14,165,233,.12), transparent 36%),
+        rgba(2,6,23,.72);
+      overflow: hidden;
+      box-shadow:
+        inset 0 0 16px rgba(255,255,255,.03),
+        0 14px 34px rgba(0,0,0,.24);
+    }
+
+    .patch-shot-frame.patch-shot-tall {
+      aspect-ratio: 1.22 / 1;
+    }
+
+    .patch-shot-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .patch-shot-frame .guide-placeholder {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      text-align: center;
+      color: #64748b;
+      font-size: 12px;
+      padding: 16px;
+    }
+
+    .patch-shot h3 {
+      margin: 0;
+      color: #f8fafc;
+      font-size: 14px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .patch-shot p {
+      margin: 0;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .updates-float-mascot {
+      position: absolute;
+      z-index: 2;
+      pointer-events: none;
+      opacity: 1;
+    }
+
+    .updates-float-mascot.top-left {
+      left: clamp(10px, 1.8vw, 18px);
+      top: clamp(10px, 1.8vw, 18px);
+      transform: scale(1.06) rotate(-8deg);
+    }
+
+    .updates-float-mascot.bottom-right {
+      right: clamp(10px, 1.8vw, 18px);
+      bottom: clamp(10px, 1.8vw, 18px);
+      transform: scale(1.06) rotate(172deg);
+    }
+
+    .updates-float-mascot .duel-mascot {
+      transform: scale(1.05);
+      filter: drop-shadow(0 10px 18px rgba(0,0,0,.38));
+    }
+
+    .patch-footer-note {
+      margin-top: 20px;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 1040px) {
+      .updates-hero {
+        grid-template-columns: 1fr;
+      }
+
+      .patch-shot-grid,
+      .updates-intro {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .patch-feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .patch-card-head {
+        flex-direction: column;
+      }
+
+      .updates-float-mascot.top-left,
+      .updates-float-mascot.bottom-right {
+        position: static;
+        transform: none;
+        margin-top: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page-shell">
+    <nav class="top-nav" aria-label="Duel.io site navigation">
+      <a class="brand-link" href="/" aria-label="Back to Duel.io home">
+        <img src="/assets/DuelioThumbnail.png" alt="Duel.io logo">
+        <span>Duel.io</span>
+      </a>
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/play">Play</a>
+        <a href="/how-to-play/">How to Play</a>
+        <a href="/cards-and-creatures/">Cards</a>
+        <a href="/updates/">Updates</a>
+      </div>
+    </nav>
+
+    <section class="updates-hero">
+      <div class="updates-float-mascot top-left" aria-hidden="true">
+        <span class="duel-mascot">
+          <span class="mascot-hand side"></span>
+          <span class="mascot-hand bottom"></span>
+          <span class="mascot-body"></span>
+        </span>
+      </div>
+
+      <div class="updates-hero-copy">
+        <p class="kicker">Patch Notes</p>
+        <h1>Duel.io Updates</h1>
+        <p>
+          This is the page for the real stuff: the big feature drops, the systems that got added,
+          and the kind of changes that actually make a match feel different when you hop in.
+          No overdone corporate talk — just the good stuff.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn-primary" href="/play">Play Duel.io</a>
+          <a class="btn-secondary" href="/">Back to Home</a>
+        </div>
+      </div>
+
+      <aside class="updates-hero-card" aria-label="Latest update summary">
+        <p class="patch-mini-kicker">Latest Build</p>
+        <h2>Season 01<br>Build V.1.9.0</h2>
+        <p>
+          This update is where Duel.io started feeling way more complete. It adds stronger progression,
+          better online systems, more combat toys, and several match features that make rounds feel more alive.
+        </p>
+
+        <div class="updates-hero-pills">
+          <span>Ranked</span>
+          <span>Battle Pass</span>
+          <span>Melee Weapons</span>
+          <span>Care Packages</span>
+          <span>Friends + Parties</span>
+          <span>Scopes + Underground</span>
+        </div>
+      </aside>
+    </section>
+
+    <section class="content-panel">
+      <h2 class="section-heading">Quick rundown</h2>
+
+      <div class="updates-intro">
+        <article class="updates-intro-card">
+          <h3>What lives here</h3>
+          <p>
+            Big feature drops, real patch notes, and the kind of update summaries a player can skim in a minute and instantly understand.
+          </p>
+        </article>
+
+        <article class="updates-intro-card">
+          <h3>How it’s ordered</h3>
+          <p>
+            Newest patch first, older stuff lower down. So if somebody lands here for the first time, they see what the game is like right now.
+          </p>
+        </article>
+
+        <article class="updates-intro-card">
+          <h3>The vibe</h3>
+          <p>
+            Keep it simple, clean, and real. Just say what got added, why it matters, and what people should try when they jump in.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="content-panel">
+      <h2 class="section-heading">Patch Timeline</h2>
+
+      <div class="patch-timeline">
+        <article class="patch-card">
+          <div class="patch-card-head">
+            <div>
+              <p class="patch-kicker">Newest Major Update</p>
+              <h2>Season 01 - Build V.1.9.0</h2>
+              <p>
+                This one was a chunky update. The goal here was to make matches deeper, make progression feel better,
+                and give people more systems to mess with besides just dropping in and fighting. A lot of the stuff players see in the game now came in here.
+              </p>
+            </div>
+            <span class="patch-version-badge">Build V.1.9.0</span>
+          </div>
+
+          <div class="patch-feature-grid" aria-label="Duel.io build 1.9.0 features">
+            <article class="patch-feature">
+              <strong>Ranked Solo + Duo</strong>
+              <span>Toggle ranked queues on, climb rating, and get proper ranked match results after each run.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Leaderboards</strong>
+              <span>New leaderboard support lets players compare kills, wins, and overall performance.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Friends + Survivor ID Tools</strong>
+              <span>Add friends, manage requests, and use a cleaner identity/profile flow around your account.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Party Lobby Improvements</strong>
+              <span>Better party invites, ready checks, lobby status, and smoother team setup before queueing in.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Survival Pass + Magic Pass</strong>
+              <span>A full two-track pass setup with free and premium reward lanes, unlocks, and progression rewards.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Dedicated Melee Weapon System</strong>
+              <span>Melee got its own proper slot, pickups, swapping, dropping, and in-match combat use.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Care Packages / Airdrops</strong>
+              <span>Supply drops now land during matches and add another reason to fight over the map instead of just camping out.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Armor + Health Pickups</strong>
+              <span>More loot variety in the field with pickups that help you recover and stay in the fight.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Scopes / Sight Lenses</strong>
+              <span>Different sight upgrades give extra utility and add another small layer to looting and combat decisions.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Underground Entrances</strong>
+              <span>More map routing and hidden loot paths thanks to underground entrances and interior expansion.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Reconnect + Cleaner Match Flow</strong>
+              <span>Better reconnect handling and online session flow make multiplayer feel less fragile.</span>
+            </article>
+
+            <article class="patch-feature">
+              <strong>Expanded Post-Match + Profile Progress</strong>
+              <span>Stronger match reports, profile tracking, revives/stat tracking, and overall progression flow.</span>
+            </article>
+          </div>
+
+          <p class="patch-callout">
+            Basically: V.1.9.0 is the patch where Duel.io stopped feeling like just a cool prototype and started feeling like a fuller actual game.
+          </p>
+
+          <div class="patch-shot-grid">
+            <article class="patch-shot">
+              <div class="patch-shot-frame">
+                <img src="/assets/howto-17-care-package.png" alt="Duel.io care package screenshot" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+                <span class="guide-placeholder">Add screenshot:<br>/assets/howto-17-care-package.png</span>
+              </div>
+              <h3>Care Packages</h3>
+              <p>Supply drops give players another point of interest mid-match and create risk-versus-reward fights.</p>
+            </article>
+
+            <article class="patch-shot">
+              <div class="patch-shot-frame patch-shot-tall">
+                <img src="/assets/howto-pickup-armor.png" alt="Duel.io armor pickup screenshot" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+                <span class="guide-placeholder">Add screenshot:<br>/assets/howto-pickup-armor.png</span>
+              </div>
+              <h3>Armor Pickups</h3>
+              <p>Extra field loot like armor pickups helps match pacing and gives players more recovery options on the fly.</p>
+            </article>
+
+            <article class="patch-shot">
+              <div class="patch-shot-frame">
+                <img src="/assets/howto-14-melee-weapons.png" alt="Duel.io melee weapons screenshot" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+                <span class="guide-placeholder">Add screenshot:<br>/assets/howto-14-melee-weapons.png</span>
+              </div>
+              <h3>Melee Weapons</h3>
+              <p>Melee now has real presence in the combat loop with pickups, its own slot, and better close-range pressure.</p>
+            </article>
+          </div>
+
+          <p class="patch-footer-note">
+            There are obviously plenty of smaller changes too, but these are the bigger gameplay and systems additions that actually move the needle.
+          </p>
+        </article>
+
+        <article class="patch-card old-release">
+          <div class="patch-card-head">
+            <div>
+              <p class="patch-kicker">First Public Release</p>
+              <h2>Season 01 - Build V.1.83</h2>
+              <p>
+                This was the original public foundation. Even back here, the game already had a lot going on:
+                the core battle royale loop, cards, progression, quests, weather, online support, and a bunch of utility systems already in place.
+              </p>
+            </div>
+            <span class="patch-version-badge">Build V.1.83</span>
+          </div>
+
+          <div class="patch-feature-grid" aria-label="Duel.io build 1.83 features">
+            <article class="patch-feature"><strong>100 Player BR Gamemodes</strong><span>Large battle royale matches across solo, duo, and squad-style play.</span></article>
+            <article class="patch-feature"><strong>Party System / Proximity Chat</strong><span>Queue up together and talk with nearby players in-match.</span></article>
+            <article class="patch-feature"><strong>Card Binder</strong><span>Keep track of your collection and the cards you’ve unlocked.</span></article>
+            <article class="patch-feature"><strong>Card Packs / Shop</strong><span>Open packs, buy cards, and grow your collection over time.</span></article>
+            <article class="patch-feature"><strong>Rarity System</strong><span>Cards come with rarity tiers, giving collection and loadout building more personality.</span></article>
+            <article class="patch-feature"><strong>Profile Leveling</strong><span>Basic profile progression was already in place from the start.</span></article>
+            <article class="patch-feature"><strong>Skill Tree + Multiplier System</strong><span>Longer-term account progression and stat-based player growth.</span></article>
+            <article class="patch-feature"><strong>Quests</strong><span>Task-based progression to give players more goals than just winning matches.</span></article>
+            <article class="patch-feature"><strong>Daily Rewards</strong><span>Regular freebies and progression drip for returning players.</span></article>
+            <article class="patch-feature"><strong>Emote Wheel</strong><span>Quick emotes to flex, joke around, or communicate a little mid-match.</span></article>
+            <article class="patch-feature"><strong>Weather / Disasters</strong><span>Storms and map events helped matches feel less static.</span></article>
+            <article class="patch-feature"><strong>Drag / Swap / Drop System</strong><span>Flexible item and card management inside your loadout and gameplay flow.</span></article>
+            <article class="patch-feature"><strong>Marker / Ping System</strong><span>Quick pings for communication and awareness, especially in team play.</span></article>
+            <article class="patch-feature"><strong>Kill Feed</strong><span>Live elimination feed to keep the lobby feeling active.</span></article>
+            <article class="patch-feature"><strong>Spectate Mode</strong><span>Stick around after a fight and keep watching the match play out.</span></article>
+            <article class="patch-feature"><strong>Controller + Mobile Support / Graphic Settings</strong><span>Broader device support plus settings options right out of the gate.</span></article>
+          </div>
+
+          <p class="patch-callout">
+            So yeah — even the “starting point” patch was already pretty stacked. V.1.9.0 mostly builds on that base and pushes it into a more complete direction.
+          </p>
+
+          <div class="updates-float-mascot bottom-right" aria-hidden="true">
+            <span class="duel-mascot red">
+              <span class="mascot-hand side"></span>
+              <span class="mascot-hand bottom"></span>
+              <span class="mascot-body"></span>
+            </span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer-panel">
+      Duel.io is built as a fast browser card battle royale. Follow the project on
+      <a href="https://gamejolt.com/games/duelio/1077325" target="_blank" rel="noopener noreferrer">Game Jolt</a>
+      and
+      <a href="https://i-am-wizard.itch.io/duelio" target="_blank" rel="noopener noreferrer">itch.io</a>.
+    </footer>
+  </main>
+</body>
+</html>
