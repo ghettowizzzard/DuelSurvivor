@@ -1745,7 +1745,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="mr-1">
-                        <span id="season-build-label" class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.9.0</span>
+                        <span id="season-build-label" class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v1.9.1</span>
                         <span class="font-orbitron font-black text-lg tracking-wider text-slate-100">DUEL.IO</span>
                     </div>
                     <button id="quest-menu-btn" class="quest-icon-btn" title="Quests" aria-label="Quests">
@@ -4659,7 +4659,15 @@
             connectionError: "",
             profile: null,
             onlinePlayers: [],
-            leaderboards: { kills: [], wins: [], overall: [] },
+            leaderboards: {
+                kills: [],
+                wins: [],
+                overall: [],
+                rankedSolo: [],
+                rankedDuo: [],
+                rankedSeason: null,
+                rankedArchives: []
+            },
             leaderboardTab: "kills",
             lastLeaderboardReportKey: "",
             rankedQueue: { solo: false, duo: false },
@@ -4756,7 +4764,7 @@
             const el = document.getElementById("season-build-label");
             if (!el) return;
             const season = getRankedSeasonInfo();
-            el.textContent = `${season.label} - Build v1.90`;
+            el.textContent = `${season.label} - Build v1.91`;
             el.title = `${season.label} ends ${new Date(season.endAt).toLocaleDateString()}`;
         }
 
@@ -5385,6 +5393,7 @@
                 mpState.profile.deaths = serverProfile.deaths ?? mpState.profile.deaths ?? 0;
                 mpState.profile.losses = serverProfile.losses ?? mpState.profile.losses ?? 0;
                 mpState.profile.revives = serverProfile.revives ?? mpState.profile.revives ?? 0;
+                mpState.profile.seasonRewards = Array.isArray(serverProfile.seasonRewards) ? serverProfile.seasonRewards : [];
 
                 mpSaveProfile();
 
@@ -44546,35 +44555,74 @@ function resizeMinimapCanvas() {
             mpState.leaderboards = {
                 kills: Array.isArray(data.kills) ? data.kills : [],
                 wins: Array.isArray(data.wins) ? data.wins : [],
-                overall: Array.isArray(data.overall) ? data.overall : []
+                overall: Array.isArray(data.overall) ? data.overall : [],
+                rankedSolo: Array.isArray(data.rankedSolo) ? data.rankedSolo : [],
+                rankedDuo: Array.isArray(data.rankedDuo) ? data.rankedDuo : [],
+                rankedSeason: data.rankedSeason || getRankedSeasonInfo(),
+                rankedArchives: Array.isArray(data.rankedArchives) ? data.rankedArchives : []
             };
 
             if (menuScreenState.screen === "leaderboards") {
-                renderLeaderboardsScreen(mpState.leaderboardTab || "kills", false);
+                renderLeaderboardsScreen(mpState.leaderboardTab || "rankedSolo", false);
             }
         }
 
-        function renderLeaderboardsScreen(tab = mpState.leaderboardTab || "kills", requestLive = true) {
+        function renderLeaderboardsScreen(tab = mpState.leaderboardTab || "rankedSolo", requestLive = true) {
             const layer = ensureMenuPanelLayer();
             layer.classList.remove("hidden");
             menuScreenState.screen = "leaderboards";
-            mpState.leaderboardTab = ["kills", "wins", "overall"].includes(tab) ? tab : "kills";
+
+            const validTabs = ["rankedSolo", "rankedDuo", "archive", "rewards", "kills", "wins", "overall"];
+            mpState.leaderboardTab = validTabs.includes(tab) ? tab : "rankedSolo";
 
             if (requestLive && mpSocket?.connected) {
                 mpSocket.emit("leaderboardRequest");
             }
 
-            const boards = mpState.leaderboards || { kills: [], wins: [], overall: [] };
-            const activeRows = (boards[mpState.leaderboardTab] || []).slice(0, 100);
-            const tabLabel = mpState.leaderboardTab === "wins" ? "Most Wins" : mpState.leaderboardTab === "overall" ? "Overall Rating" : "Most Kills";
+            const boards = mpState.leaderboards || {};
+            const season = boards.rankedSeason || getRankedSeasonInfo();
+            const rewards = Array.isArray(mpState.profile?.seasonRewards) ? mpState.profile.seasonRewards : [];
+            const archives = Array.isArray(boards.rankedArchives) ? boards.rankedArchives : [];
 
             const stat = value => Number(value || 0).toLocaleString();
             const safe = value => matchReportEscapeHtml(value || "");
+            const dateText = value => value ? new Date(value).toLocaleDateString() : "TBA";
             const kdText = row => `${stat(row.kills)} / ${stat(row.deaths)}`;
 
-            const rowsHtml = activeRows.length ? activeRows.map((row, index) => `
-                <div class="grid grid-cols-[3.2rem_1.2fr_.8fr_.55fr_.7fr_.7fr_.7fr_.7fr_.7fr] gap-2 items-center rounded-lg border ${index < 3 ? "border-amber-400/45 bg-amber-400/10" : "border-slate-800 bg-slate-950/70"} px-3 py-2 text-xs">
+            const boardLabels = {
+                rankedSolo: "Ranked Solo",
+                rankedDuo: "Ranked Duo",
+                archive: "Season Archive",
+                rewards: "Ranked Rewards",
+                kills: "Most Kills",
+                wins: "Most Wins",
+                overall: "Overall Rating"
+            };
+
+            const activeRows = (boards[mpState.leaderboardTab] || []).slice(0, mpState.leaderboardTab.startsWith("ranked") ? 50 : 100);
+
+            const rankedRowsHtml = activeRows.length ? activeRows.map((row, index) => `
+                <div class="grid grid-cols-[3.2rem_1.35fr_.75fr_.6fr_.6fr_.6fr_.75fr] gap-2 items-center rounded-lg border ${index < 3 ? "border-amber-300/60 bg-amber-300/10 shadow-[0_0_22px_rgba(250,204,21,.10)]" : "border-slate-800 bg-slate-950/70"} px-3 py-2 text-xs">
                     <div class="font-orbitron font-black ${index < 3 ? "text-amber-300" : "text-slate-400"}">#${row.position || index + 1}</div>
+                    <div class="min-w-0">
+                        <div class="font-orbitron font-black text-white truncate">${safe(row.name || row.playerId || "Survivor")}</div>
+                        <div class="text-[9px] text-slate-500 truncate">${safe(row.playerId || "")}</div>
+                    </div>
+                    <div class="font-orbitron font-black text-amber-300">${stat(row.rating || 1000)}</div>
+                    <div class="font-orbitron font-black text-emerald-300">${stat(row.wins)}</div>
+                    <div class="font-orbitron font-black text-red-300">${stat(row.kills)}</div>
+                    <div class="font-orbitron font-black text-sky-300">${stat(row.revives)}</div>
+                    <div class="font-orbitron font-black text-cyan-300">${row.bestPlacement ? `#${stat(row.bestPlacement)}` : "--"}</div>
+                </div>
+            `).join("") : `
+                <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-8 text-center text-slate-500">
+                    No ranked reports yet. Finish a Ranked match to enter the season standings.
+                </div>
+            `;
+
+            const casualRowsHtml = activeRows.length ? activeRows.map((row, index) => `
+                <div class="grid grid-cols-[3.2rem_1.2fr_.8fr_.55fr_.7fr_.7fr_.7fr_.7fr_.7fr] gap-2 items-center rounded-lg border ${index < 3 ? "border-emerald-400/45 bg-emerald-400/10" : "border-slate-800 bg-slate-950/70"} px-3 py-2 text-xs">
+                    <div class="font-orbitron font-black ${index < 3 ? "text-emerald-300" : "text-slate-400"}">#${row.position || index + 1}</div>
                     <div class="min-w-0">
                         <div class="font-orbitron font-black text-white truncate">${safe(row.name || row.playerId || "Survivor")}</div>
                         <div class="text-[9px] text-slate-500 truncate">${safe(row.playerId || "")}</div>
@@ -44589,64 +44637,148 @@ function resizeMinimapCanvas() {
                 </div>
             `).join("") : `
                 <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-8 text-center text-slate-500">
-                    No leaderboard stats yet. Finish an online match to submit your first report.
+                    No casual leaderboard stats yet.
+                </div>
+            `;
+
+            const archiveHtml = archives.length ? archives.map(archive => {
+                const soloTop = (archive.rankedSolo || []).slice(0, 3);
+                const duoTop = (archive.rankedDuo || []).slice(0, 3);
+                const podium = rows => rows.length ? rows.map(row => `
+                    <div class="flex justify-between rounded border border-white/10 bg-black/35 px-3 py-2 text-xs">
+                        <span class="font-orbitron font-black text-amber-200">#${row.position} ${safe(row.name || row.playerId)}</span>
+                        <span class="font-orbitron font-black text-cyan-200">${stat(row.rating)}</span>
+                    </div>
+                `).join("") : `<div class="text-xs text-slate-500">No finalists.</div>`;
+
+                return `
+                    <div class="rounded-xl border border-amber-300/35 bg-gradient-to-br from-amber-400/10 via-slate-950 to-cyan-400/10 p-4">
+                        <div class="flex justify-between gap-3">
+                            <div>
+                                <div class="text-[10px] font-orbitron font-black tracking-widest text-amber-300">${safe(archive.seasonId || "ARCHIVE")}</div>
+                                <div class="text-2xl font-orbitron font-black text-white">Finalized Season</div>
+                                <div class="text-xs text-slate-400">Closed ${dateText(archive.finalizedAt)} / ${safe(archive.reason || "auto")}</div>
+                            </div>
+                            <div class="text-right text-xs text-slate-400">
+                                <div class="font-orbitron text-amber-200">${stat((archive.payouts || []).length)} payouts queued</div>
+                            </div>
+                        </div>
+                        <div class="grid md:grid-cols-2 gap-3 mt-4">
+                            <div>
+                                <div class="text-[10px] font-orbitron font-black text-cyan-300 mb-2">SOLO PODIUM</div>
+                                <div class="space-y-2">${podium(soloTop)}</div>
+                            </div>
+                            <div>
+                                <div class="text-[10px] font-orbitron font-black text-fuchsia-300 mb-2">DUO PODIUM</div>
+                                <div class="space-y-2">${podium(duoTop)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join("") : `
+                <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-8 text-center text-slate-500">
+                    No completed seasons yet. Season archives begin after Season 01 closes.
+                </div>
+            `;
+
+            const rewardsHtml = rewards.length ? rewards.map(reward => `
+                <div class="rounded-xl border border-amber-300/45 bg-gradient-to-br from-amber-300/12 via-slate-950 to-fuchsia-400/10 p-4">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div>
+                            <div class="text-[10px] font-orbitron font-black tracking-widest text-amber-300">${safe(reward.title || "RANKED REWARD")}</div>
+                            <div class="text-xl font-orbitron font-black text-white">${safe(reward.mode || "ranked").toUpperCase()} #${stat(reward.position)}</div>
+                            <div class="text-xs text-slate-400">${safe(reward.seasonId || "")} / Rating ${stat(reward.rating || 0)}</div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="text-right">
+                                <div class="text-amber-200 font-orbitron font-black">${stat(reward.gold)} Gold</div>
+                                <div class="text-cyan-200 font-orbitron font-black">${stat(reward.gems)} Gems</div>
+                            </div>
+                            <button data-claim-ranked-reward="${safe(reward.id)}" class="px-4 py-2 rounded-lg border border-amber-300/70 bg-amber-300/15 hover:bg-amber-300/25 text-amber-100 font-orbitron font-black text-xs">
+                                CLAIM
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join("") : `
+                <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-8 text-center text-slate-500">
+                    No ranked season rewards waiting. Top 50 ranked players receive payouts after season close.
                 </div>
             `;
 
             const myProfile = mpState.profile || {};
-            const mySummary = `
-                <div class="grid grid-cols-5 gap-3">
-                    <div class="rounded-lg border border-red-400/25 bg-red-400/10 p-3"><div class="text-[9px] text-red-200 font-orbitron">KILLS</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.kills)}</div></div>
-                    <div class="rounded-lg border border-slate-500/25 bg-white/5 p-3"><div class="text-[9px] text-slate-300 font-orbitron">K/D</div><div class="text-2xl font-orbitron font-black text-white">${kdText(myProfile)}</div></div>
-                    <div class="rounded-lg border border-amber-400/25 bg-amber-400/10 p-3"><div class="text-[9px] text-amber-200 font-orbitron">WINS</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.wins)}</div></div>
-                    <div class="rounded-lg border border-slate-500/25 bg-white/5 p-3"><div class="text-[9px] text-slate-300 font-orbitron">LOSSES</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.losses)}</div></div>
-                    <div class="rounded-lg border border-sky-400/25 bg-sky-400/10 p-3"><div class="text-[9px] text-sky-200 font-orbitron">REVIVES</div><div class="text-2xl font-orbitron font-black text-white">${stat(myProfile.revives)}</div></div>
-                </div>
-            `;
+            const solo = mpGetRankedBucket("solo");
+            const duo = mpGetRankedBucket("duo");
+            const mainContent =
+                mpState.leaderboardTab === "archive" ? archiveHtml :
+                mpState.leaderboardTab === "rewards" ? rewardsHtml :
+                mpState.leaderboardTab.startsWith("ranked") ? rankedRowsHtml :
+                casualRowsHtml;
 
             layer.innerHTML = `
-                <div class="relative h-full max-w-7xl mx-auto flex flex-col gap-5 overflow-hidden">
-                    <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_20%_10%,rgba(34,197,94,.16),transparent_30%),radial-gradient(circle_at_78%_22%,rgba(245,158,11,.12),transparent_32%),radial-gradient(circle_at_50%_90%,rgba(56,189,248,.10),transparent_35%)]"></div>
+                <div class="relative h-full max-w-7xl mx-auto flex flex-col gap-4 overflow-hidden">
+                    <div class="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_18%_12%,rgba(250,204,21,.18),transparent_28%),radial-gradient(circle_at_82%_20%,rgba(56,189,248,.14),transparent_32%),radial-gradient(circle_at_50%_95%,rgba(217,70,239,.12),transparent_36%)]"></div>
 
-                    <div class="relative z-10 flex items-center justify-between">
+                    <div class="relative z-10 flex items-center justify-between gap-3">
                         <div>
-                            <div class="text-xs text-emerald-300 font-orbitron font-black tracking-widest">ONLINE STANDINGS / TOP 100</div>
-                            <div class="text-4xl font-orbitron font-black text-white">LEADERBOARDS</div>
-                            <div class="text-sm text-slate-400 mt-1">Rank tier, profile level, kills, deaths, wins, losses, and revives from reported online match results.</div>
+                            <div class="text-xs text-amber-300 font-orbitron font-black tracking-widest">RANKED SEASON COMMAND / ${safe(season.label || "SEASON")}</div>
+                            <div class="text-4xl font-orbitron font-black text-white">SEASON STANDINGS</div>
+                            <div class="text-sm text-slate-400 mt-1">Season ends ${dateText(season.endAt)}. Top 50 Solo and Duo ranked players earn queued rewards.</div>
                         </div>
                         <button id="close-menu-panel" class="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-sm font-bold">BACK</button>
                     </div>
 
-                    <div class="relative z-10 rounded-xl border border-slate-800 bg-slate-950/80 p-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="font-orbitron font-black text-cyan-300 tracking-widest text-xs">YOUR PROFILE</div>
-                            <div class="text-[10px] font-orbitron text-slate-500">${mpState.connected ? "LIVE SERVER CONNECTED" : "OFFLINE - LOCAL TOTALS ONLY"}</div>
+                    <div class="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div class="rounded-xl border border-amber-300/35 bg-amber-300/10 p-3">
+                            <div class="text-[9px] text-amber-200 font-orbitron">SOLO RATING</div>
+                            <div class="text-2xl font-orbitron font-black text-white">${stat(solo.rating)}</div>
                         </div>
-                        ${mySummary}
+                        <div class="rounded-xl border border-fuchsia-300/35 bg-fuchsia-300/10 p-3">
+                            <div class="text-[9px] text-fuchsia-200 font-orbitron">DUO RATING</div>
+                            <div class="text-2xl font-orbitron font-black text-white">${stat(duo.rating)}</div>
+                        </div>
+                        <div class="rounded-xl border border-cyan-300/35 bg-cyan-300/10 p-3">
+                            <div class="text-[9px] text-cyan-200 font-orbitron">PROFILE RANK</div>
+                            <div class="text-2xl font-orbitron font-black text-white">${safe(myProfile.rank || "SURVIVOR")}</div>
+                        </div>
+                        <div class="rounded-xl border border-emerald-300/35 bg-emerald-300/10 p-3">
+                            <div class="text-[9px] text-emerald-200 font-orbitron">WAITING REWARDS</div>
+                            <div class="text-2xl font-orbitron font-black text-white">${stat(rewards.length)}</div>
+                        </div>
                     </div>
 
-                    <div class="relative z-10 flex gap-2">
+                    <div class="relative z-10 flex gap-2 overflow-x-auto pb-1">
                         ${[
-                            ["kills", "MOST KILLS"],
-                            ["wins", "MOST WINS"],
-                            ["overall", "OVERALL"]
+                            ["rankedSolo", "RANKED SOLO"],
+                            ["rankedDuo", "RANKED DUO"],
+                            ["archive", "ARCHIVE"],
+                            ["rewards", `REWARDS${rewards.length ? ` (${rewards.length})` : ""}`],
+                            ["kills", "CASUAL KILLS"],
+                            ["wins", "CASUAL WINS"],
+                            ["overall", "CASUAL OVERALL"]
                         ].map(([id, label]) => `
-                            <button data-leaderboard-tab="${id}" class="px-4 py-2 rounded border font-orbitron font-black text-xs ${mpState.leaderboardTab === id ? "border-emerald-300 bg-emerald-400/15 text-emerald-200" : "border-slate-800 bg-slate-900 text-slate-400 hover:border-emerald-400"}">${label}</button>
+                            <button data-leaderboard-tab="${id}" class="shrink-0 px-4 py-2 rounded border font-orbitron font-black text-xs ${mpState.leaderboardTab === id ? "border-amber-300 bg-amber-300/15 text-amber-100 shadow-[0_0_24px_rgba(250,204,21,.15)]" : "border-slate-800 bg-slate-900 text-slate-400 hover:border-amber-400"}">${label}</button>
                         `).join("")}
                     </div>
 
-                    <div class="relative z-10 rounded-xl border border-slate-800 bg-black/45 p-4 min-h-0 flex-1 overflow-hidden">
+                    <div class="relative z-10 rounded-xl border border-slate-800 bg-black/50 p-4 min-h-0 flex-1 overflow-hidden">
                         <div class="flex items-center justify-between mb-3">
-                            <div class="font-orbitron font-black text-white">${tabLabel}</div>
-                            <div class="text-[10px] text-slate-500 font-orbitron">Showing ${activeRows.length} / 100</div>
+                            <div class="font-orbitron font-black text-white">${boardLabels[mpState.leaderboardTab] || "Standings"}</div>
+                            <div class="text-[10px] text-slate-500 font-orbitron">${mpState.connected ? "LIVE SERVER" : "OFFLINE CACHE"}</div>
                         </div>
 
-                        <div class="grid grid-cols-[3.2rem_1.2fr_.8fr_.55fr_.7fr_.7fr_.7fr_.7fr_.7fr] gap-2 px-3 pb-2 text-[9px] font-orbitron font-black text-slate-500 tracking-widest">
-                            <div>POS</div><div>PLAYER</div><div>RANK</div><div>LVL</div><div>KILLS</div><div>DEATHS</div><div>WINS</div><div>LOSSES</div><div>REVIVES</div>
-                        </div>
+                        ${mpState.leaderboardTab.startsWith("ranked") ? `
+                            <div class="grid grid-cols-[3.2rem_1.35fr_.75fr_.6fr_.6fr_.6fr_.75fr] gap-2 px-3 pb-2 text-[9px] font-orbitron font-black text-slate-500 tracking-widest">
+                                <div>POS</div><div>PLAYER</div><div>RATING</div><div>WINS</div><div>KILLS</div><div>REVIVES</div><div>BEST</div>
+                            </div>
+                        ` : mpState.leaderboardTab === "archive" || mpState.leaderboardTab === "rewards" ? "" : `
+                            <div class="grid grid-cols-[3.2rem_1.2fr_.8fr_.55fr_.7fr_.7fr_.7fr_.7fr_.7fr] gap-2 px-3 pb-2 text-[9px] font-orbitron font-black text-slate-500 tracking-widest">
+                                <div>POS</div><div>PLAYER</div><div>RANK</div><div>LVL</div><div>KILLS</div><div>DEATHS</div><div>WINS</div><div>LOSSES</div><div>REVIVES</div>
+                            </div>
+                        `}
 
                         <div class="space-y-2 overflow-y-auto pr-1 max-h-[calc(100%-2.5rem)]">
-                            ${rowsHtml}
+                            ${mainContent}
                         </div>
                     </div>
                 </div>
@@ -44660,6 +44792,44 @@ function resizeMinimapCanvas() {
                     event.preventDefault();
                     event.stopPropagation();
                     renderLeaderboardsScreen(btn.dataset.leaderboardTab, false);
+                });
+            });
+
+            layer.querySelectorAll("[data-claim-ranked-reward]").forEach(btn => {
+                btn.addEventListener("click", event => {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (!mpSocket?.connected) {
+                        triggerNotification("Connect to the server to claim ranked rewards.");
+                        return;
+                    }
+
+                    const rewardId = btn.dataset.claimRankedReward;
+                    btn.disabled = true;
+                    btn.textContent = "CLAIMING";
+
+                    mpSocket.emit("claimRankedSeasonReward", { rewardId }, response => {
+                        if (!response?.ok) {
+                            triggerNotification(response?.error || "Reward claim failed.");
+                            btn.disabled = false;
+                            btn.textContent = "CLAIM";
+                            return;
+                        }
+
+                        const reward = response.reward || {};
+                        playerCollection.gold += Number(reward.gold || 0);
+                        playerCollection.gems += Number(reward.gems || 0);
+                        saveCollectionState();
+
+                        if (response.profile) {
+                            Object.assign(mpState.profile, response.profile);
+                            mpSaveProfile();
+                        }
+
+                        triggerNotification(`Claimed ${Number(reward.gold || 0).toLocaleString()} Gold and ${Number(reward.gems || 0).toLocaleString()} Gems.`);
+                        renderLeaderboardsScreen("rewards", true);
+                    });
                 });
             });
 
