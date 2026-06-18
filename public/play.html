@@ -508,7 +508,10 @@
 
         .mp-winner-screen {
             position: fixed;
-            inset: 0;
+            top: 64px;
+            left: 0;
+            right: 0;
+            bottom: 0;
             z-index: 120;
             display: flex;
             flex-direction: column;
@@ -516,6 +519,10 @@
             justify-content: center;
             background: radial-gradient(circle, rgba(14,165,233,.18), rgba(2,6,23,.98) 70%);
             text-align: center;
+        }
+
+        #gameover-screen {
+            top: 64px;
         }
 
         .quest-icon-btn {
@@ -677,11 +684,11 @@
 
         .quest-tracker-hud {
             position: absolute;
-            top: 6px;
-            left: 6px;
+            top: 74px;
+            left: 12px;
             z-index: 42;
             width: 246px;
-            max-width: calc(100vw - 16px);
+            max-width: calc(100vw - 24px);
             pointer-events: none;
             background: rgba(2, 6, 23, 0.58);
             border: 1px solid rgba(250, 204, 21, 0.25);
@@ -1299,6 +1306,11 @@
             .quest-tracker-hud {
                 transform: scale(var(--ds-ui-scale));
                 transform-origin: top left;
+            }
+
+            .quest-tracker-hud {
+                top: 66px;
+                left: 8px;
             }
 
             .mp-panel,
@@ -2349,13 +2361,52 @@
             return !!audioCtx;
         }
 
-        function dsDistanceGain(x = player?.x || 0, y = player?.y || 0, maxDistance = 1250) {
+        function dsGetPlayerAudioRadius() {
+            if (!player || typeof player.x !== "number") return 1250;
+
+            const visionRadius = typeof getActorEffectiveSightRadius === "function"
+                ? getActorEffectiveSightRadius(player)
+                : (player.visionRadius || 850);
+
+            return dsClamp(Number(visionRadius || 850), 420, 1800);
+        }
+
+        function dsGetSpatialAudioGain(x = player?.x || 0, y = player?.y || 0, maxDistance = 1250, audioType = "world", importanceRange = 0) {
+            if (audioType === "ui" || audioType === "global" || audioType === "music") return 1;
+            if (currentGameState !== GAME_STATES.MATCH) return 1;
             if (!player || typeof player.x !== "number") return 1;
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
 
             const dist = Math.hypot(x - player.x, y - player.y);
-            const t = dsClamp(dist / maxDistance, 0, 1);
 
-            return 1 - t * 0.84;
+            if (audioType === "plane") {
+                const planeMax = Math.max(maxDistance || 0, importanceRange || 0, 3600);
+                if (dist > planeMax) return 0;
+                const t = dsClamp(dist / planeMax, 0, 1);
+                return Math.pow(1 - t, 1.35) * 0.96;
+            }
+
+            const visionRadius = dsGetPlayerAudioRadius();
+            const hardCull = Math.max(380, Math.min(maxDistance || 1250, Math.max(importanceRange || 0, visionRadius * 1.45)));
+            if (dist > hardCull) return 0;
+
+            const fadeStart = visionRadius * 0.62;
+            const t = dsClamp((dist - fadeStart) / Math.max(1, hardCull - fadeStart), 0, 1);
+            let gain = 1 - t * 0.94;
+
+            const visible = typeof perfPointVisible === "function"
+                ? perfPointVisible(x, y, 180)
+                : dist <= visionRadius;
+
+            if (!visible && dist > visionRadius * 0.78) {
+                gain *= 0.18;
+            }
+
+            return gain <= 0.018 ? 0 : dsClamp(gain, 0, 1);
+        }
+
+        function dsDistanceGain(x = player?.x || 0, y = player?.y || 0, maxDistance = 1250, audioType = "world", importanceRange = 0) {
+            return dsGetSpatialAudioGain(x, y, maxDistance, audioType, importanceRange);
         }
 
         function dsPanFromWorld(x = player?.x || 0, maxPanDistance = 760) {
@@ -2363,15 +2414,15 @@
             return dsClamp((x - player.x) / maxPanDistance, -0.85, 0.85);
         }
 
-        function dsConnectSpatial(node, bus, x, y, maxDistance = 1250) {
+        function dsConnectSpatial(node, bus, x, y, maxDistance = 1250, audioType = "world", importanceRange = 0, precomputedGain = null) {
             const spatialGain = audioCtx.createGain();
-            spatialGain.gain.value = dsDistanceGain(x, y, maxDistance);
+            spatialGain.gain.value = precomputedGain ?? dsDistanceGain(x, y, maxDistance, audioType, importanceRange);
 
             node.connect(spatialGain);
 
             if (audioCtx.createStereoPanner) {
                 const pan = audioCtx.createStereoPanner();
-                pan.pan.value = dsPanFromWorld(x);
+                pan.pan.value = audioType === "ui" || audioType === "global" || audioType === "music" ? 0 : dsPanFromWorld(x);
                 spatialGain.connect(pan);
                 pan.connect(bus);
             } else {
@@ -2395,8 +2446,13 @@
                 y = player?.y || 0,
                 bus = dsSfxGain,
                 echo = false,
-                maxDistance = 1250
+                maxDistance = 1250,
+                audioType = "world",
+                importanceRange = 0
             } = options;
+
+            const spatialAudibility = dsGetSpatialAudioGain(x, y, maxDistance, audioType, importanceRange);
+            if (spatialAudibility <= 0) return;
 
             const now = audioCtx.currentTime + delay;
             const osc = audioCtx.createOscillator();
@@ -2414,7 +2470,7 @@
             amp.gain.exponentialRampToValueAtTime(0.0001, now + duration + release);
 
             osc.connect(amp);
-            dsConnectSpatial(amp, bus, x, y, maxDistance);
+            dsConnectSpatial(amp, bus, x, y, maxDistance, audioType, importanceRange, spatialAudibility);
 
             if (echo && dsEchoDelay) {
                 amp.connect(dsEchoDelay);
@@ -2439,8 +2495,13 @@
                 x = player?.x || 0,
                 y = player?.y || 0,
                 bus = dsSfxGain,
-                maxDistance = 1250
+                maxDistance = 1250,
+                audioType = "world",
+                importanceRange = 0
             } = options;
+
+            const spatialAudibility = dsGetSpatialAudioGain(x, y, maxDistance, audioType, importanceRange);
+            if (spatialAudibility <= 0) return;
 
             const now = audioCtx.currentTime + delay;
             const sampleRate = audioCtx.sampleRate;
@@ -2467,7 +2528,7 @@
 
             src.connect(filter);
             filter.connect(amp);
-            dsConnectSpatial(amp, bus, x, y, maxDistance);
+            dsConnectSpatial(amp, bus, x, y, maxDistance, audioType, importanceRange, spatialAudibility);
 
             src.start(now);
             src.stop(now + duration + release + 0.05);
@@ -6590,6 +6651,7 @@ ${mpState.connectionError ? `
 
         let matchWinState = {
             resolved: false,
+            localVictoryInvincible: false,
             lastCheckTime: 0,
             matchStartedAt: 0,
             minActiveMs: 6500
@@ -6627,6 +6689,7 @@ ${mpState.connectionError ? `
             resetVictoryTimeSlowdown();
 
             matchWinState.resolved = false;
+            matchWinState.localVictoryInvincible = false;
             matchWinState.lastCheckTime = 0;
             matchWinState.matchStartedAt = 0;
 
@@ -6729,54 +6792,66 @@ ${mpState.connectionError ? `
         const PERF_PRESETS = {
             low: {
                 preset: "low",
-                renderScale: 0.62,
-                effectsLevel: 0,
-                botNearTickMs: 66,
-                botMidTickMs: 150,
-                botFarTickMs: 360,
-                botFullAiRange: 850,
-                botMidAiRange: 1550,
-                minimapFps: 6,
-                networkSendMs: 90,
-                collisionPasses: 1,
-                particleBudget: 80,
-                lightBudget: 16,
-                showHealthBars: false,
-                postProcessing: false,
-                fogEffects: false,
-                audioAmbience: false,
-                terrainTileSize: 260,
-                terrainStreamSteps: 34,
-                fogPuffs: 0,
-                canopyLeafCount: 5
-            },
-            medium: {
-                preset: "medium",
-                renderScale: 0.78,
+                renderScale: 0.82,
                 effectsLevel: 1,
-                botNearTickMs: 45,
-                botMidTickMs: 110,
-                botFarTickMs: 260,
-                botFullAiRange: 1100,
-                botMidAiRange: 1900,
-                minimapFps: 10,
-                networkSendMs: 66,
-                collisionPasses: 2,
-                particleBudget: 150,
-                lightBudget: 32,
+                visibleFxScale: 0.82,
+                offscreenFxScale: 0.22,
+                offscreenFxRange: 760,
+                collisionActorRange: 1150,
+                botNearTickMs: 66,
+                botMidTickMs: 180,
+                botFarTickMs: 460,
+                botFullAiRange: 900,
+                botMidAiRange: 1450,
+                minimapFps: 7,
+                networkSendMs: 100,
+                collisionPasses: 1,
+                particleBudget: 130,
+                lightBudget: 28,
                 showHealthBars: true,
                 postProcessing: true,
                 fogEffects: true,
                 audioAmbience: true,
-                terrainTileSize: 220,
-                terrainStreamSteps: 48,
-                fogPuffs: 4,
-                canopyLeafCount: 8
+                terrainTileSize: 250,
+                terrainStreamSteps: 40,
+                fogPuffs: 3,
+                canopyLeafCount: 7
+            },
+            medium: {
+                preset: "medium",
+                renderScale: 0.92,
+                effectsLevel: 2,
+                visibleFxScale: 0.95,
+                offscreenFxScale: 0.48,
+                offscreenFxRange: 1150,
+                collisionActorRange: 1450,
+                botNearTickMs: 45,
+                botMidTickMs: 125,
+                botFarTickMs: 320,
+                botFullAiRange: 1100,
+                botMidAiRange: 1850,
+                minimapFps: 10,
+                networkSendMs: 66,
+                collisionPasses: 2,
+                particleBudget: 190,
+                lightBudget: 44,
+                showHealthBars: true,
+                postProcessing: true,
+                fogEffects: true,
+                audioAmbience: true,
+                terrainTileSize: 215,
+                terrainStreamSteps: 52,
+                fogPuffs: 6,
+                canopyLeafCount: 10
             },
             high: {
                 preset: "high",
                 renderScale: 1.0,
                 effectsLevel: 2,
+                visibleFxScale: 1,
+                offscreenFxScale: 0.82,
+                offscreenFxRange: 1650,
+                collisionActorRange: 1800,
                 botNearTickMs: 32,
                 botMidTickMs: 75,
                 botFarTickMs: 180,
@@ -6800,6 +6875,15 @@ ${mpState.connectionError ? `
 
         let perfSettings = { ...PERF_PRESETS.medium };
 
+        const PERF_PROFILE_BUCKETS = ["frameDeltaMs", "totalMs", "updateMs", "renderMs", "botAiMs", "collisionMs", "minimapMs"];
+
+        function perfProfileFreshBuckets() {
+            return PERF_PROFILE_BUCKETS.reduce((data, key) => {
+                data[key] = 0;
+                return data;
+            }, {});
+        }
+
         const perfState = {
             frameCounter: 0,
             frameId: 0,
@@ -6814,10 +6898,106 @@ ${mpState.connectionError ? `
             fogMaskCtx: null,
             autoDowngradeCooldown: 0,
             loadedSavedSettings: false,
-            deviceClass: null
+            deviceClass: null,
+            profile: {
+                frameStartedAt: 0,
+                current: perfProfileFreshBuckets(),
+                smooth: perfProfileFreshBuckets(),
+                worst: perfProfileFreshBuckets(),
+                worstAt: 0,
+                longFrameCount: 0,
+                lastPanelRefresh: 0,
+                lastMinimapMs: 0
+            }
         };
 
         perfState.fogMaskCtx = perfState.fogMaskCanvas.getContext("2d");
+
+        function perfStartFrameProfile(time, frameDeltaMs = 0) {
+            const profile = perfState.profile;
+            profile.frameStartedAt = performance.now();
+
+            for (const key of PERF_PROFILE_BUCKETS) {
+                profile.current[key] = 0;
+            }
+
+            profile.current.frameDeltaMs = Math.max(0, frameDeltaMs);
+        }
+
+        function perfRecordFrameProfile(bucket, startTime) {
+            if (!perfState.profile || !PERF_PROFILE_BUCKETS.includes(bucket)) return 0;
+
+            const elapsed = Math.max(0, performance.now() - startTime);
+            perfState.profile.current[bucket] += elapsed;
+
+            return elapsed;
+        }
+
+        function perfFinishFrameProfile(time = performance.now()) {
+            const profile = perfState.profile;
+            if (!profile || !profile.frameStartedAt) return;
+
+            profile.current.totalMs = Math.max(0, performance.now() - profile.frameStartedAt);
+
+            const smoothing = 0.18;
+            for (const key of PERF_PROFILE_BUCKETS) {
+                const current = Number(profile.current[key] || 0);
+                profile.smooth[key] = profile.smooth[key]
+                    ? profile.smooth[key] + (current - profile.smooth[key]) * smoothing
+                    : current;
+            }
+
+            const currentWorstSignal = Math.max(profile.current.frameDeltaMs || 0, profile.current.totalMs || 0);
+            const previousWorstSignal = Math.max(profile.worst.frameDeltaMs || 0, profile.worst.totalMs || 0);
+
+            if (currentWorstSignal > previousWorstSignal) {
+                profile.worst = { ...profile.current };
+                profile.worstAt = Date.now();
+            }
+
+            if (profile.current.frameDeltaMs > 50 || profile.current.totalMs > 50) {
+                profile.longFrameCount++;
+            }
+
+            perfRefreshProfilerReadout(time);
+        }
+
+        function perfFormatMs(value) {
+            const n = Math.max(0, Number(value || 0));
+            return n >= 100 ? `${Math.round(n)}ms` : `${n.toFixed(1)}ms`;
+        }
+
+        function perfBuildProfilerReadoutHtml() {
+            const profile = perfState.profile;
+            const avg = profile.smooth;
+            const worst = profile.worst;
+            const worstSignal = Math.max(worst.frameDeltaMs || 0, worst.totalMs || 0);
+
+            return `
+                <div class="text-[10px] text-cyan-300 font-black tracking-widest mb-2">FRAME PROFILER</div>
+                <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] leading-tight">
+                    <div>Frame Gap</div><div class="text-emerald-300 text-right">${perfFormatMs(avg.frameDeltaMs)} / worst ${perfFormatMs(worstSignal)}</div>
+                    <div>JS Total</div><div class="text-cyan-300 text-right">${perfFormatMs(avg.totalMs)}</div>
+                    <div>Update</div><div class="text-cyan-300 text-right">${perfFormatMs(avg.updateMs)}</div>
+                    <div>Render</div><div class="text-cyan-300 text-right">${perfFormatMs(avg.renderMs)}</div>
+                    <div>Simulation</div><div class="text-amber-300 text-right">${perfFormatMs(avg.botAiMs)}</div>
+                    <div>Collision</div><div class="text-orange-300 text-right">${perfFormatMs(avg.collisionMs)}</div>
+                    <div>Minimap</div><div class="text-violet-300 text-right">${perfFormatMs(profile.lastMinimapMs)} last / ${perfFormatMs(avg.minimapMs)} avg</div>
+                    <div>Long Frames</div><div class="text-red-300 text-right">${profile.longFrameCount.toLocaleString()}</div>
+                </div>
+            `;
+        }
+
+        function perfRefreshProfilerReadout(time = performance.now(), force = false) {
+            const profile = perfState.profile;
+            if (!force && time - profile.lastPanelRefresh < 450) return;
+
+            const el = document.getElementById("perf-profiler-readout");
+            if (!el) return;
+
+            profile.lastPanelRefresh = time;
+            el.innerHTML = perfBuildProfilerReadoutHtml();
+        }
 
         function perfClamp(value, min, max) {
             return Math.max(min, Math.min(max, value));
@@ -7049,9 +7229,362 @@ ${mpState.connectionError ? `
             return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
         }
 
+        function perfShouldCreateWorldFx(x, y, margin = 220, importanceRange = 0) {
+            if (currentGameState !== GAME_STATES.MATCH) return true;
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+            if (perfPointVisible(x, y, margin)) return true;
+
+            const offscreenRange = Math.max(0, perfSettings.offscreenFxRange || 900);
+            const allowedRange = Math.max(offscreenRange, importanceRange || 0);
+            if (allowedRange <= 0) return false;
+
+            return Math.hypot(x - player.x, y - player.y) <= allowedRange;
+        }
+
+        function perfFxCountScale(x, y) {
+            if (currentGameState !== GAME_STATES.MATCH) return 1;
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
+
+            const visible = perfPointVisible(x, y, 260);
+            if (!perfShouldCreateWorldFx(x, y, 260)) return 0;
+
+            const visibleScale = perfSettings.visibleFxScale ?? (
+                perfSettings.effectsLevel <= 0 ? 0.72 :
+                perfSettings.effectsLevel === 1 ? 0.88 :
+                1
+            );
+
+            const offscreenScale = perfSettings.offscreenFxScale ?? (
+                perfSettings.effectsLevel <= 0 ? 0.18 :
+                perfSettings.effectsLevel === 1 ? 0.42 :
+                0.78
+            );
+
+            const pressure = typeof perfGetFramePressure === "function" ? perfGetFramePressure() : 0;
+            const pressureScale = visible ? (1 - pressure * 0.22) : (1 - pressure * 0.62);
+
+            return perfClamp((visible ? visibleScale : offscreenScale) * pressureScale, 0, 1);
+        }
+
+        function perfFxBudgetFull(array, multiplier = 1) {
+            const pressure = typeof perfGetFramePressure === "function" ? perfGetFramePressure() : 0;
+            const pressureScale = perfClamp(1 - pressure * 0.35, 0.55, 1);
+            const budget = Math.max(24, Math.round((perfSettings.particleBudget || 150) * multiplier * pressureScale));
+            return array && array.length >= budget;
+        }
+
         function perfRectVisible(x, y, w, h, margin = 120) {
             const b = perfGetCameraBounds(margin);
             return x + w >= b.left && x <= b.right && y + h >= b.top && y <= b.bottom;
+        }
+
+        const perfDisasterRuntime = {
+            timers: Object.create(null),
+            accumDt: Object.create(null)
+        };
+
+        function perfGetFramePressure() {
+            const smooth = perfState?.profile?.smooth || {};
+            const frameGap = Number(smooth.frameDeltaMs || 0);
+            const jsTotal = Number(smooth.totalMs || 0);
+            const simulation = Number(smooth.botAiMs || 0);
+            const fpsPressure = perfState.fps > 0 ? perfClamp((42 - perfState.fps) / 26, 0, 1) : 0;
+
+            return perfClamp(Math.max(
+                (frameGap - 34) / 90,
+                (jsTotal - 22) / 58,
+                (simulation - 34) / 76,
+                fpsPressure
+            ), 0, 1);
+        }
+
+        function perfGetDisasterQuality(x = player?.x || 0, y = player?.y || 0, radius = 700) {
+            if (currentGameState !== GAME_STATES.MATCH) return 1;
+
+            const pressure = perfGetFramePressure();
+            const visible = perfPointVisible(x, y, radius + 280);
+            const dist = player ? Math.hypot(x - player.x, y - player.y) : 0;
+            const nearby = dist <= radius + 950;
+
+            let quality = 1 - pressure * (nearby ? 0.55 : 0.78);
+
+            if (!visible && !nearby) quality = Math.min(quality, 0.42);
+            if (perfSettings.effectsLevel <= 0) quality = Math.min(quality, 0.34);
+            else if (perfSettings.effectsLevel === 1) quality = Math.min(quality, 0.68);
+
+            return perfClamp(quality, 0.28, 1);
+        }
+
+        function perfShouldRunDisasterSystem(key, x, y, radius, time = performance.now(), nearMs = 33, farMs = 220) {
+            const quality = perfGetDisasterQuality(x, y, radius);
+            const visible = perfPointVisible(x, y, radius + 280);
+            const dist = player ? Math.hypot(x - player.x, y - player.y) : 0;
+            const near = visible || dist <= radius + 650;
+            const interval = (near ? nearMs : farMs) / Math.max(0.38, quality);
+            const last = perfDisasterRuntime.timers[key] || 0;
+
+            if (time - last < interval) return false;
+
+            perfDisasterRuntime.timers[key] = time;
+            return true;
+        }
+
+        function perfAccumulateDisasterDt(key, dt, maxDt = 0.26) {
+            perfDisasterRuntime.accumDt[key] = Math.min(maxDt, (perfDisasterRuntime.accumDt[key] || 0) + dt);
+        }
+
+        function perfConsumeDisasterDt(key, fallbackDt = 0.016) {
+            const dt = perfDisasterRuntime.accumDt[key] || fallbackDt;
+            perfDisasterRuntime.accumDt[key] = 0;
+            return dt;
+        }
+
+        function perfGetActiveWeatherDisasterTarget() {
+            if (weatherDisasterManager.activeType === "hurricane" && hurricaneDisaster.active) {
+                return { x: hurricaneDisaster.x, y: hurricaneDisaster.y, radius: hurricaneDisaster.radius };
+            }
+
+            if (weatherDisasterManager.activeType === "lightning" && lightningStormDisaster.active) {
+                return { x: lightningStormDisaster.x, y: lightningStormDisaster.y, radius: lightningStormDisaster.radius };
+            }
+
+            if (weatherDisasterManager.activeType === "floodWave" && floodWaveDisaster.active) {
+                return {
+                    x: floodWaveDisaster.startX + floodWaveDisaster.dirX * floodWaveDisaster.travel,
+                    y: floodWaveDisaster.startY + floodWaveDisaster.dirY * floodWaveDisaster.travel,
+                    radius: floodWaveDisaster.width * 0.5 + floodWaveDisaster.thickness
+                };
+            }
+
+            if (weatherDisasterManager.activeType === "sandStorm" && sandStormDisaster.active) {
+                return { x: sandStormDisaster.x, y: sandStormDisaster.y, radius: sandStormDisaster.radius || 760 };
+            }
+
+            if (weatherDisasterManager.activeType === "tornado" && tornadoDisaster.funnels.length) {
+                let nearest = tornadoDisaster.funnels[0];
+                let nearestDist = Infinity;
+
+                for (const funnel of tornadoDisaster.funnels) {
+                    const dist = player ? Math.hypot(funnel.x - player.x, funnel.y - player.y) : 0;
+                    if (dist < nearestDist) {
+                        nearest = funnel;
+                        nearestDist = dist;
+                    }
+                }
+
+                return { x: nearest.x, y: nearest.y, radius: (nearest.damageRadius || nearest.radius * 1.65) + 260 };
+            }
+
+            return null;
+        }
+
+        const SPATIAL_CHUNK_SIZE = 640;
+        const spatialState = { version: 1, buckets: {}, signatures: {} };
+
+        function spatialMarkAllDirty(reason = "dirty") {
+            spatialState.version++;
+            spatialState.buckets = {};
+            spatialState.signatures = {};
+
+            if (typeof resetStaticWorldChunkCaches === "function") {
+                resetStaticWorldChunkCaches(reason);
+            }
+        }
+
+        function spatialGetSourceArray(kind) {
+            if (kind === "trees") return trees;
+            if (kind === "rocks") return rocks;
+            if (kind === "crates") return crates;
+            if (kind === "items") return items;
+            if (kind === "houses") return houses;
+            if (kind === "bots") return bots;
+            if (kind === "furniture") return furniture;
+            if (kind === "poiProps") return poiProps;
+            return [];
+        }
+
+        function spatialGetObjectBounds(object, kind) {
+            if (!object) return null;
+
+            if (kind === "houses") {
+                return { left: object.x, top: object.y, right: object.x + object.width, bottom: object.y + object.height };
+            }
+
+            if (kind === "furniture") {
+                return { left: object.x, top: object.y, right: object.x + object.width, bottom: object.y + object.height };
+            }
+
+            if (kind === "poiProps") {
+                const w = object.w || object.width || 32;
+                const h = object.h || object.height || 32;
+                return { left: object.x - w / 2, top: object.y - h / 2, right: object.x + w / 2, bottom: object.y + h / 2 };
+            }
+
+            if (kind === "crates" && typeof getCrateBounds === "function") {
+                const b = getCrateBounds(object);
+                return { left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height };
+            }
+
+            const radius =
+                kind === "trees" ? ((object.leavesRadius || object.trunkRadius || 38) * (object.scale || 1)) :
+                kind === "rocks" ? ((object.radius || 24) * (object.scale || 1)) :
+                kind === "bots" ? (object.radius || 18) :
+                kind === "items" ? (object.radius || 18) :
+                Math.max(object.radius || 24, object.width || 24, object.height || 24);
+
+            return {
+                left: object.x - radius,
+                top: object.y - radius,
+                right: object.x + radius,
+                bottom: object.y + radius
+            };
+        }
+
+        function spatialBuildBuckets(kind) {
+            const source = spatialGetSourceArray(kind);
+            const dynamic = kind === "items" || kind === "bots";
+            const dynamicFrame = dynamic ? Math.floor(perfState.frameId / (kind === "bots" ? 3 : 2)) : "static";
+            const seed = typeof islandTerrain !== "undefined" ? Math.round(Number(islandTerrain.seed || 0) * 1000) : 0;
+            const signature = `${spatialState.version}:${dynamicFrame}:${currentGameState}:${worldWidth}:${worldHeight}:${seed}:${source.length}`;
+
+            if (spatialState.signatures[kind] === signature && spatialState.buckets[kind]) {
+                return spatialState.buckets[kind];
+            }
+
+            const buckets = new Map();
+
+            for (let i = 0; i < source.length; i++) {
+                const object = source[i];
+                if (!object) continue;
+
+                const bounds = spatialGetObjectBounds(object, kind);
+                if (!bounds) continue;
+
+                const floor = typeof objectFloor === "function" ? objectFloor(object) : (object.floor || "surface");
+                const minX = Math.floor(bounds.left / SPATIAL_CHUNK_SIZE);
+                const maxX = Math.floor(bounds.right / SPATIAL_CHUNK_SIZE);
+                const minY = Math.floor(bounds.top / SPATIAL_CHUNK_SIZE);
+                const maxY = Math.floor(bounds.bottom / SPATIAL_CHUNK_SIZE);
+
+                for (let cx = minX; cx <= maxX; cx++) {
+                    for (let cy = minY; cy <= maxY; cy++) {
+                        const key = `${floor}:${cx}:${cy}`;
+                        if (!buckets.has(key)) buckets.set(key, []);
+                        buckets.get(key).push(object);
+                    }
+                }
+            }
+
+            spatialState.signatures[kind] = signature;
+            spatialState.buckets[kind] = buckets;
+            return buckets;
+        }
+
+        function spatialQueryObjects(kind, margin = 120, options = {}) {
+            const source = spatialGetSourceArray(kind);
+            if (!source.length) return [];
+
+            const floor = options.floor || currentFloor || "surface";
+
+            if (currentGameState !== GAME_STATES.MATCH && !options.forceChunks) {
+                return source.filter(object => {
+                    if (!object) return false;
+                    return typeof objectFloor !== "function" || objectFloor(object) === floor;
+                });
+            }
+
+            const buckets = spatialBuildBuckets(kind);
+            const bounds = options.bounds || perfGetCameraBounds(margin);
+            const minX = Math.floor(bounds.left / SPATIAL_CHUNK_SIZE);
+            const maxX = Math.floor(bounds.right / SPATIAL_CHUNK_SIZE);
+            const minY = Math.floor(bounds.top / SPATIAL_CHUNK_SIZE);
+            const maxY = Math.floor(bounds.bottom / SPATIAL_CHUNK_SIZE);
+            const seen = new Set();
+            const results = [];
+
+            for (let cx = minX; cx <= maxX; cx++) {
+                for (let cy = minY; cy <= maxY; cy++) {
+                    const bucket = buckets.get(`${floor}:${cx}:${cy}`);
+                    if (!bucket) continue;
+
+                    for (const object of bucket) {
+                        if (!object || seen.has(object)) continue;
+                        seen.add(object);
+                        results.push(object);
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        function spatialQueryObjectsAround(kind, x, y, radius = 160, floor = currentFloor) {
+            return spatialQueryObjects(kind, 0, {
+                floor,
+                bounds: {
+                    left: x - radius,
+                    right: x + radius,
+                    top: y - radius,
+                    bottom: y + radius
+                }
+            });
+        }
+
+        function spatialGetSimulationBots(time = performance.now()) {
+            const fullRange = Math.max(700, perfSettings.botFullAiRange || 1100);
+            const queryRange = Math.min(1750, fullRange + 420);
+            const nearBots = spatialQueryObjects("bots", queryRange)
+                .filter(bot => bot && isTargetAlive(bot))
+                .map(bot => ({
+                    bot,
+                    dist: Math.hypot(bot.x - player.x, bot.y - player.y)
+                }))
+                .sort((a, b) => a.dist - b.dist);
+
+            const results = [];
+            const seen = new Set();
+            const activeCap =
+                currentGameState === GAME_STATES.QUEUE_LOBBY ? 18 :
+                perfSettings.preset === "low" ? 12 :
+                perfSettings.preset === "medium" ? 18 :
+                24;
+
+            const addBot = bot => {
+                if (!bot || seen.has(bot) || !isTargetAlive(bot)) return;
+                seen.add(bot);
+                results.push(bot);
+            };
+
+            for (let i = 0; i < nearBots.length && results.length < activeCap; i++) {
+                addBot(nearBots[i].bot);
+            }
+
+            for (let i = 0; i < bots.length; i++) {
+                const bot = bots[i];
+                if (!bot) continue;
+
+                if (
+                    bot.isDuoPartner ||
+                    bot.isDowned ||
+                    isSameTeam(bot, player) ||
+                    bot.aiTarget === player ||
+                    bot.reviveTarget === player
+                ) {
+                    addBot(bot);
+                }
+            }
+
+            const backgroundStride =
+                perfSettings.preset === "low" ? 24 :
+                perfSettings.preset === "medium" ? 18 :
+                14;
+            const offset = perfState.frameId % backgroundStride;
+
+            for (let i = offset; i < bots.length; i += backgroundStride) {
+                addBot(bots[i]);
+            }
+
+            return results;
         }
 
         function perfShouldRunInterval(key, time, intervalMs) {
@@ -7090,15 +7623,22 @@ ${mpState.connectionError ? `
             }
         }
 
-        function perfTrimArray(array, maxCount) {
+        function perfTrimArray(array, maxCount, poolName = null) {
             if (!array || array.length <= maxCount) return;
-            array.splice(0, array.length - maxCount);
+
+            while (array.length > maxCount) {
+                if (poolName && typeof fxRecycleObjectAt === "function") {
+                    fxRecycleObjectAt(array, 0, poolName);
+                } else {
+                    array.splice(0, 1);
+                }
+            }
         }
 
         function perfTrimFxBudgets() {
-            perfTrimArray(hitParticles, perfSettings.particleBudget);
-            perfTrimArray(magicEffects, Math.floor(perfSettings.particleBudget * 0.9));
-            perfTrimArray(damageNumbers, 80);
+            perfTrimArray(hitParticles, perfSettings.particleBudget, "hitParticles");
+            perfTrimArray(magicEffects, Math.floor(perfSettings.particleBudget * 0.9), "magicEffects");
+            perfTrimArray(damageNumbers, 80, "damageNumbers");
             perfTrimArray(worldLightEffects, perfSettings.lightBudget);
             perfTrimArray(debrisMarks, 140);
         }
@@ -7344,10 +7884,14 @@ ${mpState.connectionError ? `
 
             let interval = perfSettings.botFarTickMs;
 
-            if (teammate || bot.isDowned || threatened || visible || dist < perfSettings.botFullAiRange) {
+            const localCombatBubble = dist < 720;
+
+            if (teammate || bot.isDowned || threatened || visible || localCombatBubble) {
                 interval = perfSettings.botNearTickMs;
-            } else if (dist < perfSettings.botMidAiRange) {
+            } else if (dist < perfSettings.botFullAiRange) {
                 interval = perfSettings.botMidTickMs;
+            } else if (dist < perfSettings.botMidAiRange) {
+                interval = Math.max(perfSettings.botMidTickMs, Math.round(perfSettings.botFarTickMs * 0.72));
             }
 
             perfWatchdogWakeBot(bot, time, index);
@@ -7380,7 +7924,10 @@ ${mpState.connectionError ? `
             if (time - perfState.lastMinimapDraw < interval) return;
 
             perfState.lastMinimapDraw = time;
+
+            const minimapStart = performance.now();
             drawLiveMinimap();
+            perfState.profile.lastMinimapMs = perfRecordFrameProfile("minimapMs", minimapStart);
         }
 
         function perfOpenSettings() {
@@ -7395,8 +7942,9 @@ ${mpState.connectionError ? `
 
             const audioLabel = isMuted ? "MUTED" : "ACTIVE";
             const ambienceLabel = perfSettings.audioAmbience ? "ON" : "OFF";
-            const deadzoneLabel = `${Math.round((inputSettings.gamepadDeadzone || 0.18) * 100)}%`;
-            const sensitivityLabel = `${Math.round((inputSettings.gamepadSensitivity || 1) * 100)}%`;
+            const deadzoneLabel = `${Math.round((inputSettings.gamepadDeadzone ?? 0.18) * 100)}%`;
+            const sensitivityLabel = `${Math.round((inputSettings.gamepadSensitivity ?? 1) * 100)}%`;
+            const profilerHtml = perfBuildProfilerReadoutHtml();
 
             panel.innerHTML = `
                 <div class="flex justify-between items-center mb-3">
@@ -7408,6 +7956,10 @@ ${mpState.connectionError ? `
                     <button onclick="perfApplyPreset('low')" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400 ${perfSettings.preset === "low" ? "text-cyan-300 border-cyan-400" : ""}">LOW</button>
                     <button onclick="perfApplyPreset('medium')" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400 ${perfSettings.preset === "medium" ? "text-cyan-300 border-cyan-400" : ""}">MED</button>
                     <button onclick="perfApplyPreset('high')" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400 ${perfSettings.preset === "high" ? "text-cyan-300 border-cyan-400" : ""}">HIGH</button>
+                </div>
+
+                <div id="perf-profiler-readout" class="mb-3 rounded-lg border border-cyan-500/30 bg-slate-900/70 p-3">
+                    ${profilerHtml}
                 </div>
 
                 <div class="space-y-2 text-[11px]">
@@ -7429,8 +7981,8 @@ ${mpState.connectionError ? `
                     <button onclick="perfSettings.audioAmbience=!perfSettings.audioAmbience; perfSaveSettings(); if(!perfSettings.audioAmbience) dsStopGameplayAmbience(); perfOpenSettings();" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400">AMBIENCE</button>
                     <button onclick="inputAdjustDeadzone(-0.03)" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400">DEADZONE -</button>
                     <button onclick="inputAdjustDeadzone(0.03)" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400">DEADZONE +</button>
-                    <button onclick="inputAdjustSensitivity(-0.1)" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400">SENS -</button>
-                    <button onclick="inputAdjustSensitivity(0.1)" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400">SENS +</button>
+                    <button onclick="inputAdjustSensitivity(-0.05)" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400">SENS -</button>
+                    <button onclick="inputAdjustSensitivity(0.05)" class="px-2 py-2 rounded bg-slate-900 border border-slate-700 hover:border-cyan-400">SENS +</button>
                 </div>
             `;
         }
@@ -9133,13 +9685,15 @@ function mpApplySquadSpawnPosition(actor, index = 0, total = mpGetTeamSpawnTotal
         }
 
         function inputAdjustDeadzone(delta) {
-            inputSettings.gamepadDeadzone = clamp(inputSettings.gamepadDeadzone + delta, 0.05, 0.45);
+            const next = Number(inputSettings.gamepadDeadzone ?? 0.18) + delta;
+            inputSettings.gamepadDeadzone = Math.round(clamp(next, 0, 0.45) * 100) / 100;
             saveInputSettings();
             perfOpenSettings();
         }
 
         function inputAdjustSensitivity(delta) {
-            inputSettings.gamepadSensitivity = clamp(inputSettings.gamepadSensitivity + delta, 0.55, 1.85);
+            const next = Number(inputSettings.gamepadSensitivity ?? 1) + delta;
+            inputSettings.gamepadSensitivity = Math.round(clamp(next, 0.05, 1.85) * 100) / 100;
             saveInputSettings();
             perfOpenSettings();
         }
@@ -9184,7 +9738,7 @@ function mpApplySquadSpawnPosition(actor, index = 0, total = mpGetTeamSpawnTotal
         }
 
         function inputAxis(value) {
-            const deadzone = inputSettings.gamepadDeadzone || 0.18;
+            const deadzone = clamp(Number(inputSettings.gamepadDeadzone ?? 0.18), 0, 0.45);
             const abs = Math.abs(value || 0);
             if (abs < deadzone) return 0;
             return Math.sign(value) * ((abs - deadzone) / Math.max(0.001, 1 - deadzone));
@@ -9226,12 +9780,22 @@ function mpApplySquadSpawnPosition(actor, index = 0, total = mpGetTeamSpawnTotal
             return !!keys.e || !!virtualInput.interactDown;
         }
 
-        function inputSetAimFromVector(x, y) {
+        function inputSetAimFromVector(x, y, options = {}) {
             const mag = Math.hypot(x, y);
             if (mag < 0.08) return;
 
-            const angle = Math.atan2(y, x);
-            const radius = Math.min(gameCanvas.width, gameCanvas.height) * 0.28 * (inputSettings.gamepadSensitivity || 1);
+            const targetAngle = Math.atan2(y, x);
+            const useSensitivity = options.useSensitivity === true;
+            const sensitivity = clamp(Number(inputSettings.gamepadSensitivity ?? 1), 0.05, 1.85);
+            const turnAmount = useSensitivity
+                ? clamp(0.012 + sensitivity * 0.24, 0.012, 0.5)
+                : 1;
+
+            const angle = useSensitivity
+                ? smoothTurnToAngle(player.angle || targetAngle, targetAngle, turnAmount)
+                : targetAngle;
+
+            const radius = Math.min(gameCanvas.width, gameCanvas.height) * 0.28;
 
             mouse.x = gameCanvas.width / 2 + Math.cos(angle) * radius;
             mouse.y = gameCanvas.height / 2 + Math.sin(angle) * radius;
@@ -11580,8 +12144,9 @@ const bots = [];
         function findNearbySightLensDrop(range = 60) {
             let best = null;
             let bestDist = Infinity;
+            const nearbyItems = spatialQueryObjectsAround("items", player.x, player.y, range + 40, currentFloor);
 
-            for (const item of items) {
+            for (const item of nearbyItems) {
                 if (!item || !item.type?.startsWith("scout_lens_")) continue;
                 if (objectFloor(item) !== currentFloor) continue;
 
@@ -12414,9 +12979,10 @@ const bots = [];
         function findNearbySwapCardDrop() {
             let bestItem = null;
             let bestDistance = Infinity;
+            const nearbyItems = spatialQueryObjectsAround("items", player.x, player.y, CARD_SWAP_PROMPT_RANGE + 50, currentFloor);
 
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
+            for (let i = 0; i < nearbyItems.length; i++) {
+                const item = nearbyItems[i];
                 if (item.type !== "card_drop") continue;
 
                 const cardDef = getCardDefinition(item.cardId);
@@ -12478,9 +13044,10 @@ const bots = [];
 
             let bestItem = null;
             let bestDistance = Infinity;
+            const nearbyItems = spatialQueryObjectsAround("items", player.x, player.y, MELEE_SWAP_PROMPT_RANGE + 50, currentFloor);
 
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
+            for (let i = 0; i < nearbyItems.length; i++) {
+                const item = nearbyItems[i];
                 if (!item || item.type !== "melee_weapon") continue;
                 if (item.pickupGraceUntil && performance.now() < item.pickupGraceUntil) continue;
                 if (objectFloor(item) !== currentFloor) continue;
@@ -14876,6 +15443,30 @@ const bots = [];
             return [player, ...bots, ...mpState.remotePlayers.values()].filter(Boolean);
         }
 
+        function getWeatherDisasterActorsAround(x, y, radius = 1400) {
+            const actors = [];
+            const seen = new Set();
+
+            const addActor = actor => {
+                if (!actor || seen.has(actor)) return;
+                if (!isTargetAlive(actor) || objectFloor(actor) !== "surface") return;
+                if (Math.hypot(actor.x - x, actor.y - y) > radius + (actor.radius || 18)) return;
+                seen.add(actor);
+                actors.push(actor);
+            };
+
+            addActor(player);
+
+            const nearbyBots = typeof spatialQueryObjectsAround === "function"
+                ? spatialQueryObjectsAround("bots", x, y, radius + 220, "surface")
+                : bots;
+
+            for (const bot of nearbyBots) addActor(bot);
+            for (const remote of mpState.remotePlayers.values()) addActor(remote);
+
+            return actors;
+        }
+
         function isWeatherDisasterSpawnClear(x, y, radius = 520, options = {}) {
             if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
 
@@ -14889,7 +15480,9 @@ const bots = [];
 
             // Important: this should prevent unfair direct spawns, not reject the whole map
             // just because a large disaster radius touches some distant bot.
-            const actors = getWeatherDisasterActors();
+            const waveCenterX = floodWaveDisaster.startX + floodWaveDisaster.dirX * floodWaveDisaster.travel;
+            const waveCenterY = floodWaveDisaster.startY + floodWaveDisaster.dirY * floodWaveDisaster.travel;
+            const actors = getWeatherDisasterActorsAround(waveCenterX, waveCenterY, floodWaveDisaster.width * 0.5 + floodWaveDisaster.thickness + 260);
             const actorNoSpawnRadius = options.actorNoSpawnRadius ?? Math.max(155, Math.min(320, radius * 0.36));
 
             for (let i = 0; i < actors.length; i++) {
@@ -15156,8 +15749,17 @@ const bots = [];
             let best = null;
             let bestDist = Infinity;
 
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
+            const minX = Math.min(x1, x2) - padding - 420;
+            const maxX = Math.max(x1, x2) + padding + 420;
+            const minY = Math.min(y1, y2) - padding - 420;
+            const maxY = Math.max(y1, y2) + padding + 420;
+            const nearbyHouses = spatialQueryObjects("houses", 0, {
+                floor,
+                bounds: { left: minX, right: maxX, top: minY, bottom: maxY }
+            });
+
+            for (let i = 0; i < nearbyHouses.length; i++) {
+                const house = nearbyHouses[i];
                 if (objectFloor(house) !== floor) continue;
                 if (!isHouseWallBlockingSegment(house, x1, y1, x2, y2, padding)) continue;
 
@@ -15966,6 +16568,18 @@ const bots = [];
             if (weatherDisasterManager.state === "active") {
                 weatherDisasterManager.timer -= dt;
 
+                const perfTarget = perfGetActiveWeatherDisasterTarget();
+                if (perfTarget) {
+                    const perfKey = `weather_${weatherDisasterManager.activeType}`;
+                    perfAccumulateDisasterDt(perfKey, dt, 0.24);
+
+                    if (!perfShouldRunDisasterSystem(perfKey, perfTarget.x, perfTarget.y, perfTarget.radius, time, 33, 220)) {
+                        return;
+                    }
+
+                    dt = perfConsumeDisasterDt(perfKey, dt);
+                }
+
                 if (weatherDisasterManager.activeType === "tornado") {
                     updateTornadoDisasters(dt, time);
                 } else if (weatherDisasterManager.activeType === "hurricane") {
@@ -16051,7 +16665,25 @@ const bots = [];
         }
 
         function damageWeatherObjectsAround(x, y, radius, damage, damageType, time, tickMs = 900) {
-            const objects = [...trees, ...rocks, ...crates, ...furniture];
+            const quality = perfGetDisasterQuality(x, y, radius);
+            const passMs = quality < 0.55 ? Math.max(tickMs, 1450) : quality < 0.78 ? Math.max(tickMs, 1100) : tickMs;
+            const passKey = `weatherObjects_${damageType}_${Math.round(x / 360)}_${Math.round(y / 360)}`;
+
+            if (!perfShouldRunDisasterSystem(passKey, x, y, radius, time, 180, passMs)) return;
+
+            const objects = [];
+
+            if (typeof spatialQueryObjectsAround === "function") {
+                const queryRadius = radius + 180;
+                objects.push(
+                    ...spatialQueryObjectsAround("trees", x, y, queryRadius, "surface"),
+                    ...spatialQueryObjectsAround("rocks", x, y, queryRadius, "surface"),
+                    ...spatialQueryObjectsAround("crates", x, y, queryRadius, "surface"),
+                    ...spatialQueryObjectsAround("furniture", x, y, queryRadius, "surface")
+                );
+            } else {
+                objects.push(...trees, ...rocks, ...crates, ...furniture);
+            }
 
             for (let i = 0; i < objects.length; i++) {
                 const obj = objects[i];
@@ -16066,15 +16698,13 @@ const bots = [];
 
                 dealDamage(obj, damage, null, damageType);
 
-                if (Math.random() < 0.35) {
+                if (Math.random() < 0.35 * quality && perfShouldCreateWorldFx(center.x, center.y, 260)) {
                     spawnHitParticles(center.x, center.y, damageType === "hurricane" ? "water" : "wind");
                 }
             }
         }
 
         function updateTornadoDisasters(dt, time = performance.now()) {
-            const actors = getWeatherDisasterActors();
-
             for (let i = tornadoDisaster.funnels.length - 1; i >= 0; i--) {
                 const funnel = tornadoDisaster.funnels[i];
 
@@ -16115,6 +16745,7 @@ const bots = [];
                 funnel.y = dsClamp(funnel.y, 260, worldHeight - 260);
 
                 const damageRadius = funnel.damageRadius || funnel.radius * 1.65;
+                const actors = getWeatherDisasterActorsAround(funnel.x, funnel.y, damageRadius + 140);
 
                 for (let a = 0; a < actors.length; a++) {
                     applyWeatherForceToActor(actors[a], funnel.x, funnel.y, damageRadius, {
@@ -16130,7 +16761,7 @@ const bots = [];
 
                 damageWeatherObjectsAround(funnel.x, funnel.y, damageRadius * 0.9, 10, "tornado", time, 760);
 
-                if (time - funnel.lastDustTime > 34) {
+                if (time - funnel.lastDustTime > (perfGetDisasterQuality(funnel.x, funnel.y, funnel.radius * 1.8) < 0.65 ? 92 : 34)) {
                     funnel.lastDustTime = time;
                     spawnWeatherDust(funnel.x, funnel.y, funnel.radius * 1.3, "tornado");
                 }
@@ -16154,7 +16785,7 @@ const bots = [];
             hurricaneDisaster.x = dsClamp(hurricaneDisaster.x, 500, worldWidth - 500);
             hurricaneDisaster.y = dsClamp(hurricaneDisaster.y, 500, worldHeight - 500);
 
-            const actors = getWeatherDisasterActors();
+            const actors = getWeatherDisasterActorsAround(hurricaneDisaster.x, hurricaneDisaster.y, hurricaneDisaster.radius + 160);
 
             for (let i = 0; i < actors.length; i++) {
                 applyWeatherForceToActor(actors[i], hurricaneDisaster.x, hurricaneDisaster.y, hurricaneDisaster.radius, {
@@ -16170,7 +16801,7 @@ const bots = [];
 
             damageWeatherObjectsAround(hurricaneDisaster.x, hurricaneDisaster.y, hurricaneDisaster.radius * 0.82, 3, "hurricane", time, 1200);
 
-            if (time - hurricaneDisaster.lastParticleTime > 55) {
+            if (time - hurricaneDisaster.lastParticleTime > (perfGetDisasterQuality(hurricaneDisaster.x, hurricaneDisaster.y, hurricaneDisaster.radius) < 0.65 ? 145 : 55)) {
                 hurricaneDisaster.lastParticleTime = time;
                 spawnWeatherDust(hurricaneDisaster.x, hurricaneDisaster.y, hurricaneDisaster.radius, "hurricane");
             }
@@ -16304,7 +16935,14 @@ const bots = [];
                 spawnDamageNumber(actor.x, actor.y - (actor.radius || 14) - 26, "ZAP", "#bfdbfe");
             }
 
-            const objects = [...trees, ...rocks, ...crates, ...furniture];
+            const objects = typeof spatialQueryObjectsAround === "function"
+                ? [
+                    ...spatialQueryObjectsAround("trees", strike.x, strike.y, strike.radius + 180, "surface"),
+                    ...spatialQueryObjectsAround("rocks", strike.x, strike.y, strike.radius + 180, "surface"),
+                    ...spatialQueryObjectsAround("crates", strike.x, strike.y, strike.radius + 180, "surface"),
+                    ...spatialQueryObjectsAround("furniture", strike.x, strike.y, strike.radius + 180, "surface")
+                ]
+                : [...trees, ...rocks, ...crates, ...furniture];
 
             for (let i = 0; i < objects.length; i++) {
                 const obj = objects[i];
@@ -16334,10 +16972,11 @@ const bots = [];
             lightningStormDisaster.x = dsClamp(lightningStormDisaster.x, 500, worldWidth - 500);
             lightningStormDisaster.y = dsClamp(lightningStormDisaster.y, 500, worldHeight - 500);
 
-            if (time - lightningStormDisaster.lastStrikeSpawnTime > 430 + Math.random() * 260) {
+            const lightningQuality = perfGetDisasterQuality(lightningStormDisaster.x, lightningStormDisaster.y, lightningStormDisaster.radius);
+            if (time - lightningStormDisaster.lastStrikeSpawnTime > (430 + Math.random() * 260) / Math.max(0.58, lightningQuality)) {
                 lightningStormDisaster.lastStrikeSpawnTime = time;
 
-                const strikeCount = Math.random() < 0.38 ? 3 : 2;
+                const strikeCount = lightningQuality < 0.55 ? 1 : (Math.random() < 0.38 ? 3 : 2);
                 for (let i = 0; i < strikeCount; i++) {
                     queueLightningStrike();
                 }
@@ -16379,7 +17018,7 @@ const bots = [];
             floodWaveDisaster.wavePhase += dt * 6;
             floodWaveDisaster.travel += floodWaveDisaster.speed * dt;
 
-            const actors = getWeatherDisasterActors();
+            const actors = getWeatherDisasterActorsAround(strike.x, strike.y, strike.radius + 160);
 
             for (let i = 0; i < actors.length; i++) {
                 const actor = actors[i];
@@ -16448,7 +17087,12 @@ const bots = [];
             const centerX = wave.startX + wave.dirX * wave.travel;
             const centerY = wave.startY + wave.dirY * wave.travel;
 
-            for (let i = 0; i < 8; i++) {
+            if (!perfShouldCreateWorldFx(centerX, centerY, wave.width * 0.45 + 260)) return;
+
+            const quality = perfGetDisasterQuality(centerX, centerY, wave.width * 0.5);
+            const count = Math.max(2, Math.round(8 * quality));
+
+            for (let i = 0; i < count; i++) {
                 const side = (Math.random() - 0.5) * wave.width;
                 const front = (Math.random() - 0.5) * wave.thickness;
 
@@ -16498,8 +17142,11 @@ const bots = [];
 
         function spawnWeatherDust(x, y, radius, type = "tornado") {
             if (perfSettings.effectsLevel <= 0) return;
+            if (!perfShouldCreateWorldFx(x, y, radius + 260)) return;
+            if (perfFxBudgetFull(hitParticles, 0.95)) return;
 
-            const count = type === "hurricane" ? 6 : 4;
+            const quality = perfGetDisasterQuality(x, y, radius);
+            const count = Math.max(1, Math.round((type === "hurricane" ? 6 : 4) * quality));
 
             for (let i = 0; i < count; i++) {
                 const angle = Math.random() * Math.PI * 2;
@@ -16719,6 +17366,19 @@ const bots = [];
         function updateVolcanoDisaster(dt, time = performance.now()) {
             if (!lavaDisaster.enabled || !volcanoLandmark.active || currentGameState !== GAME_STATES.MATCH) return;
 
+            if (lavaDisaster.state !== "idle") {
+                const perfKey = `volcano_${lavaDisaster.state}`;
+                const perfRadius = lavaDisaster.state === "active" || lavaDisaster.state === "cooling" ? 2100 : 900;
+
+                perfAccumulateDisasterDt(perfKey, dt, 0.34);
+
+                if (!perfShouldRunDisasterSystem(perfKey, volcanoLandmark.x, volcanoLandmark.y, perfRadius, time, 50, 260)) {
+                    return;
+                }
+
+                dt = perfConsumeDisasterDt(perfKey, dt);
+            }
+
             if (lavaDisaster.state === "idle") {
                 lavaDisaster.nextEruptionIn -= dt;
 
@@ -16840,7 +17500,19 @@ const bots = [];
             if (time - lavaDisaster.lastObjectBurnAt < 850) return;
             lavaDisaster.lastObjectBurnAt = time;
 
-            const burnables = [...trees, ...rocks, ...crates, ...furniture];
+            const lavaReach = Math.max(
+                900,
+                ...lavaDisaster.streams.map(stream => (stream.currentLength || stream.maxLength || 0) + 260)
+            );
+
+            const burnables = typeof spatialQueryObjectsAround === "function"
+                ? [
+                    ...spatialQueryObjectsAround("trees", volcanoLandmark.x, volcanoLandmark.y, lavaReach, "surface"),
+                    ...spatialQueryObjectsAround("rocks", volcanoLandmark.x, volcanoLandmark.y, lavaReach, "surface"),
+                    ...spatialQueryObjectsAround("crates", volcanoLandmark.x, volcanoLandmark.y, lavaReach, "surface"),
+                    ...spatialQueryObjectsAround("furniture", volcanoLandmark.x, volcanoLandmark.y, lavaReach, "surface")
+                ]
+                : [...trees, ...rocks, ...crates, ...furniture];
 
             for (let i = 0; i < burnables.length; i++) {
                 const obj = burnables[i];
@@ -16863,6 +17535,8 @@ const bots = [];
 
         function spawnVolcanoEmber() {
             if (!volcanoLandmark.active || perfSettings.effectsLevel <= 0) return;
+            if (!perfShouldCreateWorldFx(volcanoLandmark.x, volcanoLandmark.y, 1100)) return;
+            if (Math.random() > perfGetDisasterQuality(volcanoLandmark.x, volcanoLandmark.y, 900)) return;
 
             const angle = Math.random() * Math.PI * 2;
             const dist = Math.random() * volcanoLandmark.craterRadius * 0.9;
@@ -19788,6 +20462,28 @@ function spawnBuildingLootCrates() {
             }
 
             syncStormReapers(time);
+
+            if (!stormReapers.length) return;
+
+            let nearestReaperDist = Infinity;
+            for (const reaper of stormReapers) {
+                if (!reaper) continue;
+                nearestReaperDist = Math.min(nearestReaperDist, Math.hypot(reaper.x - player.x, reaper.y - player.y));
+            }
+
+            const reaperPerfKey = "storm_reaper_update";
+            const reaperInterval = nearestReaperDist < 1500
+                ? (perfGetFramePressure() > 0.45 ? 70 : 33)
+                : 220;
+
+            perfAccumulateDisasterDt(reaperPerfKey, dt, 0.26);
+
+            if (time - (perfDisasterRuntime.timers[reaperPerfKey] || 0) < reaperInterval) {
+                return;
+            }
+
+            perfDisasterRuntime.timers[reaperPerfKey] = time;
+            dt = perfConsumeDisasterDt(reaperPerfKey, dt);
 
             for (let i = 0; i < stormReapers.length; i++) {
                 const reaper = stormReapers[i];
@@ -22995,10 +23691,39 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             target.scale = Math.max(target.minScale || 0.7, 1 - target.damageHits * 0.035);
         }
 
-       function spawnDamageNumber(x, y, amount, color = "#fef3c7", options = {}) {
-            const life = options.life ?? 0.72;
+        const fxObjectPools = {
+            damageNumbers: [],
+            hitParticles: [],
+            magicEffects: []
+        };
 
-            damageNumbers.push({
+        function fxAcquireObject(poolName) {
+            return fxObjectPools[poolName]?.pop() || {};
+        }
+
+        function fxAssignObject(object, data) {
+            for (const key in object) delete object[key];
+            return Object.assign(object, data);
+        }
+
+        function fxRecycleObjectAt(array, index, poolName, maxPool = 320) {
+            const object = array[index];
+            array.splice(index, 1);
+
+            const pool = fxObjectPools[poolName];
+            if (object && pool && pool.length < maxPool) {
+                for (const key in object) delete object[key];
+                pool.push(object);
+            }
+        }
+
+       function spawnDamageNumber(x, y, amount, color = "#fef3c7", options = {}) {
+            if (!perfShouldCreateWorldFx(x, y, 220, options.importanceRange || 0)) return;
+
+            const life = options.life ?? 0.72;
+            const num = fxAcquireObject("damageNumbers");
+
+            fxAssignObject(num, {
                 x,
                 y,
                 amount,
@@ -23012,6 +23737,8 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
                 shadowBlur: options.shadowBlur ?? 0,
                 shadowColor: options.shadowColor || color
             });
+
+            damageNumbers.push(num);
         }
 
         function spawnHitParticles(x, y, type = "player") {
@@ -23040,14 +23767,19 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
                 cleanse: ["#ffffff", "#bfdbfe", "#60a5fa"],
                 wind: ["#7dd3fc", "#e0f2fe", "#99f6e4"]
             };
+            const fxScale = perfFxCountScale(x, y);
+            if (fxScale <= 0 || perfFxBudgetFull(hitParticles, 1)) return;
+
             const colors = palettes[type] || palettes.player;
-            const count = type === "player" ? 7 : 10;
+            const baseCount = type === "player" ? 7 : 10;
+            const count = Math.max(1, Math.round(baseCount * fxScale));
             for (let i = 0; i < count; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const speed = Math.random() * 90 + 45;
                 const color = colors[Math.floor(Math.random() * colors.length)];
 
-                hitParticles.push({
+                const particle = fxAcquireObject("hitParticles");
+                fxAssignObject(particle, {
                     x,
                     y,
                     vx: Math.cos(angle) * speed,
@@ -23058,6 +23790,7 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
                     life: Math.random() * 0.22 + 0.28,
                     maxLife: 0.5
                 });
+                hitParticles.push(particle);
             }
 
             if (type !== "wood" && type !== "leaves") {
@@ -24524,8 +25257,8 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
         }
 
         const AIRDROP_CONFIG = {
-            minRouteMs: 240000,
-            maxRouteMs: 480000,
+            minRouteMs: 105000,
+            maxRouteMs: 185000,
             planeTravelMs: 18000,
             minFallMs: 6000,
             maxFallMs: 12000,
@@ -24552,7 +25285,7 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
 
         function airdropScheduleNextWindow(time = performance.now()) {
             airdropState.nextAllowedAt = time + airdropRandomRange(AIRDROP_CONFIG.minRouteMs, AIRDROP_CONFIG.maxRouteMs);
-            airdropState.stormPhasesUntilNext = 1 + Math.floor(Math.random() * 3);
+            airdropState.stormPhasesUntilNext = Math.random() < 0.72 ? 1 : 2;
         }
 
         function airdropRandomRange(min, max) {
@@ -24760,15 +25493,16 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
 
         function updateAirdropSystem(dt, time) {
             if (currentGameState !== GAME_STATES.MATCH) return;
+            if (!airdropState.routes.length && !airdropState.packages.length) return;
 
             for (const route of airdropState.routes) {
                 const plane = getAirdropPlanePosition(route, time);
                 const distToPlane = Math.hypot(plane.x - player.x, plane.y - player.y);
 
-                if (distToPlane < 2200 && time - airdropState.lastEngineSoundAt > 1250) {
+                if (distToPlane < 3800 && time - airdropState.lastEngineSoundAt > 1250) {
                     airdropState.lastEngineSoundAt = time;
-                    dsPlayNoise({ duration: 0.65, gain: 0.08, filterType: "lowpass", frequency: 260, q: 0.7, x: plane.x, y: plane.y, maxDistance: 2300 });
-                    dsPlayTone({ freq: 64, endFreq: 58, type: "sawtooth", duration: 0.55, gain: 0.045, x: plane.x, y: plane.y, maxDistance: 2300 });
+                    dsPlayNoise({ duration: 0.65, gain: 0.08, filterType: "lowpass", frequency: 260, q: 0.7, x: plane.x, y: plane.y, maxDistance: 3800, audioType: "plane" });
+                    dsPlayTone({ freq: 64, endFreq: 58, type: "sawtooth", duration: 0.55, gain: 0.045, x: plane.x, y: plane.y, maxDistance: 3800, audioType: "plane" });
                 }
 
                 for (const target of route.targets) {
@@ -24827,9 +25561,13 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
 
         function playAirdropAlertSound(x = player?.x || 0, y = player?.y || 0) {
             playSelectSound();
-            dsPlayTone({ freq: 740, endFreq: 980, type: "triangle", duration: 0.18, gain: 0.08, x, y, maxDistance: 999999 });
-            dsPlayTone({ freq: 370, endFreq: 260, type: "sawtooth", duration: 0.28, gain: 0.055, delay: 0.12, x, y, maxDistance: 999999 });
-            dsPlayNoise({ duration: 0.18, gain: 0.07, filterType: "bandpass", frequency: 1100, q: 2, delay: 0.06, x, y, maxDistance: 999999 });
+
+            const ux = player?.x || x || 0;
+            const uy = player?.y || y || 0;
+
+            dsPlayTone({ freq: 740, endFreq: 980, type: "triangle", duration: 0.18, gain: 0.08, x: ux, y: uy, maxDistance: 1, audioType: "ui" });
+            dsPlayTone({ freq: 370, endFreq: 260, type: "sawtooth", duration: 0.28, gain: 0.055, delay: 0.12, x: ux, y: uy, maxDistance: 1, audioType: "ui" });
+            dsPlayNoise({ duration: 0.18, gain: 0.07, filterType: "bandpass", frequency: 1100, q: 2, delay: 0.06, x: ux, y: uy, maxDistance: 1, audioType: "ui" });
         }
 
         function spawnAirdropLootDrops(x, y, sourceObject = null) {
@@ -25476,6 +26214,14 @@ function destroyWorldObject(object, sourceActor = player) {
 
             if (!target || !target.takesDamage || !isTargetAlive(target)) return false;
 
+            if (
+                matchWinState.localVictoryInvincible &&
+                amount > 0 &&
+                (target === player || isSameTeam(target, player))
+            ) {
+                return false;
+            }
+
             if (target.objectType === "stormReaper") {
                 return applyStormReaperKnockback(target, source || player, amount);
             }
@@ -25643,14 +26389,31 @@ function destroyWorldObject(object, sourceActor = player) {
         }
 
         function getDamageablePunchTargets() {
+            const stats = getMeleeAttackStats();
+            const queryRadius = Math.max(160, stats.range + 180);
             const targets = [];
-            for (let i = 0; i < crates.length; i++) if (isTargetAlive(crates[i]) && objectFloor(crates[i]) === currentFloor) targets.push(crates[i]);
+            const add = target => {
+                if (!target || !isTargetAlive(target) || objectFloor(target) !== currentFloor) return;
+                targets.push(target);
+            };
+
+            const nearCrates = spatialQueryObjectsAround("crates", player.x, player.y, queryRadius, currentFloor);
+            for (let i = 0; i < nearCrates.length; i++) add(nearCrates[i]);
+
             if (currentFloor === "surface") {
-                for (let i = 0; i < trees.length; i++) if (isTargetAlive(trees[i])) targets.push(trees[i]);
-                for (let i = 0; i < rocks.length; i++) if (isTargetAlive(rocks[i])) targets.push(rocks[i]);
+                const nearTrees = spatialQueryObjectsAround("trees", player.x, player.y, queryRadius, currentFloor);
+                for (let i = 0; i < nearTrees.length; i++) add(nearTrees[i]);
+
+                const nearRocks = spatialQueryObjectsAround("rocks", player.x, player.y, queryRadius, currentFloor);
+                for (let i = 0; i < nearRocks.length; i++) add(nearRocks[i]);
             }
-            for (let i = 0; i < furniture.length; i++) if (isTargetAlive(furniture[i]) && objectFloor(furniture[i]) === currentFloor) targets.push(furniture[i]);
-            for (let i = 0; i < bots.length; i++) if (isTargetAlive(bots[i]) && objectFloor(bots[i]) === currentFloor) targets.push(bots[i]);
+
+            const nearFurniture = spatialQueryObjectsAround("furniture", player.x, player.y, queryRadius, currentFloor);
+            for (let i = 0; i < nearFurniture.length; i++) add(nearFurniture[i]);
+
+            const nearBots = spatialQueryObjectsAround("bots", player.x, player.y, queryRadius, currentFloor);
+            for (let i = 0; i < nearBots.length; i++) add(nearBots[i]);
+
             return targets;
         }
 
@@ -26168,6 +26931,9 @@ function destroyWorldObject(object, sourceActor = player) {
         }
 
         function spawnMagicRing(x, y, color, radius = 70, duration = 0.55, options = {}) {
+            if (!perfShouldCreateWorldFx(x, y, radius + 260, options.importanceRange || 0)) return;
+            if (perfFxBudgetFull(magicEffects, 0.9) && !options.force) return;
+
             magicEffects.push({
                 type: "ring",
                 x,
@@ -26191,6 +26957,10 @@ function destroyWorldObject(object, sourceActor = player) {
         }
 
         function spawnMagicParticleBurst(x, y, particleType, color, count = 16) {
+            const fxScale = perfFxCountScale(x, y);
+            if (fxScale <= 0 || perfFxBudgetFull(magicEffects, 0.95)) return;
+            count = Math.max(1, Math.round(count * fxScale));
+
             const palettes = {
                 healing: ["#34d399", "#67e8f9", "#dcfce7"],
                 shield: ["#38bdf8", "#bfdbfe", "#1d4ed8"],
@@ -26209,7 +26979,8 @@ function destroyWorldObject(object, sourceActor = player) {
             for (let i = 0; i < count; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const speed = Math.random() * 130 + 45;
-                magicEffects.push({
+                const fx = fxAcquireObject("magicEffects");
+                fxAssignObject(fx, {
                     type: "particle",
                     x,
                     y,
@@ -26221,11 +26992,17 @@ function destroyWorldObject(object, sourceActor = player) {
                     life: Math.random() * 0.35 + 0.35,
                     maxLife: 0.7
                 });
+                magicEffects.push(fx);
             }
         }
 
         function spawnMagicTrail(x1, y1, x2, y2, color) {
-            magicEffects.push({ type: "trail", x1, y1, x2, y2, color, life: 0.34, maxLife: 0.34 });
+            const mx = (x1 + x2) * 0.5;
+            const my = (y1 + y2) * 0.5;
+            if (!perfShouldCreateWorldFx(mx, my, 280) || perfFxBudgetFull(magicEffects, 0.9)) return;
+            const fx = fxAcquireObject("magicEffects");
+            fxAssignObject(fx, { type: "trail", x1, y1, x2, y2, color, life: 0.34, maxLife: 0.34 });
+            magicEffects.push(fx);
         }
 
         function cleansePlayerStatuses() {
@@ -26264,7 +27041,11 @@ function destroyWorldObject(object, sourceActor = player) {
             spawnMagicRing(player.x, player.y, color, 82, 0.32);
             spawnMagicParticleBurst(player.x, player.y, card.particleType || "prism", color, 16);
 
-            const targets = getDamageableCardTargets();
+            const targets = getDamageableCardTargets(player, {
+                x: originX,
+                y: originY,
+                radius: range + 160
+            });
             for (let i = 0; i < targets.length; i++) {
                 const target = targets[i];
                 if (!isTargetAlive(target)) continue;
@@ -26590,7 +27371,11 @@ function destroyWorldObject(object, sourceActor = player) {
 
         function resolveMagicProjectileHits(projectile) {
             const source = projectile.owner || player;
-            const targets = getDamageableCardTargets(source);
+            const targets = getDamageableCardTargets(source, {
+                x: projectile.x,
+                y: projectile.y,
+                radius: Math.max(120, (projectile.radius || 12) + 150)
+            });
             for (let i = 0; i < targets.length; i++) {
                 const target = targets[i];
                 if (!isTargetAlive(target)) continue;
@@ -26615,7 +27400,11 @@ function destroyWorldObject(object, sourceActor = player) {
             addScreenShake(5, 0.16);
 
             const source = projectile.owner || player;
-            const targets = getDamageableCardTargets(source);
+            const targets = getDamageableCardTargets(source, {
+                x: projectile.x,
+                y: projectile.y,
+                radius: (projectile.explosionRadius || 86) + 180
+            });
             for (let i = 0; i < targets.length; i++) {
                 const target = targets[i];
                 if (!isTargetAlive(target)) continue;
@@ -26649,7 +27438,7 @@ function destroyWorldObject(object, sourceActor = player) {
                     fx.vy *= 0.92;
                 }
 
-                if (fx.life <= 0) magicEffects.splice(i, 1);
+                if (fx.life <= 0) fxRecycleObjectAt(magicEffects, i, "magicEffects", 260);
             }
         }
 
@@ -26967,7 +27756,7 @@ function destroyWorldObject(object, sourceActor = player) {
                 num.life -= dt;
                 num.y += num.vy * dt;
                 num.x += num.drift * dt;
-                if (num.life <= 0) damageNumbers.splice(i, 1);
+                if (num.life <= 0) fxRecycleObjectAt(damageNumbers, i, "damageNumbers", 140);
             }
 
             for (let i = hitParticles.length - 1; i >= 0; i--) {
@@ -26977,7 +27766,7 @@ function destroyWorldObject(object, sourceActor = player) {
                 p.y += p.vy * dt;
                 p.vx *= 0.9;
                 p.vy *= 0.9;
-                if (p.life <= 0) hitParticles.splice(i, 1);
+                if (p.life <= 0) fxRecycleObjectAt(hitParticles, i, "hitParticles", 420);
             }
 
             for (let i = swingEffects.length - 1; i >= 0; i--) {
@@ -26994,7 +27783,82 @@ function destroyWorldObject(object, sourceActor = player) {
             }
         }
 
+        function getDamageableCardTargetsSpatial(source = player, options = {}) {
+            const targets = [];
+            const includeDestructibles = options.includeDestructibles !== false;
+            const floor = objectFloor(source || player);
+            const queryX = Number(options.x);
+            const queryY = Number(options.y);
+            const queryRadius = Math.max(80, Number(options.radius || options.queryRadius || 520));
+
+            function inQuery(target) {
+                if (!target) return false;
+                const center = getTargetCenter(target);
+                return Math.hypot(center.x - queryX, center.y - queryY) <= queryRadius + getTargetRadius(target);
+            }
+
+            function addDestructible(target) {
+                if (!isTargetAlive(target)) return;
+                if (objectFloor(target) !== floor) return;
+                if (!inQuery(target)) return;
+                targets.push(target);
+            }
+
+            function addActor(target) {
+                if (!target || target === source) return;
+                if (!isTargetAlive(target) || target.isDowned) return;
+                if (objectFloor(target) !== floor) return;
+                if (isFriendlyTarget(target, source)) return;
+                if (!inQuery(target)) return;
+                targets.push(target);
+            }
+
+            if (includeDestructibles) {
+                const nearCrates = typeof spatialQueryObjectsAround === "function"
+                    ? spatialQueryObjectsAround("crates", queryX, queryY, queryRadius + 180, floor)
+                    : crates;
+                for (let i = 0; i < nearCrates.length; i++) addDestructible(nearCrates[i]);
+
+                if (floor === "surface") {
+                    const nearTrees = typeof spatialQueryObjectsAround === "function"
+                        ? spatialQueryObjectsAround("trees", queryX, queryY, queryRadius + 180, floor)
+                        : trees;
+                    for (let i = 0; i < nearTrees.length; i++) addDestructible(nearTrees[i]);
+
+                    const nearRocks = typeof spatialQueryObjectsAround === "function"
+                        ? spatialQueryObjectsAround("rocks", queryX, queryY, queryRadius + 180, floor)
+                        : rocks;
+                    for (let i = 0; i < nearRocks.length; i++) addDestructible(nearRocks[i]);
+                }
+
+                const nearFurniture = typeof spatialQueryObjectsAround === "function"
+                    ? spatialQueryObjectsAround("furniture", queryX, queryY, queryRadius + 180, floor)
+                    : furniture;
+                for (let i = 0; i < nearFurniture.length; i++) addDestructible(nearFurniture[i]);
+            }
+
+            addActor(player);
+
+            if (mpState.matchId) {
+                for (const remote of mpState.remotePlayers.values()) addActor(remote);
+            }
+
+            if (floor === "surface") {
+                for (let i = 0; i < stormReapers.length; i++) addActor(stormReapers[i]);
+            }
+
+            const nearBots = typeof spatialQueryObjectsAround === "function"
+                ? spatialQueryObjectsAround("bots", queryX, queryY, queryRadius + 180, floor)
+                : bots;
+            for (let i = 0; i < nearBots.length; i++) addActor(nearBots[i]);
+
+            return targets;
+        }
+
 function getDamageableCardTargets(source = player, options = {}) {
+            if (Number.isFinite(options.x) && Number.isFinite(options.y)) {
+                return getDamageableCardTargetsSpatial(source, options);
+            }
             const targets = [];
             const includeDestructibles = options.includeDestructibles !== false;
             const floor = objectFloor(source || player);
@@ -27161,7 +28025,11 @@ function getDamageableCardTargets(source = player, options = {}) {
             addScreenShake(7, 0.2);
 
             const source = projectile.owner || player;
-            let targets = getDamageableCardTargets(source);
+            let targets = getDamageableCardTargets(source, {
+                x: projectile.x,
+                y: projectile.y,
+                radius: radius + 190
+            });
             if (card.explosionHitsPlayer === false) targets = targets.filter(target => target !== player);
 
             for (let i = 0; i < targets.length; i++) {
@@ -27620,7 +28488,12 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
             projectile.chainShockDone = true;
 
             const origin = getTargetCenter(primaryTarget);
-            const targets = getDamageableCardTargets(source, { includeDestructibles: false });
+            const targets = getDamageableCardTargets(source, {
+                includeDestructibles: false,
+                x: origin.x,
+                y: origin.y,
+                radius: card.chainShockRadius + 120
+            });
             let chained = 0;
             const maxChains = card.chainShockCount || 1;
 
@@ -27661,7 +28534,11 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
                 function resolveCardProjectileHits(projectile) {
             const source = projectile.owner || player;
-            const targets = getDamageableCardTargets(source);
+            const targets = getDamageableCardTargets(source, {
+                x: projectile.x,
+                y: projectile.y,
+                radius: Math.max(140, (projectile.width || projectile.radius || 18) + 190)
+            });
             const isBoomerang = projectile.card.attackType === "Boomerang";
             const isControlled = projectile.card.attackType === "Controlled";
             const usesTouchCooldown = isBoomerang || isControlled;
@@ -27737,6 +28614,14 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
         }
 
         function spawnCardTrailParticle(projectile) {
+            if (!projectile || !perfShouldCreateWorldFx(projectile.x, projectile.y, (projectile.width || 18) + 180)) return;
+            if (perfFxBudgetFull(hitParticles, 0.92) && projectile.owner !== player) return;
+
+            const now = performance.now();
+            const trailInterval = perfSettings.effectsLevel >= 2 ? 0 : perfSettings.effectsLevel === 1 ? 28 : 48;
+            if (trailInterval > 0 && now < (projectile.fxNextTrailAt || 0)) return;
+            projectile.fxNextTrailAt = now + trailInterval;
+
             const spread = (Math.random() - 0.5) * projectile.width;
             hitParticles.push({
                 x: projectile.x - Math.cos(projectile.angle) * 12 + Math.cos(projectile.angle + Math.PI / 2) * spread,
@@ -29187,6 +30072,7 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
                 clearOnlineRefs: false,
                 clearWorldArrays: false
             });
+            spatialMarkAllDirty("queue_start");
 
             currentGameState = GAME_STATES.QUEUE_LOBBY;
             setControlHintVisible(true);
@@ -29284,6 +30170,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
             document.getElementById('storm-hud-ticker').className = "text-[10px] text-amber-400 font-semibold tracking-wider text-center animate-pulse mt-1";
             document.getElementById('hud-scope-label').textContent = "x1";
             updatePlayerHealthHud();
+            spatialMarkAllDirty("queue_ready");
 
             resizeGameCanvas();
             lastTime = performance.now();
@@ -29438,6 +30325,7 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
             worldHeight = 11200;
             islandTerrain.seed = Math.random() * 9999;
             islandTerrain.streamPhase = Math.random() * Math.PI * 2;
+            spatialMarkAllDirty("match_start");
 
             // Reset player to random safe land position
             const playerSpawn = randomIslandPoint({ minEdge: 0.18, avoidWater: true, margin: 700 });
@@ -30029,8 +30917,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             }
 
             if (floor === "surface") {
-                for (let i = 0; i < trees.length; i++) {
-                    const tree = trees[i];
+                const nearbyTrees = spatialQueryObjectsAround("trees", nextX, nextY, radius + 120, floor);
+                for (let i = 0; i < nearbyTrees.length; i++) {
+                    const tree = nearbyTrees[i];
                     if (tree.destroyed) continue;
                     const trunkRadius = tree.trunkRadius * (tree.scale || 1);
                     if (checkCircleCollision(nextX, nextY, radius, tree.x, tree.y, trunkRadius)) {
@@ -30040,8 +30929,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                     }
                 }
 
-                for (let i = 0; i < rocks.length; i++) {
-                    const rock = rocks[i];
+                const nearbyRocks = spatialQueryObjectsAround("rocks", nextX, nextY, radius + 120, floor);
+                for (let i = 0; i < nearbyRocks.length; i++) {
+                    const rock = nearbyRocks[i];
                     if (rock.destroyed) continue;
                     const rockRadius = rock.radius * (rock.scale || 1);
                     if (checkCircleCollision(nextX, nextY, radius, rock.x, rock.y, rockRadius)) {
@@ -30052,8 +30942,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 }
             }
 
-            for (let i = 0; i < crates.length; i++) {
-                const crate = crates[i];
+            const nearbyCrates = spatialQueryObjectsAround("crates", nextX, nextY, radius + 130, floor);
+            for (let i = 0; i < nearbyCrates.length; i++) {
+                const crate = nearbyCrates[i];
                 if (crate.destroyed || objectFloor(crate) !== floor) continue;
                 const bounds = getCrateBounds(crate);
                 const res = resolveCircleBoxCollision(nextX, nextY, radius, bounds.x, bounds.y, bounds.width, bounds.height);
@@ -30063,8 +30954,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 }
             }
 
-            for (let i = 0; i < furniture.length; i++) {
-                const item = furniture[i];
+            const nearbyFurniture = spatialQueryObjectsAround("furniture", nextX, nextY, radius + 130, floor);
+            for (let i = 0; i < nearbyFurniture.length; i++) {
+                const item = nearbyFurniture[i];
                 if (item.destroyed || objectFloor(item) !== floor) continue;
                 const res = resolveCircleBoxCollision(nextX, nextY, radius, item.x, item.y, item.width, item.height);
                 if (res.collided) {
@@ -30074,8 +30966,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             }
 
             if (floor === "surface") {
-                for (let i = 0; i < poiProps.length; i++) {
-                    const p = poiProps[i];
+                const nearbyPoiProps = spatialQueryObjectsAround("poiProps", nextX, nextY, radius + 180, "surface");
+                for (let i = 0; i < nearbyPoiProps.length; i++) {
+                    const p = nearbyPoiProps[i];
                     if (!p || !p.solid || objectFloor(p) !== "surface") continue;
                     const res = resolveCircleBoxCollision(nextX, nextY, radius, p.x - p.w / 2, p.y - p.h / 2, p.w, p.h);
                     if (res.collided) {
@@ -30085,8 +30978,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 }
             }
 
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
+            const nearbyHouses = spatialQueryObjectsAround("houses", nextX, nextY, radius + 420, floor);
+            for (let i = 0; i < nearbyHouses.length; i++) {
+                const house = nearbyHouses[i];
                 if (objectFloor(house) !== floor) continue;
 
                 if (house.isUnderground) {
@@ -30126,9 +31020,32 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 function getActiveCharacters() {
             const floor = mpIsSpectating() ? currentFloor : objectFloor(player);
             const actors = mpIsSpectating() ? [] : [player];
+            const seen = new Set(actors);
+            const collisionRange = perfSettings.collisionActorRange || 1400;
+            const nearbyBots = currentGameState === GAME_STATES.MATCH
+                ? spatialQueryObjects("bots", collisionRange, { floor })
+                : bots;
+
+            const addBot = bot => {
+                if (!bot || seen.has(bot)) return;
+                if (isTargetAlive(bot) && objectFloor(bot) === floor) {
+                    seen.add(bot);
+                    actors.push(bot);
+                }
+            };
+
+            for (let i = 0; i < nearbyBots.length; i++) addBot(nearbyBots[i]);
+
             for (let i = 0; i < bots.length; i++) {
-                if (isTargetAlive(bots[i]) && objectFloor(bots[i]) === floor) actors.push(bots[i]);
+                const bot = bots[i];
+                if (
+                    bot &&
+                    (bot.isDuoPartner || bot.isDowned || bot.aiTarget === player || isSameTeam(bot, player))
+                ) {
+                    addBot(bot);
+                }
             }
+
             return actors;
         }
 
@@ -30180,10 +31097,46 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
 
         function resolveAllCharacterCollisions(iterations = 2) {
             const actors = getActiveCharacters();
+            if (actors.length <= 1) return;
+
+            const cellSize = 96;
+
             for (let pass = 0; pass < iterations; pass++) {
+                const buckets = new Map();
+
                 for (let i = 0; i < actors.length; i++) {
-                    for (let j = i + 1; j < actors.length; j++) {
-                        resolveCharacterPairCollision(actors[i], actors[j]);
+                    const actor = actors[i];
+                    const cx = Math.floor(actor.x / cellSize);
+                    const cy = Math.floor(actor.y / cellSize);
+                    const key = `${cx}:${cy}`;
+
+                    if (!buckets.has(key)) buckets.set(key, []);
+                    buckets.get(key).push(i);
+                }
+
+                const checkedPairs = new Set();
+
+                for (let i = 0; i < actors.length; i++) {
+                    const actor = actors[i];
+                    const cx = Math.floor(actor.x / cellSize);
+                    const cy = Math.floor(actor.y / cellSize);
+
+                    for (let ox = -1; ox <= 1; ox++) {
+                        for (let oy = -1; oy <= 1; oy++) {
+                            const bucket = buckets.get(`${cx + ox}:${cy + oy}`);
+                            if (!bucket) continue;
+
+                            for (let b = 0; b < bucket.length; b++) {
+                                const j = bucket[b];
+                                if (j <= i) continue;
+
+                                const pairKey = `${i}:${j}`;
+                                if (checkedPairs.has(pairKey)) continue;
+                                checkedPairs.add(pairKey);
+
+                                resolveCharacterPairCollision(actor, actors[j]);
+                            }
+                        }
                     }
                 }
             }
@@ -30272,8 +31225,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         }
 
         function getHouseWallHit(x, y, radius, floor = currentFloor) {
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
+            const nearbyHouses = spatialQueryObjectsAround("houses", x, y, radius + 420, floor);
+            for (let i = 0; i < nearbyHouses.length; i++) {
+                const house = nearbyHouses[i];
                 if (objectFloor(house) !== floor) continue;
                 for (let w = 0; w < house.walls.length; w++) {
                     const wall = house.walls[w];
@@ -30311,9 +31265,11 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         function findNearbyDoor(actor = player, range = 54) {
             let best = null;
             let bestDist = Infinity;
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
-                if (objectFloor(house) !== objectFloor(actor)) continue;
+            const actorFloor = objectFloor(actor);
+            const nearbyHouses = spatialQueryObjectsAround("houses", actor.x, actor.y, range + 420, actorFloor);
+            for (let i = 0; i < nearbyHouses.length; i++) {
+                const house = nearbyHouses[i];
+                if (objectFloor(house) !== actorFloor) continue;
                 for (let d = 0; d < house.doors.length; d++) {
                     const door = house.doors[d];
                     const cx = door.x + door.w / 2;
@@ -30973,6 +31929,12 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
 
         function drawRoadNetwork() {
             if (currentFloor !== "surface") return;
+
+            if (currentGameState === GAME_STATES.MATCH) {
+                drawCachedRoadNetwork();
+                return;
+            }
+
             for (let i = 0; i < roads.length; i++) {
                 const r = roads[i];
                 if (!perfRectVisible(r.x, r.y, r.w, r.h, 180)) continue;
@@ -30996,6 +31958,252 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 }
                 gctx.restore();
             }
+        }
+
+        const STATIC_WORLD_CHUNK_SIZE = 1024;
+        const staticWorldChunkCache = {
+            key: "",
+            terrain: new Map(),
+            roads: new Map()
+        };
+
+        function resetStaticWorldChunkCaches(reason = "dirty") {
+            staticWorldChunkCache.key = "";
+            staticWorldChunkCache.terrain.clear();
+            staticWorldChunkCache.roads.clear();
+        }
+
+        function getStaticWorldChunkKey() {
+            const seed = Math.round(Number(islandTerrain?.seed || 0) * 100000);
+            return [
+                worldWidth,
+                worldHeight,
+                seed,
+                Math.round(islandTerrain?.streamBaseWidth || 0),
+                roads.length,
+                perfSettings.terrainTileSize,
+                perfSettings.terrainStreamSteps
+            ].join(":");
+        }
+
+        function ensureStaticWorldChunkCacheKey() {
+            const key = getStaticWorldChunkKey();
+            if (staticWorldChunkCache.key === key) return;
+
+            staticWorldChunkCache.key = key;
+            staticWorldChunkCache.terrain.clear();
+            staticWorldChunkCache.roads.clear();
+        }
+
+        function drawStaticStreamStroke(ctx, xGetter, yStart, yEnd, width, color, alpha = 1) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+
+            const steps = Math.max(18, Math.round(perfSettings.terrainStreamSteps || 70));
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const y = yStart + (yEnd - yStart) * t;
+                const x = xGetter(y);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        function drawCachedTerrainChunk(ctx, bounds) {
+            ctx.fillStyle = "#0f3f5f";
+            ctx.fillRect(bounds.left, bounds.top, bounds.size, bounds.size);
+
+            const tile = Math.max(150, Math.round(perfSettings.terrainTileSize || 170));
+            const startX = Math.floor(bounds.left / tile) * tile;
+            const startY = Math.floor(bounds.top / tile) * tile;
+            const endX = bounds.left + bounds.size;
+            const endY = bounds.top + bounds.size;
+
+            for (let y = startY; y < endY; y += tile) {
+                for (let x = startX; x < endX; x += tile) {
+                    const cx = x + tile * 0.5;
+                    const cy = y + tile * 0.5;
+                    const info = getTerrainInfo(cx, cy);
+                    if (info.edge <= 0) continue;
+
+                    const biome = getBiomeAt(cx, cy);
+                    let fill = "#416345";
+                    if (biome === "darkGrass") fill = "#1f3b26";
+                    if (biome === "sand") fill = "#c8a45d";
+                    if (info.isShore) fill = "#d6b66d";
+
+                    ctx.globalAlpha = clamp01(0.42 + info.edge * 2.2);
+                    ctx.fillStyle = fill;
+                    ctx.fillRect(x - 1, y - 1, tile + 2, tile + 2);
+
+                    if (biome === "grass" || biome === "darkGrass") {
+                        ctx.globalAlpha = 0.08;
+                        ctx.fillStyle = biome === "darkGrass" ? "#86efac" : "#bbf7d0";
+                        ctx.fillRect(x + 18, y + 24, tile * 0.34, 4);
+                        ctx.fillRect(x + 92, y + 116, tile * 0.28, 3);
+                    }
+                }
+            }
+
+            ctx.globalAlpha = 1;
+
+            drawStaticStreamStroke(ctx, getMainStreamX, -260, worldHeight + 260, islandTerrain.streamBaseWidth + 135, "rgba(194,158,92,0.46)", 1);
+            drawStaticStreamStroke(ctx, getMainStreamX, -260, worldHeight + 260, islandTerrain.streamBaseWidth + 54, "rgba(14,116,144,0.96)", 1);
+            drawStaticStreamStroke(ctx, getMainStreamX, -260, worldHeight + 260, islandTerrain.streamBaseWidth * 0.42, "rgba(103,232,249,0.35)", 1);
+
+            const splitY = worldHeight * 0.58;
+            const topY = worldHeight * 0.13;
+            drawStaticStreamStroke(ctx, getBranchStreamX, splitY, topY - 300, islandTerrain.streamBaseWidth + 85, "rgba(194,158,92,0.42)", 1);
+            drawStaticStreamStroke(ctx, getBranchStreamX, splitY, topY - 300, islandTerrain.streamBaseWidth * 0.78, "rgba(14,116,144,0.94)", 1);
+            drawStaticStreamStroke(ctx, getBranchStreamX, splitY, topY - 300, islandTerrain.streamBaseWidth * 0.28, "rgba(224,242,254,0.34)", 1);
+
+            const gridSize = 100;
+            const gx1 = Math.floor(bounds.left / gridSize) * gridSize;
+            const gy1 = Math.floor(bounds.top / gridSize) * gridSize;
+            const gx2 = Math.ceil((bounds.left + bounds.size) / gridSize) * gridSize;
+            const gy2 = Math.ceil((bounds.top + bounds.size) / gridSize) * gridSize;
+
+            ctx.save();
+            ctx.lineWidth = 1;
+            for (let x = gx1; x <= gx2; x += gridSize) {
+                const major = Math.abs(Math.round(x / gridSize)) % 4 === 0;
+                ctx.strokeStyle = major ? "rgba(186,230,253,0.16)" : "rgba(15,23,42,0.18)";
+                ctx.beginPath();
+                ctx.moveTo(x, bounds.top);
+                ctx.lineTo(x, bounds.top + bounds.size);
+                ctx.stroke();
+            }
+
+            for (let y = gy1; y <= gy2; y += gridSize) {
+                const major = Math.abs(Math.round(y / gridSize)) % 4 === 0;
+                ctx.strokeStyle = major ? "rgba(186,230,253,0.16)" : "rgba(15,23,42,0.18)";
+                ctx.beginPath();
+                ctx.moveTo(bounds.left, y);
+                ctx.lineTo(bounds.left + bounds.size, y);
+                ctx.stroke();
+            }
+
+            ctx.strokeStyle = "rgba(56,189,248,0.06)";
+            ctx.lineWidth = 2;
+            for (let x = gx1; x <= gx2; x += gridSize * 4) {
+                ctx.beginPath();
+                ctx.moveTo(x, bounds.top);
+                ctx.lineTo(x, bounds.top + bounds.size);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function drawCachedRoadChunk(ctx, bounds) {
+            for (let i = 0; i < roads.length; i++) {
+                const r = roads[i];
+                if (r.x + r.w < bounds.left || r.x > bounds.left + bounds.size || r.y + r.h < bounds.top || r.y > bounds.top + bounds.size) continue;
+
+                ctx.save();
+                if (r.type === "road") {
+                    ctx.fillStyle = "#2f3338";
+                    ctx.fillRect(r.x, r.y, r.w, r.h);
+                    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(r.x, r.y, r.w, r.h);
+                } else if (r.type === "sidewalk") {
+                    ctx.fillStyle = "#9ca3af";
+                    ctx.fillRect(r.x, r.y, r.w, r.h);
+                } else if (r.type === "crosswalk") {
+                    ctx.fillStyle = "rgba(241,245,249,0.72)";
+                    const stripeCount = r.w > r.h ? 7 : 5;
+                    for (let s = 0; s < stripeCount; s++) {
+                        if (r.w > r.h) ctx.fillRect(r.x + s * (r.w / stripeCount), r.y, r.w / (stripeCount * 2), r.h);
+                        else ctx.fillRect(r.x, r.y + s * (r.h / stripeCount), r.w, r.h / (stripeCount * 2));
+                    }
+                }
+                ctx.restore();
+            }
+        }
+
+        function drawStaticWorldChunkLayer(layer, pad, drawChunkFn) {
+            if (currentGameState !== GAME_STATES.MATCH || currentFloor !== "surface") return false;
+
+            ensureStaticWorldChunkCacheKey();
+
+            const cache = staticWorldChunkCache[layer];
+            const size = STATIC_WORLD_CHUNK_SIZE;
+            const bounds = getCameraWorldBounds(pad);
+            const minX = Math.floor(bounds.x1 / size);
+            const maxX = Math.floor(bounds.x2 / size);
+            const minY = Math.floor(bounds.y1 / size);
+            const maxY = Math.floor(bounds.y2 / size);
+
+            for (let cx = minX; cx <= maxX; cx++) {
+                for (let cy = minY; cy <= maxY; cy++) {
+                    const key = `${cx}:${cy}`;
+                    let entry = cache.get(key);
+
+                    if (!entry) {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = size;
+                        canvas.height = size;
+                        const ctx = canvas.getContext("2d");
+                        const chunkBounds = { left: cx * size, top: cy * size, size };
+
+                        ctx.save();
+                        ctx.translate(-chunkBounds.left, -chunkBounds.top);
+                        drawChunkFn(ctx, chunkBounds);
+                        ctx.restore();
+
+                        entry = { canvas, lastFrame: perfState.frameId };
+                        cache.set(key, entry);
+                    }
+
+                    entry.lastFrame = perfState.frameId;
+                    gctx.drawImage(entry.canvas, cx * size, cy * size);
+                }
+            }
+
+            if (perfState.frameId % 360 === 0) {
+                for (const [key, entry] of cache.entries()) {
+                    if (perfState.frameId - entry.lastFrame > 720) cache.delete(key);
+                }
+            }
+
+            return true;
+        }
+
+        function drawAnimatedStreamHighlights() {
+            const bounds = getCameraWorldBounds(520);
+            islandTerrain.streamPhase += 0.015;
+
+            gctx.save();
+            gctx.globalAlpha = 0.26;
+            gctx.strokeStyle = "#e0f2fe";
+            gctx.lineWidth = 3;
+
+            for (let y = bounds.y1 - 120; y < bounds.y2 + 120; y += 150) {
+                const x = getMainStreamX(y + Math.sin(islandTerrain.streamPhase + y * 0.01) * 20);
+                gctx.beginPath();
+                gctx.moveTo(x - 70, y);
+                gctx.lineTo(x + 80, y + 42);
+                gctx.stroke();
+            }
+
+            gctx.restore();
+        }
+
+        function drawCachedIslandTerrainAndGrid() {
+            drawStaticWorldChunkLayer("terrain", 520, drawCachedTerrainChunk);
+            drawAnimatedStreamHighlights();
+        }
+
+        function drawCachedRoadNetwork() {
+            drawStaticWorldChunkLayer("roads", 180, drawCachedRoadChunk);
         }
 
         function drawPoiProps() {
@@ -31263,8 +32471,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         }
 
         function drawBuildingInteriors() {
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
+            const visibleInteriorHouses = spatialQueryObjects("houses", 260);
+            for (let i = 0; i < visibleInteriorHouses.length; i++) {
+                const house = visibleInteriorHouses[i];
                 if (objectFloor(house) !== currentFloor) continue;
                 if (!perfRectVisible(house.x, house.y, house.width, house.height, 220)) continue;
                 const revealInterior = shouldRevealHouseInterior(house);
@@ -31294,8 +32503,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         }
 
         function drawFurnitureLayer() {
-            for (let i = 0; i < furniture.length; i++) {
-                const item = furniture[i];
+            const visibleFurniture = spatialQueryObjects("furniture", 160);
+            for (let i = 0; i < visibleFurniture.length; i++) {
+                const item = visibleFurniture[i];
                 if (item.destroyed || objectFloor(item) !== currentFloor) continue;
                 if (!perfRectVisible(item.x, item.y, item.width, item.height, 90)) continue;
                 const house = houses.find(h => h.id === item.houseId);
@@ -31340,8 +32550,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         }
 
         function drawBuildingRoofsAndDoors() {
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
+            const visibleRoofHouses = spatialQueryObjects("houses", 300);
+            for (let i = 0; i < visibleRoofHouses.length; i++) {
+                const house = visibleRoofHouses[i];
                 if (objectFloor(house) !== currentFloor) continue;
                 if (!perfRectVisible(house.x, house.y, house.width, house.height, 260)) continue;
                 const revealInterior = shouldRevealHouseInterior(house);
@@ -31599,6 +32810,13 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         function addWorldLight(x, y, color = "#ffffff", radius = 180, life = 0.55, intensity = 1) {
             if (currentGameState !== GAME_STATES.MATCH) return;
             if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            if (!perfShouldCreateWorldFx(x, y, radius + 220, radius > 260 ? 2200 : 0)) return;
+
+            const quality = perfGetDisasterQuality(x, y, radius);
+
+            if (quality < 0.55 && life <= 0.65 && worldLightEffects.length > Math.max(10, Math.round((perfSettings.lightBudget || 32) * 0.65))) {
+                return;
+            }
 
             worldLightEffects.push({
                 x,
@@ -31610,8 +32828,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 intensity
             });
 
-            if (worldLightEffects.length > 80) {
-                worldLightEffects.splice(0, worldLightEffects.length - 80);
+            const maxLights = Math.max(8, Math.round((perfSettings.lightBudget || 32) * (0.7 + quality * 0.45)));
+            if (worldLightEffects.length > maxLights) {
+                worldLightEffects.splice(0, worldLightEffects.length - maxLights);
             }
         }
 
@@ -31640,7 +32859,11 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             const night = info.nightAmount;
 
             if (night > 0.08) {
-                for (let i = 0; i < ambientFireflies.length; i++) {
+                const pressure = perfGetFramePressure();
+                const fireflyStep = pressure > 0.6 ? 3 : pressure > 0.32 ? 2 : 1;
+                const fireflyOffset = perfState.frameId % fireflyStep;
+
+                for (let i = fireflyOffset; i < ambientFireflies.length; i += fireflyStep) {
                     const f = ambientFireflies[i];
                     f.phase += dt * (2.0 + (i % 5) * 0.15);
 
@@ -31848,8 +33071,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             gctx.save();
             gctx.globalCompositeOperation = "screen";
 
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
+            const litHouses = spatialQueryObjects("houses", 1700);
+            for (let i = 0; i < litHouses.length; i++) {
+                const house = litHouses[i];
                 if (!house || objectFloor(house) !== currentFloor) continue;
 
                 const centerX = house.x + house.width * 0.5;
@@ -31876,8 +33100,9 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
                 gctx.fill();
             }
 
-            for (let i = 0; i < poiProps.length; i++) {
-                const p = poiProps[i];
+            const litPoiProps = spatialQueryObjects("poiProps", 1850);
+            for (let i = 0; i < litPoiProps.length; i++) {
+                const p = litPoiProps[i];
                 if (!p || p.kind !== "streetlight" || objectFloor(p) !== currentFloor) continue;
                 if (Math.hypot(p.x - player.x, p.y - player.y) > 1750) continue;
 
@@ -32051,48 +33276,7 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
         function drawSurvivioGrid() {
             if (currentGameState === GAME_STATES.MATCH) {
                 if (currentFloor !== "surface") return;
-
-                drawIslandTerrain();
-
-                const bounds = getCameraWorldBounds(160);
-                const gridSize = 100;
-                const startX = Math.floor(bounds.x1 / gridSize) * gridSize;
-                const startY = Math.floor(bounds.y1 / gridSize) * gridSize;
-                const endX = Math.ceil(bounds.x2 / gridSize) * gridSize;
-                const endY = Math.ceil(bounds.y2 / gridSize) * gridSize;
-
-                gctx.save();
-                gctx.lineWidth = 1;
-                gctx.globalCompositeOperation = "source-over";
-
-                for (let x = startX; x <= endX; x += gridSize) {
-                    const major = Math.abs(Math.round(x / gridSize)) % 4 === 0;
-                    gctx.strokeStyle = major ? "rgba(186,230,253,0.16)" : "rgba(15,23,42,0.18)";
-                    gctx.beginPath();
-                    gctx.moveTo(x, bounds.y1);
-                    gctx.lineTo(x, bounds.y2);
-                    gctx.stroke();
-                }
-
-                for (let y = startY; y <= endY; y += gridSize) {
-                    const major = Math.abs(Math.round(y / gridSize)) % 4 === 0;
-                    gctx.strokeStyle = major ? "rgba(186,230,253,0.16)" : "rgba(15,23,42,0.18)";
-                    gctx.beginPath();
-                    gctx.moveTo(bounds.x1, y);
-                    gctx.lineTo(bounds.x2, y);
-                    gctx.stroke();
-                }
-
-                gctx.strokeStyle = "rgba(56,189,248,0.06)";
-                gctx.lineWidth = 2;
-                for (let x = startX; x <= endX; x += gridSize * 4) {
-                    gctx.beginPath();
-                    gctx.moveTo(x, bounds.y1);
-                    gctx.lineTo(x, bounds.y2);
-                    gctx.stroke();
-                }
-
-                gctx.restore();
+                drawCachedIslandTerrainAndGrid();
                 return;
             }
 
@@ -33243,6 +34427,9 @@ function mpDrawRemotePlayers() {
                 const lifeAlpha = clamp01(Math.min(1, funnel.life / 1.2, funnel.life / funnel.maxLife + 0.25));
                 const spin = funnel.spin + time * 0.006;
                 const r = funnel.radius;
+                const quality = perfGetDisasterQuality(funnel.x, funnel.y, r * 2.6);
+                const bandCount = Math.max(8, Math.round(15 * quality));
+                const debrisCount = Math.max(10, Math.round(28 * quality));
 
                 gctx.save();
                 gctx.translate(funnel.x, funnel.y);
@@ -33258,8 +34445,8 @@ function mpDrawRemotePlayers() {
                 gctx.arc(0, 0, r * 1.95, 0, Math.PI * 2);
                 gctx.fill();
 
-                for (let band = 0; band < 15; band++) {
-                    const t = band / 14;
+                for (let band = 0; band < bandCount; band++) {
+                    const t = band / Math.max(1, bandCount - 1);
                     const bandY = -r * 1.85 + t * r * 3.2;
                     const bandRadius = r * (0.18 + t * 0.92);
                     const wobble = Math.sin(spin * 1.2 + band * 0.75) * (18 + t * 22);
@@ -33295,7 +34482,7 @@ function mpDrawRemotePlayers() {
                 gctx.lineWidth = 3;
                 gctx.lineCap = "round";
 
-                for (let d = 0; d < 28; d++) {
+                for (let d = 0; d < debrisCount; d++) {
                     const a = spin * 1.6 + d * 0.72;
                     const dist = r * (0.45 + (d % 9) * 0.16);
                     const px = Math.cos(a) * dist;
@@ -33322,6 +34509,9 @@ function mpDrawRemotePlayers() {
             const r = hurricaneDisaster.radius;
             const eye = hurricaneDisaster.eyeRadius;
             const spin = hurricaneDisaster.windAngle + time * 0.0015;
+            const quality = perfGetDisasterQuality(x, y, r);
+            const armCount = Math.max(3, Math.round(5 * quality));
+            const stepCount = Math.max(18, Math.round(38 * quality));
 
             gctx.save();
             gctx.translate(x, y);
@@ -33349,12 +34539,12 @@ function mpDrawRemotePlayers() {
             gctx.lineWidth = 7;
             gctx.lineCap = "round";
 
-            for (let arm = 0; arm < 5; arm++) {
-                const start = spin + arm * (Math.PI * 2 / 5);
+            for (let arm = 0; arm < armCount; arm++) {
+                const start = spin + arm * (Math.PI * 2 / armCount);
 
                 gctx.beginPath();
-                for (let step = 0; step < 38; step++) {
-                    const t = step / 37;
+                for (let step = 0; step < stepCount; step++) {
+                    const t = step / Math.max(1, stepCount - 1);
                     const a = start + t * Math.PI * 1.7;
                     const dist = eye + t * (r - eye);
                     const px = Math.cos(a) * dist;
@@ -33703,11 +34893,14 @@ function mpDrawRemotePlayers() {
 
             if (!lastTime) lastTime = time;
 
-            const rawDt = Math.min(0.05, (time - lastTime) / 1000);
+            const frameDeltaMs = Math.max(0, time - lastTime);
+            const rawDt = Math.min(0.05, frameDeltaMs / 1000);
             const dt = rawDt * getVictoryTimeScale(time);
             lastTime = time;
 
             perfUpdateFrameStats(time);
+            perfStartFrameProfile(time, frameDeltaMs);
+            const frameUpdateStart = performance.now();
 
             updateCombatFx(dt);
             updateMatchPings(dt, time);
@@ -33752,7 +34945,10 @@ function mpDrawRemotePlayers() {
             let moveY = player.y + dy * player.speed * playerStatusMoveMultiplier + riverDrift.y;
             spawnWaterWake(player, playerIsMoving || Math.hypot(riverDrift.x, riverDrift.y) > 0.01);
 
+            const playerCollisionStart = performance.now();
             const finalPos = applySolidCollisions(moveX, moveY, player.radius, objectFloor(player), player);
+            perfRecordFrameProfile("collisionMs", playerCollisionStart);
+
             player.x = finalPos.x;
             player.y = finalPos.y;
             updateActorBridgeSurfaceState(player, prevPlayerX, prevPlayerY, player.x, player.y);
@@ -33774,6 +34970,8 @@ function mpDrawRemotePlayers() {
             const activeSeconds = Math.floor(time / 1000);
             if (currentGameState === GAME_STATES.QUEUE_LOBBY) {
                 if (updateQueueLobbyFiller(time)) {
+                    perfRecordFrameProfile("updateMs", frameUpdateStart);
+                    perfFinishFrameProfile(time);
                     startActualMatch();
                     return;
                 }
@@ -33815,8 +35013,11 @@ function mpDrawRemotePlayers() {
 
                 // Item Pickups collection detector
                 if (!mpIsSpectating()) {
-                    for (let i = items.length - 1; i >= 0; i--) {
-                    const item = items[i];
+                    const pickupItems = spatialQueryObjectsAround("items", player.x, player.y, player.radius + 96, currentFloor);
+                    for (let pickupIndex = pickupItems.length - 1; pickupIndex >= 0; pickupIndex--) {
+                    const item = pickupItems[pickupIndex];
+                    const i = items.indexOf(item);
+                    if (i === -1) continue;
                     if (item.pickupGraceUntil && time < item.pickupGraceUntil) continue;
                     if (objectFloor(item) === currentFloor && checkCircleCollision(player.x, player.y, player.radius, item.x, item.y, item.radius)) {
                         if (item.type === "card_drop") {
@@ -33928,19 +35129,30 @@ function mpDrawRemotePlayers() {
             player.currentZoom += (player.targetZoom - player.currentZoom) * 0.05;
 
             if (!matchWinState.resolved) {
-                for (let i = 0; i < bots.length; i++) {
-                    const bot = bots[i];
+                const botAiStart = performance.now();
+
+                const botsToThink = spatialGetSimulationBots(time);
+                for (let i = 0; i < botsToThink.length; i++) {
+                    const bot = botsToThink[i];
                     if (!isTargetAlive(bot)) continue;
                     perfUpdateBotAi(bot, dt, time, i);
                 }
 
+                perfRecordFrameProfile("botAiMs", botAiStart);
+
+                const collisionPassStart = performance.now();
                 resolveAllCharacterCollisions(perfSettings.collisionPasses);
+                perfRecordFrameProfile("collisionMs", collisionPassStart);
             }
 
             if (checkBattleRoyaleWinCondition(time, false)) {
+                perfRecordFrameProfile("updateMs", frameUpdateStart);
+                perfFinishFrameProfile(time);
                 return;
             }
 
+            perfRecordFrameProfile("updateMs", frameUpdateStart);
+            const frameRenderStart = performance.now();
 
             gctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
             
@@ -33985,8 +35197,9 @@ function mpDrawRemotePlayers() {
             drawAirdropSystem(time);
 
             // Render Items
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
+            const visibleItems = spatialQueryObjects("items", 180);
+            for (let i = 0; i < visibleItems.length; i++) {
+                const item = visibleItems[i];
                 if (objectFloor(item) !== currentFloor) continue;
 
                 let lootAlpha = getPlayerVisionVisibilityAlpha(item, item.type === "card_drop" ? 22 : 14);
@@ -34069,8 +35282,9 @@ function mpDrawRemotePlayers() {
                 gctx.restore();
             }
 
-            for (let i = 0; i < rocks.length; i++) {
-                const rock = rocks[i];
+            const visibleRocks = spatialQueryObjects("rocks", 190);
+            for (let i = 0; i < visibleRocks.length; i++) {
+                const rock = visibleRocks[i];
                 if (rock.destroyed || objectFloor(rock) !== currentFloor) continue;
 
                 const rockRadius = rock.radius * (rock.scale || 1);
@@ -34095,8 +35309,9 @@ function mpDrawRemotePlayers() {
             }
 
             // Render Wooden Boxes/Crates
-            for (let i = 0; i < crates.length; i++) {
-                const crate = crates[i];
+            const visibleCrates = spatialQueryObjects("crates", 180);
+            for (let i = 0; i < visibleCrates.length; i++) {
+                const crate = visibleCrates[i];
                 if (crate.destroyed || objectFloor(crate) !== currentFloor) continue;
 
                 const bounds = getCrateBounds(crate);
@@ -34139,9 +35354,10 @@ function mpDrawRemotePlayers() {
             mpDrawRemoteProjectiles();
             mpDrawRemotePlayers();
 
-            // Render NPC Opponents (Circular Avatars)
-            for (let i = 0; i < bots.length; i++) {
-                const bot = bots[i];
+            // Render world actors (Circular Avatars)
+            const visibleBots = spatialQueryObjects("bots", 220);
+            for (let i = 0; i < visibleBots.length; i++) {
+                const bot = visibleBots[i];
                 if (bot.isEliminated || objectFloor(bot) !== currentFloor) continue;
 
                 let visionAlpha = getPlayerVisionVisibilityAlpha(bot, 18);
@@ -34217,8 +35433,9 @@ function mpDrawRemotePlayers() {
             drawStealthPropCanopies();
             drawBuildingNightLights();
 
-            for (let i = 0; i < trees.length; i++) {
-                const tree = trees[i];
+            const visibleTrees = spatialQueryObjects("trees", 240);
+            for (let i = 0; i < visibleTrees.length; i++) {
+                const tree = visibleTrees[i];
                 if (tree.destroyed || objectFloor(tree) !== currentFloor) continue;
 
                 const trunkRadius = tree.trunkRadius * (tree.scale || 1);
@@ -34361,7 +35578,9 @@ function mpDrawRemotePlayers() {
 
             mpDrawTeammatePointers();
 
+            perfRecordFrameProfile("renderMs", frameRenderStart);
             perfMaybeDrawMinimap(time);
+            perfFinishFrameProfile(time);
         }
 
                 function getBotAwarenessVisibilityScore(bot, target) {
@@ -34608,14 +35827,25 @@ function findBestLootItemForBot(bot) {
             let best = null;
             let bestScore = -Infinity;
 
+            const time = performance.now();
+            const cached = bot.aiLootScanCache;
+            if (cached && cached.expiresAt > time && (!cached.item || items.includes(cached.item))) {
+                return cached.item;
+            }
+
             const need = getBotLootNeedProfile(bot);
             const emptySpawn = getBotUsefulCardCount(bot) <= 0;
+            const botFloor = objectFloor(bot);
+            const scanRadius = emptySpawn || need.weaponless ? 1500 : need.threatened ? 820 : 1180;
+            const candidateItems = typeof spatialQueryObjectsAround === "function"
+                ? spatialQueryObjectsAround("items", bot.x, bot.y, scanRadius, botFloor)
+                : items;
 
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
+            for (let i = 0; i < candidateItems.length; i++) {
+                const item = candidateItems[i];
                 if (!item || item.collected) continue;
-                if (item.pickupGraceUntil && performance.now() < item.pickupGraceUntil) continue;
-                if (item.floor && item.floor !== objectFloor(bot)) continue;
+                if (item.pickupGraceUntil && time < item.pickupGraceUntil) continue;
+                if (item.floor && item.floor !== botFloor) continue;
                 if (botIsIgnoringLoot(bot, item)) continue;
 
                 const dist = Math.hypot(item.x - bot.x, item.y - bot.y);
@@ -34691,6 +35921,11 @@ function findBestLootItemForBot(bot) {
                     best = item;
                 }
             }
+
+            bot.aiLootScanCache = {
+                item: best,
+                expiresAt: time + (perfPointVisible(bot.x, bot.y, bot.radius + 360) ? 240 : 760)
+            };
 
             return best;
         }
@@ -35600,8 +36835,14 @@ function processBotItemPickups(bot) {
 
             let pickedSomething = false;
 
-            for (let i = items.length - 1; i >= 0; i--) {
-                const item = items[i];
+            const pickupItems = typeof spatialQueryObjectsAround === "function"
+                ? spatialQueryObjectsAround("items", bot.x, bot.y, bot.radius + 96, objectFloor(bot))
+                : items;
+
+            for (let pi = pickupItems.length - 1; pi >= 0; pi--) {
+                const item = pickupItems[pi];
+                const i = items.indexOf(item);
+                if (i === -1) continue;
                 if (!item || item.collected) continue;
                 if (item.pickupGraceUntil && performance.now() < item.pickupGraceUntil) continue;
                 if (item.floor && item.floor !== objectFloor(bot)) continue;
@@ -35873,7 +37114,12 @@ function processBotItemPickups(bot) {
                 const halfAngle = card.coneHalfAngle || Math.PI / 5;
                 cardProjectiles.push({ owner: bot, card, coneVisual: true, x: bot.x, y: bot.y, angle, range, coneHalfAngle: halfAngle, width: stats.width, life: 0.16, maxLife: 0.16 });
 
-                const targets = getDamageableCardTargets(bot, { includeDestructibles: false });
+                const targets = getDamageableCardTargets(bot, {
+                    includeDestructibles: false,
+                    x: bot.x,
+                    y: bot.y,
+                    radius: range + 160
+                });
                 for (let i = 0; i < targets.length; i++) {
                     const enemy = targets[i];
                     const center = getTargetCenter(enemy);
@@ -37334,30 +38580,61 @@ function processBotItemPickups(bot) {
 
         }
 
-        function updateMatchKillsHud() {
-            const hud = document.getElementById("match-kill-hud");
-            if (!hud) return;
+        const matchKillsHudCache = {
+            lastPoll: 0,
+            hidden: null,
+            spectators: null,
+            kills: null,
+            showTeamKills: null,
+            teamKills: null
+        };
 
+        function updateMatchKillsHud(force = false) {
             const now = performance.now();
+
+            if (!force && now - matchKillsHudCache.lastPoll < 300) return;
+            matchKillsHudCache.lastPoll = now;
+
             for (let i = activeSpectators.length - 1; i >= 0; i--) {
                 if (Number.isFinite(activeSpectators[i].leaveAt) && now >= activeSpectators[i].leaveAt) {
                     activeSpectators.splice(i, 1);
                 }
             }
 
+            const hidden = currentGameState === GAME_STATES.MENU;
+            const spectators = String(activeSpectators.length || 0);
+            const kills = String(matchReportStats.eliminations || 0);
+            const showTeamKills = isDuoMatchActive();
+            const teamKills = String(matchReportStats.teamEliminations || 0);
+
+            if (
+                !force &&
+                hidden === matchKillsHudCache.hidden &&
+                spectators === matchKillsHudCache.spectators &&
+                kills === matchKillsHudCache.kills &&
+                showTeamKills === matchKillsHudCache.showTeamKills &&
+                teamKills === matchKillsHudCache.teamKills
+            ) return;
+
+            const hud = document.getElementById("match-kill-hud");
+            if (!hud) return;
+
             const spectatorsEl = document.getElementById("match-spectator-count");
             const killsEl = document.getElementById("match-kill-count");
             const teamWrap = document.getElementById("match-team-kill-wrap");
             const teamKillsEl = document.getElementById("match-team-kill-count");
 
-            hud.classList.toggle("hidden", currentGameState === GAME_STATES.MENU);
+            if (hidden !== matchKillsHudCache.hidden) hud.classList.toggle("hidden", hidden);
+            if (spectatorsEl && spectators !== matchKillsHudCache.spectators) spectatorsEl.textContent = spectators;
+            if (killsEl && kills !== matchKillsHudCache.kills) killsEl.textContent = kills;
+            if (teamWrap && showTeamKills !== matchKillsHudCache.showTeamKills) teamWrap.classList.toggle("hidden", !showTeamKills);
+            if (teamKillsEl && teamKills !== matchKillsHudCache.teamKills) teamKillsEl.textContent = teamKills;
 
-            if (spectatorsEl) spectatorsEl.textContent = String(activeSpectators.length || 0);
-            if (killsEl) killsEl.textContent = String(matchReportStats.eliminations || 0);
-
-            const showTeamKills = isDuoMatchActive();
-            if (teamWrap) teamWrap.classList.toggle("hidden", !showTeamKills);
-            if (teamKillsEl) teamKillsEl.textContent = String(matchReportStats.teamEliminations || 0);
+            matchKillsHudCache.hidden = hidden;
+            matchKillsHudCache.spectators = spectators;
+            matchKillsHudCache.kills = kills;
+            matchKillsHudCache.showTeamKills = showTeamKills;
+            matchKillsHudCache.teamKills = teamKills;
         }
 
         function matchReportApplyRewards(won = false, placement = null) {
@@ -37505,12 +38782,20 @@ function processBotItemPickups(bot) {
                     50% { margin-left: var(--wiggle); }
                 }
 
+                .ds-match-results-screen {
+                    top: 64px;
+                    min-height: calc(100vh - 64px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
                 .ds-results-scale-shell {
                     width: min(100%, 58rem);
                     max-width: calc(100vw - 1rem);
-                    margin: 0 auto;
+                    margin: auto;
                     transform: scale(0.78);
-                    transform-origin: top center;
+                    transform-origin: center center;
                 }
 
                 @media (max-width: 900px), (max-height: 720px) {
@@ -37542,7 +38827,7 @@ function processBotItemPickups(bot) {
                 }
 
                 .ds-victory-confetti-layer {
-                    position: fixed;
+                    position: absolute;
                     inset: 0;
                     overflow: hidden;
                     pointer-events: none;
@@ -37661,8 +38946,8 @@ function processBotItemPickups(bot) {
             const screen = document.createElement("div");
             screen.id = "mp-results-screen";
             screen.className = won
-                ? "fixed inset-0 z-[130] overflow-y-auto bg-black/24 text-slate-100 px-3 py-4 md:px-5 md:py-6 pointer-events-none"
-                : "fixed inset-0 z-[130] overflow-y-auto bg-slate-950/98 text-slate-100 px-3 py-4 md:px-5 md:py-6";
+                ? "ds-match-results-screen fixed left-0 right-0 bottom-0 z-[130] overflow-y-auto bg-black/24 text-slate-100 px-3 py-4 md:px-5 md:py-6 pointer-events-none"
+                : "ds-match-results-screen fixed left-0 right-0 bottom-0 z-[130] overflow-y-auto bg-slate-950/98 text-slate-100 px-3 py-4 md:px-5 md:py-6";
             screen.innerHTML = `
                 <div class="ds-results-scale-shell">
                     <div class="${won ? "ds-victory-party-card pointer-events-auto rounded-[1.75rem] border border-amber-300/55 bg-slate-950/88 px-4 py-5 md:px-6 md:py-6 shadow-[0_0_45px_rgba(250,204,21,.24)] backdrop-blur-xl" : "ds-results-compact-card rounded-[1.5rem] bg-slate-950/70 px-4 py-5 md:px-6 md:py-6"}">
@@ -40692,10 +41977,18 @@ function resizeMinimapCanvas() {
                 mmapCtx.restore();
             }
 
+            const minimapQueryBounds = {
+                left: player.x - viewRadius - 240,
+                right: player.x + viewRadius + 240,
+                top: player.y - viewRadius - 240,
+                bottom: player.y + viewRadius + 240
+            };
+
             // Nearby houses/structures.
             mmapCtx.fillStyle = 'rgba(120, 53, 15, 0.8)';
-            for (let i = 0; i < houses.length; i++) {
-                const house = houses[i];
+            const minimapHouses = spatialQueryObjects("houses", 0, { floor: currentFloor, bounds: minimapQueryBounds });
+            for (let i = 0; i < minimapHouses.length; i++) {
+                const house = minimapHouses[i];
                 if (!inLocalMini(house.x + house.width / 2, house.y + house.height / 2, 80)) continue;
 
                 mmapCtx.fillRect(
@@ -40743,8 +42036,9 @@ function resizeMinimapCanvas() {
             drawAirdropMinimapMarkers(toMiniX, toMiniY, inLocalMini);
 
             // Nearby loot dots.
-            if (perfSettings.preset !== "low") for (let i = 0; i < items.length; i++) {
-                const item = items[i];
+            const minimapItems = spatialQueryObjects("items", 0, { floor: currentFloor, bounds: minimapQueryBounds });
+            if (perfSettings.preset !== "low") for (let i = 0; i < minimapItems.length; i++) {
+                const item = minimapItems[i];
                 if (objectFloor(item) !== currentFloor) continue;
                 if (!inLocalMini(item.x, item.y)) continue;
 
@@ -40770,8 +42064,9 @@ function resizeMinimapCanvas() {
             }
 
             // Teammates are allowed to be shown. Enemies are not shown constantly.
-            for (let i = 0; i < bots.length; i++) {
-                const bot = bots[i];
+            const minimapBots = spatialQueryObjects("bots", 0, { floor: currentFloor, bounds: minimapQueryBounds });
+            for (let i = 0; i < minimapBots.length; i++) {
+                const bot = minimapBots[i];
                 if (bot.isEliminated || !isSameTeam(bot, player)) continue;
                 if (!inLocalMini(bot.x, bot.y)) continue;
 
@@ -41259,6 +42554,8 @@ function resizeMinimapCanvas() {
             if (matchWinState.resolved) return false;
 
             matchWinState.resolved = true;
+            matchWinState.localVictoryInvincible = true;
+            player.takesDamage = false;
             currentGameState = GAME_STATES.MATCH;
             startVictoryTimeSlowdown(performance.now());
 
@@ -41760,7 +43057,7 @@ function resizeMinimapCanvas() {
             virtualInput.gamepadMoveY = ly;
 
             if (Math.hypot(rx, ry) > 0.08) {
-                inputSetAimFromVector(rx, ry);
+                inputSetAimFromVector(rx, ry, { useSensitivity: true });
             } else if (Math.hypot(lx, ly) > 0.18 && virtualInput.mode === "gamepad") {
                 inputSetAimFromVector(lx, ly);
             }
