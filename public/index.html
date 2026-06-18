@@ -115,9 +115,69 @@
             width: 100%;
             min-height: calc(var(--site-vh) * 100);
             display: grid;
-            grid-template-rows: minmax(0, auto) auto;
+            grid-template-rows: auto;
             gap: 14px;
             padding: var(--site-pad);
+        }
+
+        .site-home-nav {
+            position: sticky;
+            top: max(8px, var(--site-safe-top));
+            z-index: 30;
+            width: min(1100px, calc(100vw - (var(--site-pad) * 2)));
+            margin: 0 auto 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px;
+            border: 1px solid rgba(103, 232, 249, 0.26);
+            border-radius: 999px;
+            background:
+                radial-gradient(circle at 18% 12%, rgba(14, 165, 233, 0.14), transparent 34%),
+                linear-gradient(135deg, rgba(2, 6, 23, 0.82), rgba(15, 23, 42, 0.68));
+            box-shadow:
+                0 16px 42px rgba(0,0,0,0.34),
+                0 0 24px rgba(14, 165, 233, 0.12),
+                inset 0 0 18px rgba(255,255,255,0.025);
+            backdrop-filter: blur(14px);
+        }
+
+        .site-home-nav a {
+            min-height: 38px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 9px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(103, 232, 249, 0.28);
+            background: rgba(2, 6, 23, 0.48);
+            color: #e0f2fe;
+            text-decoration: none;
+            font-size: 10px;
+            font-weight: 1000;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            box-shadow: inset 0 0 14px rgba(255,255,255,0.025);
+            transition: transform 0.16s ease, border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+        }
+
+        .site-home-nav a:hover {
+            transform: translateY(-1px);
+            border-color: rgba(250, 204, 21, 0.72);
+            color: #fde68a;
+            background: rgba(15, 23, 42, 0.78);
+        }
+
+        .site-home-nav-play {
+            border-color: rgba(250, 204, 21, 0.68) !important;
+            background: rgba(113, 63, 18, 0.26) !important;
+            color: #fde68a !important;
+            box-shadow: 0 0 18px rgba(250, 204, 21, 0.12), inset 0 0 14px rgba(255,255,255,0.025) !important;
+        }
+
+        .game-frame-wrap {
+            scroll-margin-top: 24px;
         }
 
         .site-game-shell {
@@ -1011,6 +1071,27 @@
                 gap: 0;
             }
 
+            .site-home-nav {
+                position: sticky;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                border-radius: 0;
+                border-left: 0;
+                border-right: 0;
+                padding: 8px;
+                gap: 6px;
+                overflow-x: auto;
+                justify-content: flex-start;
+            }
+
+            .site-home-nav a {
+                flex: 0 0 auto;
+                min-height: 34px;
+                padding: 8px 11px;
+                font-size: 9px;
+            }
+
             .site-game-shell {
                 width: calc(var(--site-vw) * 100);
                 gap: 0;
@@ -1135,36 +1216,27 @@
     </style>
 </head>
 <body>
-    <div id="site-loader" class="site-loader" aria-live="polite" aria-label="Loading Duelio">
+    <div id="site-loader" class="site-loader" aria-live="polite" aria-label="Loading Duel.io">
         <div class="loader-card">
-            <div class="loader-mark"><span>DS</span></div>
+            <div class="loader-mark"><span>D</span></div>
             <div class="loader-title">Duel.io</div>
-            <div class="loader-subtitle">Preparing survivor portal...</div>
+            <div class="loader-subtitle">Preparing the arena...</div>
             <div class="loader-bar"></div>
         </div>
     </div>
 
-    <main class="site-shell">
-        <div id="site-game-shell" class="site-game-shell">
-            <div id="game-frame-wrap" class="game-frame-wrap">
-                <iframe
-                    id="duelio-frame"
-                    src="./play.html"
-                    title="Duel.io Game"
-                    tabindex="-1"
-                    allow="fullscreen; microphone; autoplay; gamepad"
-                    allowfullscreen>
-                </iframe>
-            </div>
-
-            <div class="site-controls" aria-label="Game display controls">
-                <button id="fullscreen-btn" class="site-control-btn" type="button">FULLSCREEN</button>
-            </div>
-        </div>
+    <main id="home-top" class="site-shell">
+        <nav class="site-home-nav" aria-label="Duel.io home navigation">
+            <a href="#home-top" aria-label="Go to the top of the Duel.io homepage">Home</a>
+            <a class="site-home-nav-play" href="#game-frame-wrap" aria-label="Scroll down to play Duel.io">Play</a>
+            <a href="/how-to-play/" aria-label="Learn how to play Duel.io">How to Play</a>
+            <a href="/cards-and-creatures/" aria-label="Explore Duel.io cards and creatures">Cards</a>
+            <a href="/updates/" aria-label="Read Duel.io updates">Updates</a>
+        </nav>
 
         <section id="site-banner-panel" class="site-banner-panel" aria-label="Duel.io update banner and support link">
             <div class="site-banner-float-wrap">
-                <a id="site-banner-link" class="site-banner-link" href="#game-frame-wrap" aria-label="Return to Duel.io game">
+                <a id="site-banner-link" class="site-banner-link" href="#game-frame-wrap" aria-label="Scroll down to play Duel.io">
                     <img id="site-banner-img" class="site-banner-img" alt="Duel.io update banner" loading="lazy">
                 </a>
 
@@ -1292,16 +1364,26 @@
                     </div>
                 </section>
 
-                <nav class="seo-link-grid" aria-label="Explore Duel.io pages">
-                    <a href="/play" aria-label="Play Duel.io online">Play Now</a>
-                    <a href="/how-to-play/" aria-label="Learn how Duel.io works">How It Works</a>
-                    <a href="/cards-and-creatures/" aria-label="Explore Duel.io cards and creatures">Cards & Creatures</a>
-                    <a href="/updates/" aria-label="Read Duel.io updates">Updates</a>
-                </nav>
-
-                <a class="seo-play-link" href="#game-frame-wrap" aria-label="Play Duel.io now">Play Duel.io Now</a>
+                <a class="seo-play-link" href="#game-frame-wrap" aria-label="Scroll down to play Duel.io">Play Duel.io Now</a>
             </div>
         </section>
+
+        <div id="site-game-shell" class="site-game-shell" aria-label="Duel.io game window">
+            <div id="game-frame-wrap" class="game-frame-wrap">
+                <iframe
+                    id="duelio-frame"
+                    src="./play.html"
+                    title="Duel.io Game"
+                    tabindex="-1"
+                    allow="fullscreen; microphone; autoplay; gamepad"
+                    allowfullscreen>
+                </iframe>
+            </div>
+
+            <div class="site-controls" aria-label="Game display controls">
+                <button id="fullscreen-btn" class="site-control-btn" type="button">FULLSCREEN</button>
+            </div>
+        </div>
     </main>
 
     <script>
