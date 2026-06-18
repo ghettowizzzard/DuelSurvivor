@@ -110,12 +110,123 @@ const idToSocket = new Map();
 const parties = new Map();
 const matches = new Map();
 const leaderboardProfiles = new Map();
-const RANKED_STATE_DIR = process.env.RANKED_STATE_DIR || path.join(__dirname, "data");
-const RANKED_STATE_FILE = process.env.RANKED_STATE_FILE || path.join(RANKED_STATE_DIR, "ranked-season-state.json");
+
+const RANKED_STATE_FILENAME = "ranked-season-state.json";
+const RANKED_LEGACY_STATE_DIR = path.join(__dirname, "data");
+const RANKED_LEGACY_STATE_FILE = path.join(RANKED_LEGACY_STATE_DIR, RANKED_STATE_FILENAME);
+const RANKED_RENDER_DISK_DIR = path.join("/var", "data", "duel-survivor");
+const IS_RENDER_RUNTIME = !!(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_URL);
+
+function rankedResolvePath(rawPath) {
+  const clean = String(rawPath || "").trim();
+  if (!clean) return "";
+  return path.isAbsolute(clean) ? clean : path.resolve(__dirname, clean);
+}
+
+function rankedCanUseStateDir(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const testFile = path.join(dir, `.ranked-write-test-${process.pid}`);
+    fs.writeFileSync(testFile, "ok");
+    fs.unlinkSync(testFile);
+    return true;
+  } catch (err) {
+    console.warn(`[ranked] storage candidate rejected: ${dir}`, err.message);
+    return false;
+  }
+}
+
+function rankedChooseStateStorage() {
+  const candidates = [];
+
+  if (process.env.RANKED_STATE_FILE) {
+    const file = rankedResolvePath(process.env.RANKED_STATE_FILE);
+    candidates.push({
+      label: "RANKED_STATE_FILE",
+      durable: true,
+      dir: path.dirname(file),
+      file
+    });
+  }
+
+  if (process.env.RANKED_STATE_DIR) {
+    const dir = rankedResolvePath(process.env.RANKED_STATE_DIR);
+    candidates.push({
+      label: "RANKED_STATE_DIR",
+      durable: true,
+      dir,
+      file: path.join(dir, RANKED_STATE_FILENAME)
+    });
+  }
+
+  if (IS_RENDER_RUNTIME || fs.existsSync(RANKED_RENDER_DISK_DIR)) {
+    candidates.push({
+      label: "render-disk-default",
+      durable: true,
+      dir: RANKED_RENDER_DISK_DIR,
+      file: path.join(RANKED_RENDER_DISK_DIR, RANKED_STATE_FILENAME)
+    });
+  }
+
+  candidates.push({
+    label: "legacy-local-data",
+    durable: false,
+    dir: RANKED_LEGACY_STATE_DIR,
+    file: RANKED_LEGACY_STATE_FILE
+  });
+
+  for (const candidate of candidates) {
+    if (rankedCanUseStateDir(candidate.dir)) return candidate;
+  }
+
+  return {
+    label: "legacy-local-data-unverified",
+    durable: false,
+    dir: RANKED_LEGACY_STATE_DIR,
+    file: RANKED_LEGACY_STATE_FILE
+  };
+}
+
+const RANKED_STATE_STORAGE = rankedChooseStateStorage();
+const RANKED_STATE_DIR = RANKED_STATE_STORAGE.dir;
+const RANKED_STATE_FILE = RANKED_STATE_STORAGE.file;
+
+const RANKED_FILE_STORAGE_LABEL = RANKED_STATE_STORAGE.label;
+const RANKED_FILE_STORAGE_DURABLE = !!RANKED_STATE_STORAGE.durable;
+
+const RANKED_STORAGE_DRIVER = String(process.env.RANKED_STORAGE_DRIVER || "file").trim().toLowerCase();
+const RANKED_UPSTASH_REST_URL = String(process.env.UPSTASH_REDIS_REST_URL || "").trim().replace(/\/+$/, "");
+const RANKED_UPSTASH_REST_TOKEN = String(process.env.UPSTASH_REDIS_REST_TOKEN || "").trim();
+const RANKED_UPSTASH_KEY = String(process.env.RANKED_UPSTASH_KEY || "duel-survivor:ranked-state:v1").trim();
+
+const RANKED_UPSTASH_ENABLED =
+  RANKED_STORAGE_DRIVER === "upstash" &&
+  !!RANKED_UPSTASH_REST_URL &&
+  !!RANKED_UPSTASH_REST_TOKEN &&
+  !!RANKED_UPSTASH_KEY;
+
+const RANKED_STATE_STORAGE_LABEL = RANKED_UPSTASH_ENABLED ? "upstash-redis" : RANKED_FILE_STORAGE_LABEL;
+const RANKED_STATE_DURABLE = RANKED_UPSTASH_ENABLED ? true : RANKED_FILE_STORAGE_DURABLE;
+
 const RANKED_ADMIN_KEY = process.env.RANKED_ADMIN_KEY || "";
 const rankedSeasonArchives = new Map();
 const rankedRewardInbox = new Map();
 let rankedStateSaveTimer = null;
+
+if (RANKED_UPSTASH_ENABLED) {
+  console.log(`[ranked] state storage: upstash-redis (${RANKED_UPSTASH_KEY})`);
+  console.log(`[ranked] local fallback file: ${RANKED_STATE_FILE} (${RANKED_FILE_STORAGE_LABEL})`);
+} else {
+  console.log(`[ranked] state file: ${RANKED_STATE_FILE} (${RANKED_STATE_STORAGE_LABEL})`);
+}
+
+if (!RANKED_STATE_DURABLE) {
+  console.warn("[ranked] WARNING: ranked/leaderboard state is using non-durable local storage. Configure Upstash env vars or a Render persistent disk before launch.");
+}
+
+if (RANKED_STORAGE_DRIVER === "upstash" && !RANKED_UPSTASH_ENABLED) {
+  console.warn("[ranked] WARNING: RANKED_STORAGE_DRIVER=upstash, but UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN / RANKED_UPSTASH_KEY is missing.");
+}
 
 const PARTY_MAX_SIZE = 4;
 const MATCH_TOTAL_SLOTS = 100;
@@ -394,10 +505,65 @@ app.post("/admin/ranked/reward-paid", (req, res) => {
   res.json({ ok: true, reward });
 });
 
-app.post("/admin/ranked/save", (req, res) => {
+app.get("/admin/ranked/storage", async (req, res) => {
   if (!requireRankedAdmin(req, res)) return;
-  rankedSaveStateNow();
-  res.json({ ok: true, file: RANKED_STATE_FILE });
+
+  let stat = null;
+  let backups = [];
+
+  try {
+    if (fs.existsSync(RANKED_STATE_FILE)) {
+      const s = fs.statSync(RANKED_STATE_FILE);
+      stat = {
+        size: s.size,
+        modifiedAt: s.mtimeMs
+      };
+    }
+
+    const dir = path.dirname(RANKED_STATE_FILE);
+    const base = path.basename(RANKED_STATE_FILE);
+    backups = fs.readdirSync(dir)
+      .filter(name => name.startsWith(`${base}.`) && name.endsWith(".bak"))
+      .slice(-12);
+  } catch (err) {}
+
+  const upstash = await rankedInspectUpstashState();
+
+  res.json({
+    ok: true,
+    durable: RANKED_STATE_DURABLE,
+    label: RANKED_STATE_STORAGE_LABEL,
+    key: RANKED_UPSTASH_ENABLED ? RANKED_UPSTASH_KEY : "",
+    driver: RANKED_STORAGE_DRIVER,
+    upstash,
+    localFallback: {
+      durable: RANKED_FILE_STORAGE_DURABLE,
+      label: RANKED_FILE_STORAGE_LABEL,
+      dir: RANKED_STATE_DIR,
+      file: RANKED_STATE_FILE,
+      exists: !!stat,
+      stat,
+      backups
+    },
+    warning: RANKED_STATE_DURABLE ? "" : "Non-durable storage. Configure Upstash env vars or Render persistent disk."
+  });
+});
+
+app.post("/admin/ranked/save", async (req, res) => {
+  if (!requireRankedAdmin(req, res)) return;
+
+  const result = await rankedSaveStateNow();
+
+  res.status(result.ok ? 200 : 503).json({
+    ok: result.ok,
+    durable: result.durable,
+    label: result.label,
+    key: result.key,
+    file: result.file,
+    upstashSaved: result.upstashSaved,
+    fileBackupSaved: result.fileBackupSaved,
+    error: result.error
+  });
 });
 
 app.get("/play", (req, res) => {
@@ -715,6 +881,14 @@ function rankedStatePayload() {
     version: 1,
     savedAt: Date.now(),
     activeSeason: getRankedSeasonInfo(),
+    storage: {
+      label: RANKED_STATE_STORAGE_LABEL,
+      durable: RANKED_STATE_DURABLE,
+      key: RANKED_UPSTASH_ENABLED ? RANKED_UPSTASH_KEY : "",
+      file: RANKED_STATE_FILE,
+      localFallbackLabel: RANKED_FILE_STORAGE_LABEL,
+      localFallbackDurable: RANKED_FILE_STORAGE_DURABLE
+    },
     profiles: [...leaderboardProfiles.values()].map(serializeLeaderboardEntry),
     archives: [...rankedSeasonArchives.values()],
     rewardInbox: [...rankedRewardInbox.entries()].map(([playerId, rewards]) => ({
@@ -724,46 +898,283 @@ function rankedStatePayload() {
   };
 }
 
-function rankedSaveStateNow() {
+async function rankedUpstashCommand(command, ...args) {
+  if (!RANKED_UPSTASH_ENABLED) {
+    throw new Error("Upstash ranked storage is not configured.");
+  }
+
+  if (typeof fetch !== "function") {
+    throw new Error("Global fetch is not available. Render must run this with Node 18+.");
+  }
+
+  const response = await fetch(RANKED_UPSTASH_REST_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${RANKED_UPSTASH_REST_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify([command, ...args])
+  });
+
+  const text = await response.text();
+  let body = null;
+
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch (err) {
+    throw new Error(`Upstash returned non-JSON response (${response.status}): ${text.slice(0, 180)}`);
+  }
+
+  if (!response.ok || body?.error) {
+    throw new Error(body?.error || `Upstash HTTP ${response.status}`);
+  }
+
+  return body.result;
+}
+
+function rankedParseStatePayload(raw, sourceLabel = "ranked-state") {
+  if (!raw) return null;
+
+  if (typeof raw === "string") {
+    const clean = raw.trim();
+    if (!clean) return null;
+    return JSON.parse(clean);
+  }
+
+  if (typeof raw === "object") {
+    return raw;
+  }
+
+  throw new Error(`Unsupported ranked state payload from ${sourceLabel}.`);
+}
+
+function rankedApplyLoadedState(data, sourceLabel = "ranked-state") {
+  if (!data || typeof data !== "object") return false;
+
+  leaderboardProfiles.clear();
+  for (const raw of data.profiles || []) {
+    hydrateLeaderboardEntry(raw);
+  }
+
+  rankedSeasonArchives.clear();
+  for (const archive of data.archives || []) {
+    if (archive?.seasonId) {
+      rankedSeasonArchives.set(archive.seasonId, archive);
+    }
+  }
+
+  rankedRewardInbox.clear();
+  for (const row of data.rewardInbox || []) {
+    if (row?.playerId) {
+      rankedRewardInbox.set(row.playerId, Array.isArray(row.rewards) ? row.rewards : []);
+    }
+  }
+
+  console.log(`[ranked] loaded ${leaderboardProfiles.size} profiles and ${rankedSeasonArchives.size} season archives from ${sourceLabel}.`);
+  return true;
+}
+
+async function rankedInspectUpstashState() {
+  const info = {
+    enabled: RANKED_UPSTASH_ENABLED,
+    key: RANKED_UPSTASH_KEY,
+    exists: false,
+    bytes: 0,
+    savedAt: null,
+    profiles: 0,
+    archives: 0,
+    error: ""
+  };
+
+  if (!RANKED_UPSTASH_ENABLED) {
+    return info;
+  }
+
+  try {
+    const raw = await rankedUpstashCommand("GET", RANKED_UPSTASH_KEY);
+
+    if (!raw) {
+      return info;
+    }
+
+    info.exists = true;
+    info.bytes = typeof raw === "string"
+      ? Buffer.byteLength(raw, "utf8")
+      : Buffer.byteLength(JSON.stringify(raw), "utf8");
+
+    const data = rankedParseStatePayload(raw, "upstash-inspect");
+
+    info.savedAt = data?.savedAt || null;
+    info.profiles = Array.isArray(data?.profiles) ? data.profiles.length : 0;
+    info.archives = Array.isArray(data?.archives) ? data.archives.length : 0;
+  } catch (err) {
+    info.error = err.message;
+  }
+
+  return info;
+}
+
+function rankedTrimStateBackups(maxBackups = 12) {
+  try {
+    const dir = path.dirname(RANKED_STATE_FILE);
+    const base = path.basename(RANKED_STATE_FILE);
+    const backups = fs.readdirSync(dir)
+      .filter(name => name.startsWith(`${base}.`) && name.endsWith(".bak"))
+      .map(name => {
+        const file = path.join(dir, name);
+        return { file, mtimeMs: fs.statSync(file).mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    for (const backup of backups.slice(maxBackups)) {
+      fs.unlinkSync(backup.file);
+    }
+  } catch (err) {
+    console.warn("[ranked] backup trim failed:", err.message);
+  }
+}
+
+function rankedSaveStateFileBackup(payload) {
   try {
     fs.mkdirSync(RANKED_STATE_DIR, { recursive: true });
+
+    if (fs.existsSync(RANKED_STATE_FILE)) {
+      fs.copyFileSync(RANKED_STATE_FILE, `${RANKED_STATE_FILE}.${Date.now()}.bak`);
+    }
+
     const tmp = `${RANKED_STATE_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(rankedStatePayload(), null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(payload, null, 2));
     fs.renameSync(tmp, RANKED_STATE_FILE);
+    rankedTrimStateBackups();
+    return { ok: true, file: RANKED_STATE_FILE };
   } catch (err) {
-    console.error("[ranked] save failed:", err);
+    console.error("[ranked] local fallback save failed:", err);
+    return { ok: false, file: RANKED_STATE_FILE, error: err.message };
   }
+}
+
+async function rankedSaveStateNow() {
+  const payload = rankedStatePayload();
+  const result = {
+    ok: true,
+    durable: RANKED_STATE_DURABLE,
+    label: RANKED_STATE_STORAGE_LABEL,
+    key: RANKED_UPSTASH_ENABLED ? RANKED_UPSTASH_KEY : "",
+    file: RANKED_STATE_FILE,
+    upstashSaved: false,
+    fileBackupSaved: false,
+    error: ""
+  };
+
+  if (RANKED_UPSTASH_ENABLED) {
+    try {
+      await rankedUpstashCommand("SET", RANKED_UPSTASH_KEY, JSON.stringify(payload));
+      result.upstashSaved = true;
+    } catch (err) {
+      result.ok = false;
+      result.error = err.message;
+      console.error("[ranked] Upstash save failed:", err.message);
+    }
+  }
+
+  const fileBackup = rankedSaveStateFileBackup(payload);
+  result.fileBackupSaved = !!fileBackup.ok;
+
+  if (!RANKED_UPSTASH_ENABLED && !fileBackup.ok) {
+    result.ok = false;
+    result.error = fileBackup.error || "Local file save failed.";
+  }
+
+  return result;
 }
 
 function rankedScheduleSave() {
   if (rankedStateSaveTimer) clearTimeout(rankedStateSaveTimer);
   rankedStateSaveTimer = setTimeout(() => {
     rankedStateSaveTimer = null;
-    rankedSaveStateNow();
+    rankedSaveStateNow().catch(err => {
+      console.error("[ranked] scheduled save failed:", err);
+    });
   }, 1500);
   rankedStateSaveTimer.unref?.();
 }
 
-function rankedLoadState() {
+function rankedLoadCandidateFiles() {
+  const files = [];
+  const add = file => {
+    if (file && !files.includes(file) && fs.existsSync(file)) files.push(file);
+  };
+
+  add(RANKED_STATE_FILE);
+  add(RANKED_LEGACY_STATE_FILE);
+
   try {
-    if (!fs.existsSync(RANKED_STATE_FILE)) return;
+    const dir = path.dirname(RANKED_STATE_FILE);
+    const base = path.basename(RANKED_STATE_FILE);
+    fs.readdirSync(dir)
+      .filter(name => name.startsWith(`${base}.`) && name.endsWith(".bak"))
+      .map(name => {
+        const file = path.join(dir, name);
+        return { file, mtimeMs: fs.statSync(file).mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .forEach(entry => add(entry.file));
+  } catch (err) {}
 
-    const data = JSON.parse(fs.readFileSync(RANKED_STATE_FILE, "utf8"));
+  return files;
+}
 
-    leaderboardProfiles.clear();
-    for (const raw of data.profiles || []) hydrateLeaderboardEntry(raw);
+async function rankedLoadState() {
+  try {
+    let loaded = null;
 
-    rankedSeasonArchives.clear();
-    for (const archive of data.archives || []) {
-      if (archive?.seasonId) rankedSeasonArchives.set(archive.seasonId, archive);
+    if (RANKED_UPSTASH_ENABLED) {
+      try {
+        const raw = await rankedUpstashCommand("GET", RANKED_UPSTASH_KEY);
+
+        if (raw) {
+          loaded = {
+            file: `upstash:${RANKED_UPSTASH_KEY}`,
+            data: rankedParseStatePayload(raw, `upstash:${RANKED_UPSTASH_KEY}`)
+          };
+        } else {
+          console.warn(`[ranked] Upstash key ${RANKED_UPSTASH_KEY} is empty. Will try local fallback files.`);
+        }
+      } catch (err) {
+        console.warn("[ranked] Upstash load failed. Will try local fallback files:", err.message);
+      }
     }
 
-    rankedRewardInbox.clear();
-    for (const row of data.rewardInbox || []) {
-      if (row?.playerId) rankedRewardInbox.set(row.playerId, Array.isArray(row.rewards) ? row.rewards : []);
+    if (!loaded) {
+      for (const file of rankedLoadCandidateFiles()) {
+        try {
+          loaded = {
+            file,
+            data: rankedParseStatePayload(fs.readFileSync(file, "utf8"), file)
+          };
+          break;
+        } catch (err) {
+          console.warn(`[ranked] could not load state candidate ${file}:`, err.message);
+        }
+      }
     }
 
-    console.log(`[ranked] loaded ${leaderboardProfiles.size} profiles and ${rankedSeasonArchives.size} season archives.`);
+    if (!loaded) {
+      console.warn(`[ranked] no saved ranked state found. New state will be created in ${RANKED_STATE_STORAGE_LABEL}.`);
+      return;
+    }
+
+    rankedApplyLoadedState(loaded.data, loaded.file);
+
+    if (RANKED_UPSTASH_ENABLED && !String(loaded.file).startsWith("upstash:")) {
+      console.warn(`[ranked] migrated local state from ${loaded.file} into Upstash key ${RANKED_UPSTASH_KEY}.`);
+      rankedScheduleSave();
+    }
+
+    if (!RANKED_UPSTASH_ENABLED && loaded.file !== RANKED_STATE_FILE) {
+      console.warn(`[ranked] migrated state from ${loaded.file} to ${RANKED_STATE_FILE}.`);
+      rankedScheduleSave();
+    }
   } catch (err) {
     console.error("[ranked] load failed:", err);
   }
@@ -1620,23 +2031,35 @@ function checkMatchWinner(match) {
   }
 }
 
-rankedLoadState();
-finalizeExpiredRankedSeasons("server_startup");
+let rankedSeasonTimer = null;
 
-const rankedSeasonTimer = setInterval(() => {
-  finalizeExpiredRankedSeasons("scheduled_check");
-}, 60 * 60 * 1000);
-rankedSeasonTimer.unref?.();
+async function startServer() {
+  await rankedLoadState();
+  finalizeExpiredRankedSeasons("server_startup");
 
-process.on("SIGINT", () => {
-  rankedSaveStateNow();
-  process.exit(0);
-});
+  rankedSeasonTimer = setInterval(() => {
+    finalizeExpiredRankedSeasons("scheduled_check");
+  }, 60 * 60 * 1000);
+  rankedSeasonTimer.unref?.();
 
-process.on("SIGTERM", () => {
-  rankedSaveStateNow();
-  process.exit(0);
-});
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`Duel Survivor multiplayer server running on ${PORT}`);
+  });
+}
+
+function shutdownRankedServer(signal) {
+  console.log(`[server] ${signal} received. Saving ranked state before shutdown...`);
+
+  const forceExit = setTimeout(() => process.exit(0), 2500);
+  forceExit.unref?.();
+
+  rankedSaveStateNow()
+    .catch(err => console.error("[ranked] shutdown save failed:", err))
+    .finally(() => process.exit(0));
+}
+
+process.on("SIGINT", () => shutdownRankedServer("SIGINT"));
+process.on("SIGTERM", () => shutdownRankedServer("SIGTERM"));
 
 io.on("connection", socket => {
   console.log("[socket] connected:", socket.id);
@@ -2405,6 +2828,7 @@ socket.on("matchLocalDeath", data => {
   });
 });
 
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Duel Survivor multiplayer server running on ${PORT}`);
+startServer().catch(err => {
+  console.error("[server] startup failed:", err);
+  process.exit(1);
 });
