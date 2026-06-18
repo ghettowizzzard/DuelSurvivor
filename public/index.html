@@ -318,6 +318,12 @@
             transform: translateY(1px) scale(0.97);
         }
 
+        body.site-play-mode-active {
+            overflow: hidden;
+            overscroll-behavior: none;
+            touch-action: none;
+        }
+
         .site-game-shell:fullscreen,
         .site-game-shell:-webkit-full-screen {
             width: 100vw;
@@ -326,22 +332,37 @@
             background: #03030c;
         }
 
+        .site-game-shell.site-mobile-play-mode {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            width: calc(var(--site-vw) * 100);
+            height: calc(var(--site-vh) * 100);
+            margin: 0 !important;
+            display: block;
+            background: #03030c;
+        }
+
         .site-game-shell:fullscreen .game-frame-wrap,
-        .site-game-shell:-webkit-full-screen .game-frame-wrap {
+        .site-game-shell:-webkit-full-screen .game-frame-wrap,
+        .site-game-shell.site-mobile-play-mode .game-frame-wrap {
             width: 100vw;
+            width: calc(var(--site-vw) * 100);
             height: 100vh;
-            min-height: 100vh;
+            height: calc(var(--site-vh) * 100);
+            min-height: calc(var(--site-vh) * 100);
             border: 0;
             border-radius: 0;
             box-shadow: none;
         }
 
         .site-game-shell:fullscreen .site-controls,
-        .site-game-shell:-webkit-full-screen .site-controls {
+        .site-game-shell:-webkit-full-screen .site-controls,
+        .site-game-shell.site-mobile-play-mode .site-controls {
             position: fixed;
             top: 50%;
             right: 0;
-            z-index: 20;
+            z-index: 10000;
             min-height: 0;
             padding: 0;
             transform: translate(82%, -50%);
@@ -352,13 +373,17 @@
         .site-game-shell:fullscreen .site-controls:hover,
         .site-game-shell:fullscreen .site-controls:focus-within,
         .site-game-shell:-webkit-full-screen .site-controls:hover,
-        .site-game-shell:-webkit-full-screen .site-controls:focus-within {
+        .site-game-shell:-webkit-full-screen .site-controls:focus-within,
+        .site-game-shell.site-mobile-play-mode .site-controls:hover,
+        .site-game-shell.site-mobile-play-mode .site-controls:focus-within,
+        .site-game-shell.site-mobile-play-mode .site-controls:active {
             transform: translate(0, -50%);
             opacity: 1;
         }
 
         .site-game-shell:fullscreen .site-control-btn,
-        .site-game-shell:-webkit-full-screen .site-control-btn {
+        .site-game-shell:-webkit-full-screen .site-control-btn,
+        .site-game-shell.site-mobile-play-mode .site-control-btn {
             border-radius: 999px 0 0 999px;
             padding: 10px 12px;
             background: rgba(2, 6, 23, 0.66);
@@ -1581,6 +1606,8 @@
             const frame = document.getElementById("duelio-frame");
             if (!button || !shell) return;
 
+            const isiOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
             function focusGameFrame(reason = "fullscreen") {
                 button.blur();
 
@@ -1601,12 +1628,30 @@
                 setTimeout(focusOnce, 260);
             }
 
+            function setPlayMode(active, reason = "play-mode") {
+                shell.classList.toggle("site-mobile-play-mode", active);
+                document.body.classList.toggle("site-play-mode-active", active);
+                button.textContent = active ? "EXIT PLAY MODE" : "FULLSCREEN";
+                refreshSiteViewportSoon();
+                focusGameFrame(reason);
+            }
+
             button.addEventListener("pointerdown", event => {
                 event.preventDefault();
             });
 
             button.addEventListener("click", async () => {
                 loadLazyGameFrame("fullscreen-button");
+
+                if (shell.classList.contains("site-mobile-play-mode")) {
+                    setPlayMode(false, "exit-play-mode");
+                    return;
+                }
+
+                if (isiOS || !shell.requestFullscreen) {
+                    setPlayMode(true, "ios-play-mode");
+                    return;
+                }
 
                 try {
                     if (!document.fullscreenElement) {
@@ -1621,18 +1666,21 @@
                         focusGameFrame("exited-fullscreen");
                     }
                 } catch (error) {
-                    button.textContent = "FULLSCREEN BLOCKED";
-                    setTimeout(() => {
-                        button.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN";
-                        focusGameFrame("fullscreen-blocked");
-                    }, 1200);
+                    setPlayMode(true, "fullscreen-fallback");
                 }
             });
 
             document.addEventListener("fullscreenchange", () => {
+                if (shell.classList.contains("site-mobile-play-mode")) return;
                 button.textContent = document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN";
                 refreshSiteViewportSoon();
                 focusGameFrame(document.fullscreenElement ? "fullscreenchange-enter" : "fullscreenchange-exit");
+            });
+
+            document.addEventListener("keydown", event => {
+                if (event.key === "Escape" && shell.classList.contains("site-mobile-play-mode")) {
+                    setPlayMode(false, "escape-play-mode");
+                }
             });
         }
 
