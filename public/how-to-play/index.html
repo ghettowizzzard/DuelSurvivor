@@ -311,6 +311,26 @@
       padding: 10px;
     }
 
+    .guide-mini-shot-level {
+      aspect-ratio: 16 / 6;
+      padding: 10px;
+    }
+
+    .guide-mini-shot-level img {
+      object-fit: cover;
+      object-position: center bottom;
+    }
+
+    .guide-mini-shot-creature-slot {
+      aspect-ratio: 16 / 6;
+      padding: 10px;
+    }
+
+    .guide-mini-shot-creature-slot img {
+      object-fit: fill;
+      object-position: center;
+    }
+
     .guide-mini-shot-profile {
       aspect-ratio: 6.1 / 1;
       padding: 10px;
@@ -405,6 +425,39 @@
       margin: 0;
       color: #fde68a;
       line-height: 1.55;
+    }
+
+    .guide-callout-play-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 13px 20px;
+      border-radius: 999px;
+      border: 2px solid rgba(250, 204, 21, 0.72);
+      background:
+        radial-gradient(circle at 18% 12%, rgba(250, 204, 21, 0.20), transparent 34%),
+        rgba(113, 63, 18, 0.30);
+      color: #fde68a;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 1000;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      box-shadow:
+        0 0 22px rgba(250, 204, 21, 0.18),
+        inset 0 0 16px rgba(255,255,255,0.035);
+      transition: transform 0.16s ease, border-color 0.16s ease, filter 0.16s ease;
+    }
+
+    .guide-callout-play-btn:hover {
+      transform: translateY(-2px) scale(1.02);
+      border-color: #facc15;
+      filter: brightness(1.08);
+    }
+
+    .guide-callout-play-btn:active {
+      transform: translateY(1px) scale(0.98);
     }
 
     @media (max-width: 980px) {
@@ -821,19 +874,19 @@
         </article>
 
         <article class="guide-mini-card">
-          <div class="guide-mini-shot guide-mini-shot-ui-slim">
-            <img src="/assets/howto-ui-creature-slot.png" alt="Duel.io creature slot loading" loading="lazy">
-          </div>
-          <h3>Creature Slot</h3>
-          <p>Watch your creature timing. When the slot is ready, you have pressure in your pocket.</p>
-        </article>
-
-        <article class="guide-mini-card">
-          <div class="guide-mini-shot guide-mini-shot-ui">
+          <div class="guide-mini-shot guide-mini-shot-ui guide-mini-shot-level">
             <img src="/assets/howto-ui-level-bar.png" alt="Duel.io level bar" loading="lazy">
           </div>
           <h3>Level Bar</h3>
           <p>Your level shows your match progress. Keep an eye on it as the run ramps up.</p>
+        </article>
+
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-ui guide-mini-shot-creature-slot">
+            <img src="/assets/howto-ui-creature-slot.png" alt="Duel.io creature slot loading" loading="lazy">
+          </div>
+          <h3>Creature Slot</h3>
+          <p>Watch your creature timing. When the slot is ready, you have pressure in your pocket.</p>
         </article>
       </div>
     </section>
@@ -991,7 +1044,10 @@
               <span class="mascot-hand bottom"></span>
               <span class="mascot-body"></span>
             </span>
-            <p><strong>Now go get your first dub. B)</strong></p>
+
+            <a class="guide-callout-play-btn" href="/play" aria-label="Play Duel.io now">
+              Now go get your first dub. B)
+            </a>
           </div>
         </div>
       </article>
