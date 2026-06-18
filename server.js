@@ -43,6 +43,18 @@ const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
     <loc>https://duelio.lol/play.html</loc>
     <lastmod>2026-06-17</lastmod>
   </url>
+  <url>
+    <loc>https://duelio.lol/how-to-play/</loc>
+    <lastmod>2026-06-17</lastmod>
+  </url>
+  <url>
+    <loc>https://duelio.lol/cards-and-creatures/</loc>
+    <lastmod>2026-06-17</lastmod>
+  </url>
+  <url>
+    <loc>https://duelio.lol/updates/</loc>
+    <lastmod>2026-06-17</lastmod>
+  </url>
 </urlset>`;
 
 app.get("/robots.txt", (req, res) => {
@@ -72,7 +84,10 @@ app.get("/sitemap.txt", (req, res) => {
   res.send([
     "https://duelio.lol/",
     "https://duelio.lol/play",
-    "https://duelio.lol/play.html"
+    "https://duelio.lol/play.html",
+    "https://duelio.lol/how-to-play/",
+    "https://duelio.lol/cards-and-creatures/",
+    "https://duelio.lol/updates/"
   ].join("\n"));
 });
 
