@@ -6637,6 +6637,12 @@ ${mpState.connectionError ? `
             lobbyNextBotFillAt = 0;
             lastCountdownTime = performance.now();
 
+            currentFloor = "surface";
+            undergroundReturnPoint = null;
+            player.floor = "surface";
+            player.isUnderground = false;
+            player.undergroundFloor = null;
+
             // Important for online queues:
             // new matches often start snapshot seq back at 1, so never carry old seq ids.
             mpState.lastWorldSnapshotReceived = 0;
@@ -29205,8 +29211,16 @@ function applyCardStatusEffect(target, statusEffect, source = player) {
 
             trees.length = 0;
             rocks.length = 0;
+            bushes.length = 0;
+            huts.length = 0;
             crates.length = 0;
             houses.length = 0;
+            furniture.length = 0;
+            roads.length = 0;
+            bridges.length = 0;
+            namedLocations.length = 0;
+            poiProps.length = 0;
+            undergroundEntrances.length = 0;
             items.length = 0;
 
             for (let i = 0; i < 8; i++) {
@@ -29789,6 +29803,12 @@ function mpReturnToMenuWithoutLeave(message = "Returned to lobby.") {
             mpState.spectateTargetKey = null;
             mpState.spectateTargetName = "";
             mpClearReconnectSession();
+
+            currentFloor = "surface";
+            undergroundReturnPoint = null;
+            player.floor = "surface";
+            player.isUnderground = false;
+            player.undergroundFloor = null;
 
             if (mpSocket && mpState.matchId) {
                 mpSocket.emit("matchLocalDeath", {
