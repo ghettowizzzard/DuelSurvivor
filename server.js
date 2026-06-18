@@ -212,6 +212,9 @@ const RANKED_ADMIN_KEY = process.env.RANKED_ADMIN_KEY || "";
 const rankedSeasonArchives = new Map();
 const rankedRewardInbox = new Map();
 let rankedStateSaveTimer = null;
+let rankedStateEverLoaded = false;
+let rankedHighestKnownProfileCount = 0;
+let rankedLastSuccessfulSaveAt = 0;
 
 if (RANKED_UPSTASH_ENABLED) {
   console.log(`[ranked] state storage: upstash-redis (${RANKED_UPSTASH_KEY})`);
@@ -536,6 +539,12 @@ app.get("/admin/ranked/storage", async (req, res) => {
     key: RANKED_UPSTASH_ENABLED ? RANKED_UPSTASH_KEY : "",
     driver: RANKED_STORAGE_DRIVER,
     upstash,
+    runtime: {
+      stateEverLoaded: rankedStateEverLoaded,
+      highestKnownProfileCount: rankedHighestKnownProfileCount,
+      currentProfileCount: leaderboardProfiles.size,
+      lastSuccessfulSaveAt: rankedLastSuccessfulSaveAt
+    },
     localFallback: {
       durable: RANKED_FILE_STORAGE_DURABLE,
       label: RANKED_FILE_STORAGE_LABEL,
@@ -971,6 +980,8 @@ function rankedApplyLoadedState(data, sourceLabel = "ranked-state") {
   }
 
   console.log(`[ranked] loaded ${leaderboardProfiles.size} profiles and ${rankedSeasonArchives.size} season archives from ${sourceLabel}.`);
+  rankedStateEverLoaded = true;
+  rankedHighestKnownProfileCount = Math.max(rankedHighestKnownProfileCount, leaderboardProfiles.size);
   return true;
 }
 
@@ -1012,6 +1023,55 @@ async function rankedInspectUpstashState() {
   }
 
   return info;
+}
+
+async function rankedGetExistingUpstashState() {
+  if (!RANKED_UPSTASH_ENABLED) return null;
+
+  const raw = await rankedUpstashCommand("GET", RANKED_UPSTASH_KEY);
+  if (!raw) return null;
+
+  return rankedParseStatePayload(raw, `upstash:${RANKED_UPSTASH_KEY}`);
+}
+
+async function rankedValidateNonDestructiveUpstashSave(payload) {
+  if (!RANKED_UPSTASH_ENABLED) return { ok: true, existingProfiles: 0 };
+
+  const incomingProfiles = Array.isArray(payload?.profiles) ? payload.profiles.length : 0;
+  const allowProfileShrink = process.env.RANKED_ALLOW_PROFILE_SHRINK === "true";
+
+  if (!rankedStateEverLoaded && incomingProfiles === 0) {
+    return {
+      ok: false,
+      existingProfiles: rankedHighestKnownProfileCount,
+      error: "Refusing to save empty ranked state before any successful load."
+    };
+  }
+
+  let existing = null;
+
+  try {
+    existing = await rankedGetExistingUpstashState();
+  } catch (err) {
+    return {
+      ok: false,
+      existingProfiles: rankedHighestKnownProfileCount,
+      error: `Refusing Upstash overwrite because existing state could not be inspected: ${err.message}`
+    };
+  }
+
+  const existingProfiles = Array.isArray(existing?.profiles) ? existing.profiles.length : 0;
+  const baselineProfiles = Math.max(existingProfiles, rankedHighestKnownProfileCount);
+
+  if (!allowProfileShrink && baselineProfiles > 0 && incomingProfiles < baselineProfiles) {
+    return {
+      ok: false,
+      existingProfiles: baselineProfiles,
+      error: `Refusing to overwrite Upstash ranked state with fewer profiles (${incomingProfiles} < ${baselineProfiles}). Set RANKED_ALLOW_PROFILE_SHRINK=true only for an intentional full reset.`
+    };
+  }
+
+  return { ok: true, existingProfiles };
 }
 
 function rankedTrimStateBackups(maxBackups = 12) {
@@ -1068,8 +1128,20 @@ async function rankedSaveStateNow() {
 
   if (RANKED_UPSTASH_ENABLED) {
     try {
+      const guard = await rankedValidateNonDestructiveUpstashSave(payload);
+      if (!guard.ok) {
+        throw new Error(guard.error);
+      }
+
       await rankedUpstashCommand("SET", RANKED_UPSTASH_KEY, JSON.stringify(payload));
       result.upstashSaved = true;
+      rankedStateEverLoaded = true;
+      rankedHighestKnownProfileCount = Math.max(
+        rankedHighestKnownProfileCount,
+        Array.isArray(payload.profiles) ? payload.profiles.length : 0,
+        guard.existingProfiles || 0
+      );
+      rankedLastSuccessfulSaveAt = Date.now();
     } catch (err) {
       result.ok = false;
       result.error = err.message;
