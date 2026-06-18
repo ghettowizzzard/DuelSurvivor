@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#03030c">
+
+  <title>How to Play Duel.io - Complete Beginner Guide</title>
+  <meta name="description" content="Learn how to play Duel.io with a visual beginner guide covering the main menu, shop, loadout, matchmaking, looting, teammates, revives, combat, storm, drops, disasters, hiding spots, pickups, sights, battle pass, and profile menu.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://duelio.lol/how-to-play/">
+
+  <meta property="og:site_name" content="Duel.io">
+  <meta property="og:title" content="How to Play Duel.io - Complete Beginner Guide">
+  <meta property="og:description" content="A clean visual walkthrough for learning Duel.io, from the menu and loadout to looting, combat, storm, disasters, revives, drops, and winning your first match.">
+  <meta property="og:url" content="https://duelio.lol/how-to-play/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="How to Play Duel.io - Complete Beginner Guide">
+  <meta name="twitter:description" content="Learn Duel.io with a screenshot-based guide covering the menu, shop, loadout, modes, loot, combat, storm, disasters, revives, and rewards.">
+  <meta name="twitter:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+
+  <link rel="icon" type="image/png" href="/assets/DuelioThumbnail.png">
+  <link rel="apple-touch-icon" href="/assets/DuelioThumbnail.png">
+  <link rel="stylesheet" href="/assets/landing.css">
+
+  <style>
+    .guide-shell {
+      display: grid;
+      gap: 18px;
+    }
+
+    .guide-intro-list {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .guide-pill {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(103, 232, 249, 0.30);
+      background: rgba(2, 6, 23, 0.46);
+      color: #bae6fd;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    .guide-section-label {
+      margin: 0 0 10px;
+      color: #67e8f9;
+      font-size: 11px;
+      font-weight: 1000;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .guide-step {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(310px, 0.92fr) minmax(0, 1.08fr);
+      gap: clamp(18px, 3vw, 30px);
+      align-items: center;
+      margin-top: 18px;
+      padding: clamp(18px, 3vw, 28px);
+      border-radius: 26px;
+      border: 1px solid rgba(103, 232, 249, 0.30);
+      background:
+        radial-gradient(circle at 14% 12%, rgba(14, 165, 233, 0.14), transparent 34%),
+        radial-gradient(circle at 86% 86%, rgba(250, 204, 21, 0.08), transparent 34%),
+        linear-gradient(135deg, rgba(2, 6, 23, 0.74), rgba(15, 23, 42, 0.50));
+      box-shadow:
+        inset 0 0 22px rgba(255,255,255,0.025),
+        0 16px 44px rgba(0,0,0,0.26);
+      overflow: hidden;
+    }
+
+    .guide-step:nth-of-type(even) {
+      grid-template-columns: minmax(0, 1.08fr) minmax(310px, 0.92fr);
+    }
+
+    .guide-step:nth-of-type(even) .guide-shot-wrap {
+      order: 2;
+    }
+
+    .guide-step:nth-of-type(even) .guide-copy {
+      order: 1;
+    }
+
+    .guide-shot-wrap {
+      position: relative;
+      min-width: 0;
+    }
+
+    .guide-shot {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      border-radius: 22px;
+      border: 2px solid rgba(103, 232, 249, 0.36);
+      background:
+        radial-gradient(circle at 50% 26%, rgba(14,165,233,.18), transparent 44%),
+        linear-gradient(135deg, rgba(2, 6, 23, 0.92), rgba(15, 23, 42, 0.72));
+      overflow: hidden;
+      box-shadow:
+        0 18px 44px rgba(0,0,0,0.34),
+        0 0 22px rgba(14,165,233,0.12);
+    }
+
+    .guide-shot img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center;
+      display: block;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(14,165,233,.12), transparent 46%),
+        #020617;
+    }
+
+    .guide-shot-wide {
+      aspect-ratio: 16 / 10;
+    }
+
+    .guide-shot-compact {
+      aspect-ratio: 4 / 3;
+    }
+
+    .guide-shot-squareish {
+      aspect-ratio: 1.16 / 1;
+    }
+
+    .guide-shot-small {
+      aspect-ratio: 1.24 / 1;
+    }
+
+    .guide-shot:has(img[src$="howto-01-main-menu.png"]),
+    .guide-shot:has(img[src$="howto-02-shop-packs.png"]),
+    .guide-shot:has(img[src$="howto-03-loadout.png"]),
+    .guide-shot:has(img[src$="howto-05-match-found.png"]),
+    .guide-shot:has(img[src$="howto-06-queue-area.png"]),
+    .guide-shot:has(img[src$="howto-07-in-game-start.png"]) {
+      aspect-ratio: 16 / 10;
+    }
+
+    .guide-shot:has(img[src$="howto-04-game-modes.png"]),
+    .guide-shot:has(img[src$="howto-08-team-spawn.png"]),
+    .guide-shot:has(img[src$="howto-09-revive.png"]),
+    .guide-shot:has(img[src$="howto-10-breaking-crates.png"]),
+    .guide-shot:has(img[src$="howto-11-dropped-loot.png"]),
+    .guide-shot:has(img[src$="howto-12-building-loot.png"]),
+    .guide-shot:has(img[src$="howto-13-underground-entrance.png"]),
+    .guide-shot:has(img[src$="howto-14-melee-weapons.png"]),
+    .guide-shot:has(img[src$="howto-15-creature-combat.png"]),
+    .guide-shot:has(img[src$="howto-16-storm.png"]),
+    .guide-shot:has(img[src$="howto-19-sights.png"]),
+    .guide-shot:has(img[src$="howto-20-win-screen.png"]) {
+      aspect-ratio: 4 / 3;
+    }
+
+    .guide-shot:has(img[src$="howto-17-care-package.png"]) {
+      aspect-ratio: 1.24 / 1;
+    }
+
+    .guide-placeholder {
+      display: none;
+      width: 100%;
+      height: 100%;
+      place-items: center;
+      padding: 20px;
+      color: #67e8f9;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.10em;
+      line-height: 1.6;
+      text-align: center;
+      text-transform: uppercase;
+      background:
+        linear-gradient(rgba(103,232,249,.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(103,232,249,.06) 1px, transparent 1px),
+        rgba(2,6,23,.86);
+      background-size: 34px 34px;
+    }
+
+    .guide-shot img[style*="display: none"] + .guide-placeholder {
+      display: grid;
+    }
+
+    .guide-tag {
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      z-index: 3;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(250,204,21,.54);
+      background: rgba(113,63,18,.38);
+      color: #fde68a;
+      font-size: 9px;
+      font-weight: 1000;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      backdrop-filter: blur(10px);
+    }
+
+    .guide-copy {
+      position: relative;
+      min-width: 0;
+    }
+
+    .guide-copy h2 {
+      margin: 0;
+      color: #f8fafc;
+      font-size: clamp(24px, 3vw, 38px);
+      line-height: 1.05;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .guide-copy p {
+      margin: 14px 0 0;
+      color: #cbd5e1;
+      font-size: clamp(15px, 1.45vw, 17px);
+      line-height: 1.68;
+    }
+
+    .guide-copy ul {
+      display: grid;
+      gap: 8px;
+      margin: 14px 0 0;
+      padding-left: 20px;
+      color: #cbd5e1;
+      line-height: 1.55;
+    }
+
+    .guide-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .guide-mini-grid-wide {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .guide-mini-card {
+      border: 1px solid rgba(103, 232, 249, 0.25);
+      border-radius: 18px;
+      padding: 12px;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(14, 165, 233, 0.10), transparent 36%),
+        rgba(2, 6, 23, 0.50);
+      box-shadow:
+        inset 0 0 18px rgba(255,255,255,0.025),
+        0 12px 28px rgba(0,0,0,0.20);
+    }
+
+    .guide-mini-shot {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(103, 232, 249, 0.26);
+      background:
+        radial-gradient(circle at 50% 35%, rgba(14,165,233,.10), transparent 46%),
+        rgba(2, 6, 23, 0.88);
+      display: grid;
+      place-items: center;
+      padding: 6px;
+    }
+
+    .guide-mini-shot img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center;
+      display: block;
+    }
+
+    .guide-mini-shot-wide {
+      aspect-ratio: 16 / 10;
+    }
+
+    .guide-mini-shot-vertical {
+      aspect-ratio: 4 / 3.45;
+    }
+
+    .guide-mini-shot-pickup {
+      aspect-ratio: 1.25 / 1;
+      padding: 10px;
+    }
+
+    .guide-mini-shot-ui {
+      aspect-ratio: 16 / 6;
+      padding: 10px;
+    }
+
+    .guide-mini-shot-ui-slim {
+      aspect-ratio: 16 / 3.2;
+      padding: 10px;
+    }
+
+    .guide-mini-shot-profile {
+      aspect-ratio: 6.1 / 1;
+      padding: 10px;
+    }
+
+    .guide-mini-shot-topbar {
+      aspect-ratio: 5.46 / 1;
+      padding: 10px;
+    }
+
+    .guide-mini-card h3 {
+      margin: 10px 0 4px;
+      color: #facc15;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .guide-mini-card p {
+      margin: 0;
+      color: #94a3b8;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .guide-night-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.14fr) minmax(0, 0.86fr);
+      gap: 12px;
+      margin-top: 18px;
+      align-items: stretch;
+    }
+
+    .guide-night-card {
+      position: relative;
+      min-height: 220px;
+      border-radius: 20px;
+      border: 1px solid rgba(103, 232, 249, 0.28);
+      background:
+        radial-gradient(circle at 50% 30%, rgba(14,165,233,.12), transparent 46%),
+        rgba(2, 6, 23, 0.78);
+      overflow: hidden;
+      box-shadow: 0 14px 36px rgba(0,0,0,0.24);
+    }
+
+    .guide-night-card img {
+      width: 100%;
+      height: 100%;
+      min-height: 220px;
+      object-fit: contain;
+      object-position: center;
+      display: block;
+      background: #020617;
+    }
+
+    .guide-night-card span {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(103, 232, 249, 0.38);
+      background: rgba(2, 6, 23, 0.66);
+      color: #bae6fd;
+      font-size: 9px;
+      font-weight: 1000;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      backdrop-filter: blur(10px);
+    }
+
+    .guide-callout {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: center;
+      margin-top: 18px;
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid rgba(250, 204, 21, 0.34);
+      background:
+        radial-gradient(circle at 16% 12%, rgba(250, 204, 21, 0.12), transparent 34%),
+        rgba(113, 63, 18, 0.14);
+    }
+
+    .guide-callout .duel-mascot {
+      width: 74px;
+      flex: 0 0 auto;
+    }
+
+    .guide-callout p {
+      margin: 0;
+      color: #fde68a;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 980px) {
+      .guide-step,
+      .guide-step:nth-of-type(even) {
+        grid-template-columns: 1fr;
+      }
+
+      .guide-step:nth-of-type(even) .guide-shot-wrap,
+      .guide-step:nth-of-type(even) .guide-copy {
+        order: initial;
+      }
+
+      .guide-intro-list,
+      .guide-mini-grid,
+      .guide-mini-grid-wide,
+      .guide-night-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 560px) {
+      .guide-intro-list,
+      .guide-mini-grid,
+      .guide-mini-grid-wide,
+      .guide-night-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .guide-callout {
+        grid-template-columns: 1fr;
+        text-align: center;
+        justify-items: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page-shell">
+    <nav class="top-nav" aria-label="Duel.io site navigation">
+      <a class="brand-link" href="/" aria-label="Back to Duel.io home">
+        <img src="/assets/DuelioThumbnail.png" alt="Duel.io logo">
+        <span>Duel.io</span>
+      </a>
+
+      <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/play">Play</a>
+        <a href="/how-to-play/">How to Play</a>
+        <a href="/cards-and-creatures/">Cards</a>
+        <a href="/updates/">Updates</a>
+      </div>
+    </nav>
+
+    <section class="hero-panel">
+      <div class="hero-copy">
+        <p class="kicker">Beginner Guide</p>
+        <h1>How to Play Duel.io</h1>
+        <p>
+          New here? Start on this page. This is the straight-up walkthrough: where the menus are,
+          how your loadout works, what happens when a match starts, how to loot, how teammates work,
+          and what to watch for once the island starts trying to smoke you.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn-primary" href="/play">Play Duel.io</a>
+          <a class="btn-secondary" href="#guide-start">Start the Guide</a>
+        </div>
+
+        <div class="guide-intro-list" aria-label="What this guide covers">
+          <span class="guide-pill">Shop</span>
+          <span class="guide-pill">Loadout</span>
+          <span class="guide-pill">Looting</span>
+          <span class="guide-pill">Storm</span>
+        </div>
+
+        <div class="mascot-row" aria-hidden="true">
+          <span class="duel-mascot">
+            <span class="mascot-hand side"></span>
+            <span class="mascot-hand bottom"></span>
+            <span class="mascot-body"></span>
+          </span>
+          <span class="duel-mascot red">
+            <span class="mascot-hand side"></span>
+            <span class="mascot-hand bottom"></span>
+            <span class="mascot-body"></span>
+          </span>
+        </div>
+      </div>
+
+      <div class="hero-art">
+        <div class="guide-shot guide-shot-wide">
+          <span class="guide-tag">Main Menu</span>
+          <img src="/assets/howto-01-main-menu.png" alt="Duel.io main menu" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+          <span class="guide-placeholder">Add screenshot:<br>/assets/howto-01-main-menu.png</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="guide-start" class="content-panel">
+      <p class="guide-section-label">Before the match</p>
+      <h2 class="section-heading">Get your account, cards, and loadout ready first.</h2>
+      <p>
+        You can jump in fast, but it helps to know what each menu is doing. Duel.io is built around your loadout,
+        so the stuff you open, equip, and bring with you actually matters once the match starts.
+      </p>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot guide-shot-wide">
+            <span class="guide-tag">Main Menu</span>
+            <img src="/assets/howto-01-main-menu.png" alt="Duel.io main menu screen" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-01-main-menu.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Start from the main menu.</h2>
+          <p>
+            The main menu is your home base. This is where you queue up, check your profile, open the shop,
+            manage your loadout, look at rewards, and mess with the extra menus before a match.
+          </p>
+          <p>
+            If you are brand new, check the shop and loadout before you slam the play button. A cleaner setup makes
+            the first few matches feel way less confusing.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Shop</span>
+            <img src="/assets/howto-02-shop-packs.png" alt="Duel.io shop and card packs" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-02-shop-packs.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Open packs and build your collection.</h2>
+          <p>
+            The shop is where you grab packs and start filling out your collection. Packs give you more options for your loadout,
+            which means more ways to play once you get into a match.
+          </p>
+          <p>
+            You do not need to overthink it at first. Open what you can, check what you pulled, then head over to your loadout
+            and pick the stuff that sounds useful.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Loadout</span>
+            <img src="/assets/howto-03-loadout.png" alt="Duel.io loadout screen" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-03-loadout.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Set up your loadout before queueing.</h2>
+          <p>
+            Your loadout is the kit you are bringing into the game. Capacity matters, so you cannot just shove in everything
+            and call it a day. Pick cards and tools that actually work together.
+          </p>
+          <ul>
+            <li><strong>Capacity:</strong> your limit. If you go over, trim the build down.</li>
+            <li><strong>Cards:</strong> your main options during fights and survival moments.</li>
+            <li><strong>Balance:</strong> bring some pressure, but do not forget survival tools.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Modes</span>
+            <img src="/assets/howto-04-game-modes.png" alt="Duel.io game mode buttons" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-04-game-modes.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Pick how you want to play.</h2>
+          <p>
+            The three main mode buttons decide what kind of match you are jumping into. Solo is all you.
+            Duo gives you a partner. Squads are more chaotic and team-focused.
+          </p>
+          <p>
+            If you are learning, solo is good for figuring out the map and loot. Team modes are better once you want revives,
+            grouped fights, and backup when a fight gets messy.
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="content-panel">
+      <p class="guide-section-label">Getting into a match</p>
+      <h2 class="section-heading">From match found to landing together.</h2>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Match Found</span>
+            <img src="/assets/howto-05-match-found.png" alt="Duel.io match found popup" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-05-match-found.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Match found means lock in.</h2>
+          <p>
+            When the match found popup appears, you are about to move from menu mode into the pre-game wait area.
+            Make sure you are ready, because once the match flow starts, you are not building your loadout anymore.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Queue Area</span>
+            <img src="/assets/howto-06-queue-area.png" alt="Duel.io queue server wait area" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-06-queue-area.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>The wait area is your warm-up.</h2>
+          <p>
+            The queue area gives everyone a second to load in before the real match begins. Use it to get your bearings,
+            check who is around, and get ready for the drop.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">In Game</span>
+            <img src="/assets/howto-07-in-game-start.png" alt="Duel.io in-game start" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-07-in-game-start.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Once you spawn, move.</h2>
+          <p>
+            The opening moments are simple: find loot, find cover, and do not wander around empty-handed.
+            Crates, buildings, and tucked-away spots can all help you get started.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Team Spawn</span>
+            <img src="/assets/howto-08-team-spawn.png" alt="Duel.io teammates spawning together" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-08-team-spawn.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Team modes start you together.</h2>
+          <p>
+            In duo and squad-style matches, teammates spawn close enough to actually help each other.
+            Stick together early if you want safer looting, faster fights, and a better chance at getting picked back up.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Revive</span>
+            <img src="/assets/howto-09-revive.png" alt="Duel.io reviving a teammate" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-09-revive.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Revives can save the whole run.</h2>
+          <p>
+            If a teammate goes down, you can bring them back if you can reach them safely. Do not start a revive in the open
+            unless you are ready to get jumped. Clear the area, use cover, then pick them up.
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="content-panel">
+      <p class="guide-section-label">Looting and moving around</p>
+      <h2 class="section-heading">Crates, drops, buildings, and underground spots.</h2>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Crates</span>
+            <img src="/assets/howto-10-breaking-crates.png" alt="Duel.io breaking crates" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-10-breaking-crates.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Break crates whenever you need gear.</h2>
+          <p>
+            Crates are one of the easiest ways to get moving. Break them open, check what drops, and grab anything that helps your current run.
+            Early match crates can be the difference between being ready and getting caught with nothing.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Loot Drops</span>
+            <img src="/assets/howto-11-dropped-loot.png" alt="Duel.io dropped loot and pickup system" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-11-dropped-loot.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Pick up, swap, and keep it moving.</h2>
+          <p>
+            Dropped loot can be picked up or swapped depending on what you already have. If something is better than your current item,
+            take it. If it does not fit your build, leave it and keep moving.
+          </p>
+          <p>
+            Looting too long is how you get caught. Grab the good stuff and get back to watching your surroundings.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Buildings</span>
+            <img src="/assets/howto-12-building-loot.png" alt="Duel.io loot inside buildings" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-12-building-loot.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Buildings can hide good loot.</h2>
+          <p>
+            Do not only check the obvious spots outside. Buildings can have loot tucked inside, and sometimes stepping indoors
+            gives you a second to breathe before rotating again.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Underground</span>
+            <img src="/assets/howto-13-underground-entrance.png" alt="Duel.io underground entrance" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-13-underground-entrance.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Some entrances lead underground.</h2>
+          <p>
+            Underground areas are worth checking when you want a different route, extra loot, or a way to shake someone chasing you.
+            Just remember: going underground can also trap you if the storm or another player cuts off your exit.
+          </p>
+        </div>
+      </article>
+    </section>
+
+    <section class="content-panel">
+      <p class="guide-section-label">Fighting</p>
+      <h2 class="section-heading">Weapons, creatures, and reading the fight.</h2>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Melee</span>
+            <img src="/assets/howto-14-melee-weapons.png" alt="Duel.io melee weapons" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-14-melee-weapons.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Melee is for close pressure.</h2>
+          <p>
+            Melee weapons are simple: get close, swing, and punish anyone who lets you stay on top of them.
+            They are great when space is tight, but risky if your target can kite you or fight from range.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Creature Combat</span>
+            <img src="/assets/howto-15-creature-combat.png" alt="Duel.io player fighting another player with creature combat" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-15-creature-combat.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Creature fights are about timing.</h2>
+          <p>
+            Creature combat is where the card side of Duel.io really starts to show. Do not just throw everything out because it is available.
+            Watch the fight, force a bad move, then use your creature pressure when it actually matters.
+          </p>
+        </div>
+      </article>
+
+      <div class="guide-mini-grid">
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-ui">
+            <img src="/assets/howto-ui-armor.png" alt="Duel.io armor bar" loading="lazy">
+          </div>
+          <h3>Armor Bar</h3>
+          <p>Armor is your extra layer before things get scary. Keep it topped up when you can.</p>
+        </article>
+
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-ui">
+            <img src="/assets/howto-ui-health.png" alt="Duel.io health bar" loading="lazy">
+          </div>
+          <h3>Health Bar</h3>
+          <p>This is the one you really do not want empty. Heal when you have space, not when someone is already on you.</p>
+        </article>
+
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-ui-slim">
+            <img src="/assets/howto-ui-creature-slot.png" alt="Duel.io creature slot loading" loading="lazy">
+          </div>
+          <h3>Creature Slot</h3>
+          <p>Watch your creature timing. When the slot is ready, you have pressure in your pocket.</p>
+        </article>
+
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-ui">
+            <img src="/assets/howto-ui-level-bar.png" alt="Duel.io level bar" loading="lazy">
+          </div>
+          <h3>Level Bar</h3>
+          <p>Your level shows your match progress. Keep an eye on it as the run ramps up.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="content-panel">
+      <p class="guide-section-label">Surviving the island</p>
+      <h2 class="section-heading">Storms, drops, disasters, hiding, and pickups.</h2>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Storm</span>
+            <img src="/assets/howto-16-storm.png" alt="Duel.io player running from the storm" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-16-storm.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Do not let the storm babysit you.</h2>
+          <p>
+            The storm closes the match down and forces everyone into tighter spaces. If you wait too long, you will be running
+            for your life instead of choosing your next fight.
+          </p>
+          <p>
+            Rotate early when you can. Getting into the safe area with time to loot is way better than crawling in late with no health.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Care Package</span>
+            <img src="/assets/howto-17-care-package.png" alt="Duel.io care package drop" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-17-care-package.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Care packages are loud for a reason.</h2>
+          <p>
+            Drops can be worth chasing, but they attract attention. If you go for one, assume someone else saw it too.
+            Grab the reward fast or use the drop as bait if you are feeling bold.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-copy">
+          <h2>Matches can shift into night too.</h2>
+          <p>
+            Nighttime changes the whole mood of the island. It looks slick, but it also makes the map feel tighter,
+            especially when you are moving between loot spots or trying not to get caught in a bad rotation.
+          </p>
+          <p>
+            Use the darker lighting to reposition, heal, or sneak through areas where you do not want to take a fight yet.
+          </p>
+        </div>
+
+        <div class="guide-shot-wrap">
+          <div class="guide-night-grid">
+            <div class="guide-night-card">
+              <img src="/assets/howto-19-nighttime1.png" alt="Duel.io nighttime gameplay screenshot" loading="lazy">
+              <span>Night Map</span>
+            </div>
+
+            <div class="guide-night-card">
+              <img src="/assets/howto-19-nighttime2.png" alt="Duel.io nighttime island screenshot" loading="lazy">
+              <span>Low Light</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <div class="guide-mini-grid">
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-wide"><img src="/assets/howto-weather-lightning.png" alt="Duel.io lightning disaster" loading="lazy"></div>
+          <h3>Lightning</h3>
+          <p>Watch the sky and keep moving. Standing around is asking for trouble.</p>
+        </article>
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot"><img src="/assets/howto-weather-sandstorm.png" alt="Duel.io sandstorm disaster" loading="lazy"></div>
+          <h3>Sandstorm</h3>
+          <p>Visibility gets nasty. Play closer, safer, and do not lose your route.</p>
+        </article>
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot"><img src="/assets/howto-weather-hurricane.png" alt="Duel.io hurricane disaster" loading="lazy"></div>
+          <h3>Hurricane</h3>
+          <p>The arena gets chaotic fast. Keep track of where you can escape.</p>
+        </article>
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot"><img src="/assets/howto-weather-tornado.png" alt="Duel.io tornado disaster" loading="lazy"></div>
+          <h3>Tornado</h3>
+          <p>If it is nearby, respect it. Getting greedy around disasters is how runs end.</p>
+        </article>
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot"><img src="/assets/howto-weather-volcano.png" alt="Duel.io volcano disaster" loading="lazy"></div>
+          <h3>Volcano</h3>
+          <p>When the island starts popping off, move with a plan instead of panicking.</p>
+        </article>
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot"><img src="/assets/howto-18-hiding-spots.png" alt="Duel.io hiding spots and bushes" loading="lazy"></div>
+          <h3>Hiding Spots</h3>
+          <p>Bushes and cover can buy you a second. Use them to heal, wait, or avoid a bad fight.</p>
+        </article>
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-pickup"><img src="/assets/howto-pickup-health.png" alt="Duel.io health drop pickup" loading="lazy"></div>
+          <h3>Health Drops</h3>
+          <p>Health pickups keep you alive after trades. Grab them before taking another fight.</p>
+        </article>
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-pickup"><img src="/assets/howto-pickup-armor.png" alt="Duel.io armor drop pickup" loading="lazy"></div>
+          <h3>Armor Drops</h3>
+          <p>Armor lets you take a little more heat. It is always worth checking after loot drops.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="content-panel">
+      <p class="guide-section-label">Extra systems</p>
+      <h2 class="section-heading">Sights, rewards, profile, and the win screen.</h2>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Sights</span>
+            <img src="/assets/howto-19-sights.png" alt="Duel.io sight items" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-19-sights.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>Sights change how you read fights.</h2>
+          <p>
+            Sights help you control space and understand what is happening around you. Some are better for playing safe,
+            some help you push, and some are just useful for not getting surprised.
+          </p>
+        </div>
+      </article>
+
+      <article class="guide-step">
+        <div class="guide-shot-wrap">
+          <div class="guide-shot">
+            <span class="guide-tag">Winner</span>
+            <img src="/assets/howto-20-win-screen.png" alt="Duel.io winning screen" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';">
+            <span class="guide-placeholder">Add screenshot:<br>/assets/howto-20-win-screen.png</span>
+          </div>
+        </div>
+        <div class="guide-copy">
+          <h2>That is the goal. Get the dub.</h2>
+          <p>
+            Survive the storm, win the important fights, and be the last duelist standing. That is the whole loop.
+            Every match teaches you something, even when you get cooked.
+          </p>
+          <div class="guide-callout">
+            <span class="duel-mascot" aria-hidden="true">
+              <span class="mascot-hand side"></span>
+              <span class="mascot-hand bottom"></span>
+              <span class="mascot-body"></span>
+            </span>
+            <p><strong>Now go get your first dub. B)</strong></p>
+          </div>
+        </div>
+      </article>
+
+      <div class="guide-mini-grid">
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-wide"><img src="/assets/howto-battle-pass.png" alt="Duel.io battle pass menu" loading="lazy"></div>
+          <h3>Battle Pass</h3>
+          <p>Check rewards, progress, and the Survivor/Magic pass tracks when you want more stuff to chase.</p>
+        </article>
+
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-topbar"><img src="/assets/howto-topbar-button.png" alt="Duel.io top bar menu buttons" loading="lazy"></div>
+          <h3>Top Bar</h3>
+          <p>The top menu buttons are your quick access to rewards, social features, voice, and extra menus.</p>
+        </article>
+
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-profile"><img src="/assets/howto-profile.png" alt="Duel.io profile menu" loading="lazy"></div>
+          <h3>Profile</h3>
+          <p>Use your profile area to change your name, add friends, and check your player info.</p>
+        </article>
+
+        <article class="guide-mini-card">
+          <div class="guide-mini-shot guide-mini-shot-wide"><img src="/assets/howto-reset-save.png" alt="Duel.io reset save option" loading="lazy"></div>
+          <h3>Save Options</h3>
+          <p>Reset options are there if you need them, but do not hit them unless you actually mean it.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer-panel">
+      Duel.io is still growing, so this guide can grow with it. Follow the project on
+      <a href="https://gamejolt.com/games/duelio/1077325" target="_blank" rel="noopener noreferrer">Game Jolt</a>
+      and
+      <a href="https://i-am-wizard.itch.io/duelio" target="_blank" rel="noopener noreferrer">itch.io</a>.
+    </footer>
+  </main>
+</body>
+</html>
