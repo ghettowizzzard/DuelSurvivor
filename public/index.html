@@ -227,6 +227,61 @@
             background: #03030c;
         }
 
+        .game-lazy-cover {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            display: grid;
+            place-items: center;
+            padding: 24px;
+            text-align: center;
+            background:
+                radial-gradient(circle at 50% 28%, rgba(14, 165, 233, 0.24), transparent 34%),
+                radial-gradient(circle at 60% 74%, rgba(250, 204, 21, 0.10), transparent 34%),
+                linear-gradient(135deg, rgba(2, 6, 23, 0.96), rgba(15, 23, 42, 0.88));
+            color: #e0f2fe;
+            transition: opacity 0.28s ease, visibility 0.28s ease;
+            pointer-events: none;
+        }
+
+        .game-frame-wrap.game-loaded .game-lazy-cover {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .game-lazy-card {
+            width: min(420px, calc(100vw - 42px));
+            border-radius: 24px;
+            border: 1px solid rgba(103, 232, 249, 0.36);
+            padding: 24px;
+            background:
+                radial-gradient(circle at 18% 12%, rgba(103, 232, 249, 0.16), transparent 36%),
+                rgba(2, 6, 23, 0.70);
+            box-shadow:
+                0 0 38px rgba(14, 165, 233, 0.18),
+                0 22px 70px rgba(0,0,0,0.45),
+                inset 0 0 18px rgba(255,255,255,0.035);
+        }
+
+        .game-lazy-card strong {
+            display: block;
+            color: #facc15;
+            font-size: clamp(20px, 3vw, 30px);
+            font-weight: 1000;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+        }
+
+        .game-lazy-card span {
+            display: block;
+            margin-top: 10px;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.55;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
         .site-controls {
             position: relative;
             z-index: 6;
@@ -825,25 +880,39 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            padding: 7px 10px;
             border: 2px solid rgba(103, 232, 249, 0.48);
             border-radius: 14px;
             background:
-                radial-gradient(circle at 25% 18%, rgba(255,255,255,0.18), transparent 32%),
-                linear-gradient(135deg, rgba(14, 165, 233, 0.24), rgba(2, 6, 23, 0.82));
-            color: #f8fafc;
-            font-size: 13px;
-            font-weight: 1000;
-            letter-spacing: 0.10em;
-            text-transform: uppercase;
+                radial-gradient(circle at 25% 18%, rgba(255,255,255,0.16), transparent 32%),
+                linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(2, 6, 23, 0.72));
             box-shadow: 0 0 16px rgba(103, 232, 249, 0.16);
         }
 
         .store-platform-mark-itch {
-            color: #fef2f2;
             border-color: rgba(248, 113, 113, 0.54);
             background:
-                radial-gradient(circle at 25% 18%, rgba(255,255,255,0.18), transparent 32%),
-                linear-gradient(135deg, rgba(248, 113, 113, 0.24), rgba(2, 6, 23, 0.82));
+                radial-gradient(circle at 25% 18%, rgba(255,255,255,0.16), transparent 32%),
+                linear-gradient(135deg, rgba(248, 113, 113, 0.18), rgba(2, 6, 23, 0.72));
+        }
+
+        .store-platform-logo {
+            display: block;
+            width: auto;
+            height: 100%;
+            max-width: 54px;
+            object-fit: contain;
+            object-position: center;
+            filter:
+                drop-shadow(0 0 8px rgba(255,255,255,0.18))
+                drop-shadow(0 0 12px rgba(103,232,249,0.14));
+        }
+
+        .store-platform-mark-itch .store-platform-logo {
+            max-width: 58px;
+            filter:
+                drop-shadow(0 0 8px rgba(255,255,255,0.16))
+                drop-shadow(0 0 12px rgba(248,113,113,0.18));
         }
 
         .store-card-badge {
@@ -1314,7 +1383,13 @@
                             aria-label="Open Duel.io on Game Jolt">
 
                             <div class="store-card-top">
-                                <span class="store-platform-mark store-platform-mark-gamejolt">GJ</span>
+                                <span class="store-platform-mark store-platform-mark-gamejolt">
+                                    <img
+                                        class="store-platform-logo"
+                                        src="./assets/GameJolt.png"
+                                        alt="Game Jolt logo"
+                                        loading="lazy">
+                                </span>
                                 <span class="store-card-badge">Game Jolt</span>
                             </div>
 
@@ -1342,7 +1417,13 @@
                             aria-label="Open Duel.io on itch.io">
 
                             <div class="store-card-top">
-                                <span class="store-platform-mark store-platform-mark-itch">itch.io</span>
+                                <span class="store-platform-mark store-platform-mark-itch">
+                                    <img
+                                        class="store-platform-logo"
+                                        src="./assets/ItchLogo.png"
+                                        alt="itch.io logo"
+                                        loading="lazy">
+                                </span>
                                 <span class="store-card-badge">itch.io</span>
                             </div>
 
@@ -1372,12 +1453,19 @@
             <div id="game-frame-wrap" class="game-frame-wrap">
                 <iframe
                     id="duelio-frame"
-                    src="./play.html"
+                    data-src="./play.html"
                     title="Duel.io Game"
                     tabindex="-1"
                     allow="fullscreen; microphone; autoplay; gamepad"
                     allowfullscreen>
                 </iframe>
+
+                <div id="game-lazy-cover" class="game-lazy-cover" aria-hidden="true">
+                    <div class="game-lazy-card">
+                        <strong>Duel.io Ready</strong>
+                        <span>The game loads when you scroll down here.</span>
+                    </div>
+                </div>
             </div>
 
             <div class="site-controls" aria-label="Game display controls">
@@ -1427,6 +1515,66 @@
             setTimeout(() => loader.remove(), 700);
         }
 
+        function loadLazyGameFrame(reason = "lazy-load") {
+            const frame = document.getElementById("duelio-frame");
+            const wrap = document.getElementById("game-frame-wrap");
+            if (!frame || !wrap) return;
+
+            if (frame.dataset.loaded === "true") return;
+
+            const src = frame.dataset.src;
+            if (!src) return;
+
+            frame.dataset.loaded = "true";
+            frame.src = src;
+
+            frame.addEventListener("load", () => {
+                wrap.classList.add("game-loaded");
+                try {
+                    frame.contentWindow?.postMessage({
+                        type: "duelio:focusGame",
+                        reason
+                    }, window.location.origin);
+                } catch (e) {}
+            }, { once: true });
+        }
+
+        function setupLazyGameFrame() {
+            const wrap = document.getElementById("game-frame-wrap");
+            const frame = document.getElementById("duelio-frame");
+            if (!wrap || !frame) return;
+
+            const loadFromUserIntent = () => {
+                loadLazyGameFrame("user-intent");
+            };
+
+            document.querySelectorAll('a[href="#game-frame-wrap"]').forEach(link => {
+                link.addEventListener("click", loadFromUserIntent);
+            });
+
+            wrap.addEventListener("pointerenter", loadFromUserIntent, { once: true });
+            wrap.addEventListener("touchstart", loadFromUserIntent, { once: true, passive: true });
+
+            if (!("IntersectionObserver" in window)) {
+                setTimeout(() => loadLazyGameFrame("no-intersection-observer"), 1800);
+                return;
+            }
+
+            const observer = new IntersectionObserver(entries => {
+                const entry = entries[0];
+                if (!entry?.isIntersecting) return;
+
+                loadLazyGameFrame("scrolled-into-view");
+                observer.disconnect();
+            }, {
+                root: null,
+                threshold: 0.08,
+                rootMargin: "320px 0px 320px 0px"
+            });
+
+            observer.observe(wrap);
+        }
+
        function setupFullscreenButton() {
             const button = document.getElementById("fullscreen-btn");
             const shell = document.getElementById("site-game-shell");
@@ -1458,6 +1606,8 @@
             });
 
             button.addEventListener("click", async () => {
+                loadLazyGameFrame("fullscreen-button");
+
                 try {
                     if (!document.fullscreenElement) {
                         await shell.requestFullscreen();
@@ -1524,6 +1674,7 @@
         }
 
         pickSiteBanner();
+        setupLazyGameFrame();
         setupFullscreenButton();
         setupBannerVisibilityFloat();
 
@@ -1539,8 +1690,7 @@
             setTimeout(hideSiteLoader, Math.max(0, minLoaderMs - elapsed));
         }
 
-        if (frame) frame.addEventListener("load", finishLoaderOnce, { once: true });
-        setTimeout(finishLoaderOnce, 2600);
+        setTimeout(finishLoaderOnce, 950);
     </script>
 </body>
 </html>
