@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#03030c">
+  <title>Duel.io Cards and Creatures - Creature Art, Magic, Traps, and Attacks</title>
+  <meta name="description" content="Explore Duel.io creature cards, card families, magic cards, traps, creature artwork, and animated attack-style previews from the browser TCG battle royale.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://duelio.lol/cards-and-creatures/">
+  <meta property="og:site_name" content="Duel.io">
+  <meta property="og:title" content="Duel.io Cards and Creatures - Creature Art, Magic, Traps, and Attacks">
+  <meta property="og:description" content="A visual look at Duel.io creature cards, card families, magic, traps, and attack effects.">
+  <meta property="og:url" content="https://duelio.lol/cards-and-creatures/">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Duel.io Cards and Creatures - Creature Art, Magic, Traps, and Attacks">
+  <meta name="twitter:description" content="Browse Duel.io creature art, card families, magic, traps, and animated attack-style previews.">
+  <meta name="twitter:image" content="https://duelio.lol/assets/DuelioThumbnail.png">
+  <link rel="icon" type="image/png" href="/assets/DuelioThumbnail.png">
+  <link rel="apple-touch-icon" href="/assets/DuelioThumbnail.png">
+  <link rel="stylesheet" href="/assets/landing.css">
+  <style>
+    .cards-page-shell { display:grid; gap:18px; }
+    .cards-hero-panel { position:relative; overflow:hidden; border-radius:28px; border:1px solid rgba(103,232,249,.36); background:radial-gradient(circle at 14% 14%,rgba(14,165,233,.20),transparent 34%),radial-gradient(circle at 86% 18%,rgba(217,70,239,.18),transparent 34%),linear-gradient(135deg,rgba(2,6,23,.96),rgba(15,23,42,.78)); box-shadow:0 0 38px rgba(14,165,233,.18),0 24px 80px rgba(0,0,0,.34),inset 0 0 24px rgba(255,255,255,.035); padding:clamp(22px,4vw,46px); display:grid; grid-template-columns:minmax(0,.94fr) minmax(360px,1.06fr); gap:clamp(20px,3vw,34px); align-items:center; }
+    .cards-hero-panel::before { content:""; position:absolute; inset:-30%; background:conic-gradient(from 120deg, transparent, rgba(103,232,249,.10), transparent, rgba(250,204,21,.08), transparent); animation:cardsSpin 16s linear infinite; opacity:.65; }
+    .cards-hero-copy,.cards-hero-art { position:relative; z-index:2; }
+    .cards-hero-copy h1 { margin:0; color:#f8fafc; font-size:clamp(34px,5vw,68px); line-height:.98; letter-spacing:.04em; text-transform:uppercase; }
+    .cards-hero-copy p { max-width:720px; color:#cbd5e1; font-size:clamp(15px,1.55vw,18px); line-height:1.65; }
+    .cards-stat-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:20px; }
+    .cards-stat { border:1px solid rgba(103,232,249,.26); border-radius:18px; padding:13px; background:rgba(2,6,23,.54); text-align:center; }
+    .cards-stat strong { display:block; color:#facc15; font-size:clamp(20px,3vw,34px); line-height:1; }
+    .cards-stat span { display:block; margin-top:5px; color:#94a3b8; font-size:10px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; }
+    .hero-card-stack { min-height:470px; position:relative; display:grid; place-items:center; perspective:1200px; }
+    .hero-card-stack .creature-card { width:min(230px,34vw); position:absolute; transform-origin:center; }
+    .hero-card-stack .creature-card:nth-child(1) { transform:translate(-112px,18px) rotate(-12deg) scale(.88); opacity:.74; filter:blur(.2px); }
+    .hero-card-stack .creature-card:nth-child(2) { transform:translate(110px,20px) rotate(13deg) scale(.88); opacity:.74; filter:blur(.2px); }
+    .hero-card-stack .creature-card:nth-child(3) { transform:translate(0,-8px) rotate(0) scale(1.08); z-index:4; }
+    .hero-card-stack .creature-card:nth-child(4) { transform:translate(0,132px) rotate(0) scale(.74); opacity:.62; }
+    .content-panel.cards-panel { overflow:hidden; }
+    .cards-section-top { display:flex; justify-content:space-between; align-items:end; gap:16px; flex-wrap:wrap; }
+    .cards-section-top p { max-width:760px; margin:8px 0 0; color:#cbd5e1; line-height:1.6; }
+    .creature-card-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-top:18px; }
+    .featured-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .creature-card { position:relative; border-radius:22px; border:1px solid var(--card-color,rgba(103,232,249,.34)); background:radial-gradient(circle at 22% 12%, color-mix(in srgb,var(--card-color,#67e8f9) 20%, transparent), transparent 40%),linear-gradient(145deg,rgba(2,6,23,.95),rgba(15,23,42,.72)); box-shadow:0 18px 42px rgba(0,0,0,.34),0 0 22px color-mix(in srgb,var(--card-color,#67e8f9) 22%, transparent),inset 0 0 20px rgba(255,255,255,.035); overflow:hidden; padding:10px; transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease; }
+    .creature-card:hover { transform:translateY(-4px); border-color:#facc15; box-shadow:0 22px 52px rgba(0,0,0,.42),0 0 30px color-mix(in srgb,var(--card-color,#67e8f9) 35%, transparent); }
+    .card-art-frame { position:relative; aspect-ratio:240/320; border-radius:17px; overflow:hidden; background:#020617; border:1px solid rgba(255,255,255,.12); }
+    .card-art-frame img { width:100%; height:100%; object-fit:cover; display:block; }
+    .card-art-frame::after { content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,.10),transparent 30%,transparent 70%,rgba(103,232,249,.08)); pointer-events:none; }
+    .card-info { padding:10px 4px 4px; }
+    .card-info h3 { margin:0; color:#f8fafc; font-size:15px; letter-spacing:.06em; text-transform:uppercase; line-height:1.12; }
+    .card-info p { margin:7px 0 0; color:#94a3b8; font-size:12px; line-height:1.42; }
+    .card-meta-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+    .card-chip { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:4px 7px; border-radius:999px; border:1px solid rgba(103,232,249,.22); background:rgba(2,6,23,.55); color:#bae6fd; font-size:9px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
+    .rarity-Common { color:#d1d5db; } .rarity-Uncommon { color:#86efac; } .rarity-Rare { color:#67e8f9; } .rarity-Epic { color:#f0abfc; } .rarity-Legendary { color:#fde68a; } .rarity-Mythic { color:#fff7ed; text-shadow:0 0 12px rgba(250,204,21,.45); }
+    .family-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:18px; }
+    .family-card { display:grid; grid-template-columns:144px 1fr; gap:14px; align-items:center; border-radius:22px; border:1px solid rgba(103,232,249,.24); background:linear-gradient(135deg,rgba(2,6,23,.78),rgba(15,23,42,.52)); padding:14px; overflow:hidden; }
+    .family-card .creature-card { width:144px; padding:7px; }
+    .family-copy h3 { margin:0; color:#f8fafc; font-size:20px; letter-spacing:.08em; text-transform:uppercase; }
+    .family-copy p { margin:8px 0 0; color:#cbd5e1; line-height:1.5; font-size:14px; }
+    .evo-line { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+    .effect-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:18px; }
+    .effect-card { position:relative; min-height:230px; border-radius:22px; border:1px solid color-mix(in srgb,var(--fx-color,#67e8f9) 44%, transparent); overflow:hidden; background:radial-gradient(circle at 50% 20%, color-mix(in srgb,var(--fx-color,#67e8f9) 18%, transparent), transparent 42%),linear-gradient(135deg,rgba(2,6,23,.88),rgba(15,23,42,.64)); padding:16px; box-shadow:inset 0 0 24px rgba(255,255,255,.03),0 18px 42px rgba(0,0,0,.28); }
+    .effect-stage { position:relative; height:132px; border-radius:18px; border:1px solid rgba(255,255,255,.10); background:radial-gradient(circle at 50% 50%, color-mix(in srgb,var(--fx-color,#67e8f9) 16%, transparent), transparent 42%),rgba(2,6,23,.75); overflow:hidden; }
+    .effect-stage::before,.effect-stage::after { content:""; position:absolute; inset:26% 10%; border-radius:999px; background:linear-gradient(90deg,transparent,var(--fx-color,#67e8f9),transparent); filter:blur(2px); transform:rotate(var(--fx-rot,0deg)); animation:fxPulse 1.7s ease-in-out infinite; }
+    .effect-stage::after { inset:42% 4%; opacity:.58; transform:rotate(calc(var(--fx-rot,0deg) * -1)); animation-delay:-.55s; }
+    .fx-orb { position:absolute; width:42px; height:42px; border-radius:50%; left:calc(16% + var(--i,0)*15%); top:calc(18% + var(--j,0)*18%); background:var(--fx-color,#67e8f9); filter:blur(1px); opacity:.72; box-shadow:0 0 20px var(--fx-color,#67e8f9); animation:fxFloat 2.4s ease-in-out infinite; animation-delay:calc(var(--i,0)*-.28s); }
+    .effect-card h3 { margin:12px 0 0; color:#f8fafc; text-transform:uppercase; letter-spacing:.08em; }
+    .effect-card p { color:#94a3b8; line-height:1.45; font-size:13px; margin:6px 0 0; }
+    .library-controls { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    .filter-btn { min-height:36px; padding:8px 12px; border-radius:999px; border:1px solid rgba(103,232,249,.30); background:rgba(2,6,23,.55); color:#bae6fd; font-size:10px; font-weight:900; letter-spacing:.10em; text-transform:uppercase; cursor:pointer; }
+    .filter-btn.active,.filter-btn:hover { border-color:#facc15; color:#fde68a; background:rgba(113,63,18,.25); }
+    @keyframes cardsSpin { to { transform:rotate(360deg); } }
+    @keyframes fxPulse { 0%,100% { opacity:.38; transform:scaleX(.74) rotate(var(--fx-rot,0deg)); } 50% { opacity:1; transform:scaleX(1.08) rotate(var(--fx-rot,0deg)); } }
+    @keyframes fxFloat { 0%,100% { transform:translateY(0) scale(.82); opacity:.45; } 50% { transform:translateY(-14px) scale(1.06); opacity:.86; } }
+    @media (max-width:1000px) { .cards-hero-panel { grid-template-columns:1fr; } .creature-card-grid,.featured-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .family-grid,.effect-grid { grid-template-columns:1fr; } .hero-card-stack { min-height:420px; } }
+    @media (max-width:620px) { .creature-card-grid,.featured-grid { grid-template-columns:1fr; } .family-card { grid-template-columns:1fr; } .family-card .creature-card { width:min(230px,100%); justify-self:center; } .cards-stat-row { grid-template-columns:1fr; } .hero-card-stack .creature-card:nth-child(1), .hero-card-stack .creature-card:nth-child(2), .hero-card-stack .creature-card:nth-child(4) { display:none; } }
+  </style>
+</head>
+<body>
+  <main class="page-shell cards-page-shell">
+    <nav class="top-nav" aria-label="Duel.io site navigation">
+      <a class="brand-link" href="/" aria-label="Back to Duel.io home"><img src="/assets/DuelioThumbnail.png" alt="Duel.io logo"><span>Duel.io</span></a>
+      <div class="nav-links"><a href="/">Home</a><a href="/play">Play</a><a href="/how-to-play/">How to Play</a><a href="/cards-and-creatures/">Cards</a><a href="/updates/">Updates</a></div>
+    </nav>
+
+    <section class="cards-hero-panel">
+      <div class="cards-hero-copy">
+        <p class="kicker">Cards & Creatures</p>
+        <h1>Cards with teeth.</h1>
+        <p>This is the fun part of Duel.io: the creatures, the magic, the traps, and the weird little plays that turn a match around. You do not need a giant screenshot dump here — the page pulls the card art style from the game data and lays it out like a proper collection wall.</p>
+        <div class="hero-actions"><a class="btn-primary" href="/play">Play Duel.io</a><a class="btn-secondary" href="#card-library">Browse Cards</a></div>
+        <div class="cards-stat-row"><div class="cards-stat"><strong id="stat-creatures">0</strong><span>Creatures</span></div><div class="cards-stat"><strong id="stat-magic">0</strong><span>Magic</span></div><div class="cards-stat"><strong id="stat-traps">0</strong><span>Traps</span></div></div>
+      </div>
+      <div class="cards-hero-art"><div id="hero-card-stack" class="hero-card-stack" aria-label="Featured Duel.io card artwork"></div></div>
+    </section>
+
+    <section class="content-panel cards-panel">
+      <div class="cards-section-top"><div><p class="kicker">Featured Picks</p><h2 class="section-heading">Some cards are just built different.</h2><p>These are the ones that sell the vibe fast: big evolutions, louder effects, and cards that look like they belong in the final circles.</p></div></div>
+      <div id="featured-card-grid" class="creature-card-grid featured-grid"></div>
+    </section>
+
+    <section class="content-panel cards-panel">
+      <div class="cards-section-top"><div><p class="kicker">Creature Families</p><h2 class="section-heading">Every family has its own flavor.</h2><p>Instead of dumping every single evolution in a boring list, this section shows the family line and the final form. Fire rushes you. Frost slows the game down. Voltbeasts are quick and annoying in the best way. You get the idea.</p></div></div>
+      <div id="family-grid" class="family-grid"></div>
+    </section>
+
+    <section class="content-panel cards-panel">
+      <div class="cards-section-top"><div><p class="kicker">Attack Style</p><h2 class="section-heading">How the cards feel in motion.</h2><p>These are not gameplay screenshots. They are little animated style plates using the same colors and particle types from the cards, so players can get the idea without you needing to capture every attack one by one.</p></div></div>
+      <div id="effect-grid" class="effect-grid"></div>
+    </section>
+
+    <section id="card-library" class="content-panel cards-panel">
+      <div class="cards-section-top"><div><p class="kicker">Card Library</p><h2 class="section-heading">Browse the current card pool.</h2><p>Creatures, magic, and traps all live here. This can grow with the game without needing a new page design every time you add cards.</p></div></div>
+      <div id="library-controls" class="library-controls" aria-label="Card library filters"></div>
+      <div id="library-grid" class="creature-card-grid"></div>
+    </section>
+
+    <footer class="footer-panel">Cards and creatures can shift as Duel.io grows. Follow the project on <a href="https://gamejolt.com/games/duelio/1077325" target="_blank" rel="noopener noreferrer">Game Jolt</a> and <a href="https://i-am-wizard.itch.io/duelio" target="_blank" rel="noopener noreferrer">itch.io</a>.</footer>
+  </main>
+
+  <script type="application/json" id="duelio-card-data">[{"id":"ember_pup","name":"Ember Pup","category":"monster","family":"Emberkin","rarity":"Common","evolutionLine":"ember_pup_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"cinder_fox","attackType":"Dash","visualColor":"#f97316","particleType":"flame","iconSymbol":"EP","description":"A small fiery pup that pressure-dashes forward and leaves light burn on contact.","damage":18,"cooldown":2.3,"range":260,"duration":1.8,"durabilityMax":18,"knockback":8},{"id":"cinder_fox","name":"Cinder Fox","category":"monster","family":"Emberkin","rarity":"Uncommon","evolutionLine":"ember_pup_line","evolutionStage":2,"evolvesFrom":"ember_pup","evolvesTo":"blaze_drake","attackType":"Dash","visualColor":"#fb923c","particleType":"flame","iconSymbol":"CF","description":"A sleeker Emberkin evolution with a faster, longer flame dash and stronger burn.","damage":24,"cooldown":2.2,"range":330,"duration":2.4,"durabilityMax":22,"knockback":10},{"id":"blaze_drake","name":"Blaze Drake","category":"monster","family":"Emberkin","rarity":"Rare","evolutionLine":"ember_pup_line","evolutionStage":3,"evolvesFrom":"cinder_fox","evolvesTo":"infernal_fenrir","attackType":"Dash","visualColor":"#ef4444","particleType":"flame","iconSymbol":"BD","description":"A young fire drake that surges forward, burns targets, and erupts in a small splash on impact.","damage":34,"cooldown":2.8,"range":410,"duration":3.2,"durabilityMax":30,"knockback":16},{"id":"infernal_fenrir","name":"Infernal Fenrir","category":"monster","family":"Emberkin","rarity":"Epic","evolutionLine":"ember_pup_line","evolutionStage":4,"evolvesFrom":"blaze_drake","evolvesTo":null,"attackType":"Dash","visualColor":"#f43f5e","particleType":"flame","iconSymbol":"IF","description":"A massive flaming wolf charge with a huge hitbox, strong knockback, heavy burn, and impact flames.","damage":48,"cooldown":3.6,"range":500,"duration":4.2,"durabilityMax":42,"knockback":30},{"id":"iron_ram","name":"Iron Ram","category":"monster","family":"Ironhide","rarity":"Common","evolutionLine":"iron_ram_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"steelhorn_ram","attackType":"Dash","visualColor":"#9ca3af","particleType":"metal","iconSymbol":"IR","description":"A compact armored ram. Slow, sturdy, and built for blunt knockback.","damage":22,"cooldown":2.7,"range":230,"durabilityMax":20,"knockback":22},{"id":"steelhorn_ram","name":"Steelhorn Ram","category":"monster","family":"Ironhide","rarity":"Uncommon","evolutionLine":"iron_ram_line","evolutionStage":2,"evolvesFrom":"iron_ram","evolvesTo":"anviljaw","attackType":"Dash","visualColor":"#cbd5e1","particleType":"metal","iconSymbol":"SR","description":"A larger armored ram with a steel horn trail, better durability, and brutal push force.","damage":30,"cooldown":3.0,"range":280,"durabilityMax":28,"knockback":32},{"id":"anviljaw","name":"Anviljaw","category":"monster","family":"Ironhide","rarity":"Rare","evolutionLine":"iron_ram_line","evolutionStage":3,"evolvesFrom":"steelhorn_ram","evolvesTo":"titan_breaker","attackType":"Dash","visualColor":"#94a3b8","particleType":"metal","iconSymbol":"AJ","description":"A heavy slam-charge beast with an anvil jaw. Can briefly weaken enemies it crushes.","damage":40,"cooldown":3.5,"range":330,"duration":3.2,"durabilityMax":38,"knockback":44},{"id":"titan_breaker","name":"Titan Breaker","category":"monster","family":"Ironhide","rarity":"Epic","evolutionLine":"iron_ram_line","evolutionStage":4,"evolvesFrom":"anviljaw","evolvesTo":null,"attackType":"Dash","visualColor":"#e5e7eb","particleType":"metal","iconSymbol":"TB","description":"A huge armored siege beast charge. Massive knockback, high durability, and excellent object breaking.","damage":58,"cooldown":4.2,"range":390,"duration":4.0,"durabilityMax":54,"knockback":68},{"id":"frost_serpent","name":"Frost Serpent","category":"monster","family":"Frostveil","rarity":"Common","evolutionLine":"frost_serpent_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"glacier_python","attackType":"Pierce","visualColor":"#67e8f9","particleType":"ice","iconSymbol":"FS","description":"A narrow icy serpent that pierces in a straight line and applies Frost slow.","damage":16,"cooldown":2.4,"range":390,"duration":2.0,"durabilityMax":18,"knockback":5},{"id":"glacier_python","name":"Glacier Python","category":"monster","family":"Frostveil","rarity":"Uncommon","evolutionLine":"frost_serpent_line","evolutionStage":2,"evolvesFrom":"frost_serpent","evolvesTo":"cryo_wyrm","attackType":"Pierce","visualColor":"#a5f3fc","particleType":"ice","iconSymbol":"GP","description":"A thicker ice serpent with longer reach, crystal particles, and stronger Frost slow.","damage":21,"cooldown":2.6,"range":470,"duration":2.8,"durabilityMax":23,"knockback":7},{"id":"cryo_wyrm","name":"Cryo Wyrm","category":"monster","family":"Frostveil","rarity":"Rare","evolutionLine":"frost_serpent_line","evolutionStage":3,"evolvesFrom":"glacier_python","evolvesTo":"absolute_hydra","attackType":"Pierce","visualColor":"#7dd3fc","particleType":"ice","iconSymbol":"CW","description":"A long frozen wyrm strike with an icy trail. Pierces through multiple enemies and heavily chills them.","damage":29,"cooldown":3.0,"range":560,"duration":3.5,"durabilityMax":32,"knockback":10},{"id":"absolute_hydra","name":"Absolute Hydra","category":"monster","family":"Frostveil","rarity":"Epic","evolutionLine":"frost_serpent_line","evolutionStage":4,"evolvesFrom":"cryo_wyrm","evolvesTo":null,"attackType":"Pierce","visualColor":"#e0f2fe","particleType":"ice","iconSymbol":"AH","description":"A three-headed absolute ice hydra. Wide piercing Frost effect that can chill entire enemy clusters.","damage":43,"cooldown":4.0,"range":640,"duration":4.4,"durabilityMax":46,"knockback":18},{"id":"spark_wasp","name":"Spark Wasp","category":"monster","family":"Voltbeast","rarity":"Common","evolutionLine":"spark_wasp_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"thunder_lynx","attackType":"Pierce","visualColor":"#facc15","particleType":"electric","iconSymbol":"SW","description":"A tiny electric wasp. Extremely fast, low damage, short cooldown, and a small Shock chance.","damage":11,"cooldown":1.25,"range":310,"duration":0.75,"durabilityMax":20,"knockback":4},{"id":"thunder_lynx","name":"Thunder Lynx","category":"monster","family":"Voltbeast","rarity":"Uncommon","evolutionLine":"spark_wasp_line","evolutionStage":2,"evolvesFrom":"spark_wasp","evolvesTo":"storm_raptor","attackType":"Dash","visualColor":"#38bdf8","particleType":"electric","iconSymbol":"TL","description":"A neon electric cat dash. Very fast, modest damage, short cooldown, and brief Shock.","damage":17,"cooldown":1.65,"range":360,"duration":1.1,"durabilityMax":24,"knockback":8},{"id":"storm_raptor","name":"Storm Raptor","category":"monster","family":"Voltbeast","rarity":"Rare","evolutionLine":"spark_wasp_line","evolutionStage":3,"evolvesFrom":"thunder_lynx","evolvesTo":"neon_kirin","attackType":"Dash","visualColor":"#22d3ee","particleType":"electric","iconSymbol":"SR","description":"A lightning bird strike. Very fast impact that can chain a tiny Shock to a nearby enemy.","damage":27,"cooldown":2.05,"range":450,"duration":1.25,"durabilityMax":30,"knockback":12},{"id":"neon_kirin","name":"Neon Kirin","category":"monster","family":"Voltbeast","rarity":"Legendary","evolutionLine":"spark_wasp_line","evolutionStage":4,"evolvesFrom":"storm_raptor","evolvesTo":null,"attackType":"Dash","visualColor":"#67e8f9","particleType":"electric","iconSymbol":"NK","description":"A legendary lightning unicorn dash with extreme speed, heavy Shock, chain lightning, and a flashy neon trail.","damage":46,"cooldown":2.65,"range":590,"duration":1.9,"durabilityMax":44,"knockback":24},{"id":"thorn_boar","name":"Thorn Boar","category":"monster","family":"Thornwild","rarity":"Common","evolutionLine":"thorn_boar_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"briar_stag","attackType":"Dash","visualColor":"#22c55e","particleType":"thorn","iconSymbol":"TH","description":"A thorn-backed boar that charges low through the brush with a small Root chance.","damage":20,"cooldown":2.35,"range":250,"duration":0.9,"durabilityMax":22,"knockback":14},{"id":"briar_stag","name":"Briar Stag","category":"monster","family":"Thornwild","rarity":"Uncommon","evolutionLine":"thorn_boar_line","evolutionStage":2,"evolvesFrom":"thorn_boar","evolvesTo":"rose_mantis","attackType":"Dash","visualColor":"#84cc16","particleType":"thorn","iconSymbol":"BS","description":"A vine-antler stag dash with a thorn trail and stronger Root chance.","damage":26,"cooldown":2.85,"range":310,"duration":1.25,"durabilityMax":26,"knockback":18},{"id":"rose_mantis","name":"Rose Mantis","category":"monster","family":"Thornwild","rarity":"Rare","evolutionLine":"thorn_boar_line","evolutionStage":3,"evolvesFrom":"briar_stag","evolvesTo":"elder_thorn_king","attackType":"Cone","visualColor":"#fb7185","particleType":"thorn","iconSymbol":"RM","description":"A rose-bladed mantis slash cone. Roots enemies and can leave toxic thorn wounds.","damage":34,"cooldown":3.15,"range":315,"duration":1.45,"durabilityMax":34,"knockback":10},{"id":"elder_thorn_king","name":"Elder Thorn King","category":"monster","family":"Thornwild","rarity":"Epic","evolutionLine":"thorn_boar_line","evolutionStage":4,"evolvesFrom":"rose_mantis","evolvesTo":null,"attackType":"Leap","visualColor":"#65a30d","particleType":"thorn","iconSymbol":"EK","description":"A massive thorn monarch slam that creates a root zone on impact.","damage":42,"cooldown":4.15,"range":370,"duration":2.0,"durabilityMax":46,"knockback":30},{"id":"spore_toad","name":"Spore Toad","category":"monster","family":"Plaguekin","rarity":"Common","evolutionLine":"spore_toad_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"mire_frog","attackType":"Leap","visualColor":"#84cc16","particleType":"poison","iconSymbol":"ST","description":"A small toxic leap that releases a short poison cloud.","damage":16,"cooldown":3.0,"range":245,"duration":3.0,"durabilityMax":20,"knockback":8},{"id":"mire_frog","name":"Mire Frog","category":"monster","family":"Plaguekin","rarity":"Uncommon","evolutionLine":"spore_toad_line","evolutionStage":2,"evolvesFrom":"spore_toad","evolvesTo":"plague_maw","attackType":"Leap","visualColor":"#22c55e","particleType":"poison","iconSymbol":"MF","description":"A larger mire leap with a stronger poison cloud and heavier impact.","damage":22,"cooldown":3.25,"range":305,"duration":3.8,"durabilityMax":27,"knockback":12},{"id":"plague_maw","name":"Plague Maw","category":"monster","family":"Plaguekin","rarity":"Rare","evolutionLine":"spore_toad_line","evolutionStage":3,"evolvesFrom":"mire_frog","evolvesTo":"pestilent_king","attackType":"Cone","visualColor":"#a3e635","particleType":"poison","iconSymbol":"PM","description":"A cone poison breath that poisons and weakens enemies caught in the rot cloud.","damage":28,"cooldown":3.55,"range":340,"duration":4.2,"durabilityMax":35,"knockback":9},{"id":"pestilent_king","name":"Pestilent King","category":"monster","family":"Plaguekin","rarity":"Epic","evolutionLine":"spore_toad_line","evolutionStage":4,"evolvesFrom":"plague_maw","evolvesTo":null,"attackType":"Leap","visualColor":"#65a30d","particleType":"poison","iconSymbol":"PK","description":"A royal toxic leap that erupts into a huge poison cloud and weakens enemies.","damage":40,"cooldown":4.35,"range":390,"duration":5.0,"durabilityMax":48,"knockback":24},{"id":"shadow_crow","name":"Shadow Crow","category":"monster","family":"Umbra","rarity":"Common","evolutionLine":"shadow_crow_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"void_moth","attackType":"Boomerang","visualColor":"#111827","particleType":"shadow","iconSymbol":"SC","description":"A black shadow bird that flies outward, curves back, and can briefly Blind enemies.","damage":13,"cooldown":2.8,"range":430,"duration":1.1,"durabilityMax":20,"knockback":5},{"id":"void_moth","name":"Void Moth","category":"monster","family":"Umbra","rarity":"Uncommon","evolutionLine":"shadow_crow_line","evolutionStage":2,"evolvesFrom":"shadow_crow","evolvesTo":"nightmare_eel","attackType":"Boomerang","visualColor":"#a855f7","particleType":"void","iconSymbol":"VM","description":"A dark moth with wider shadow wings, a broader boomerang path, and stronger Blind.","damage":18,"cooldown":3.2,"range":500,"duration":1.6,"durabilityMax":24,"knockback":7},{"id":"nightmare_eel","name":"Nightmare Eel","category":"monster","family":"Umbra","rarity":"Rare","evolutionLine":"shadow_crow_line","evolutionStage":3,"evolvesFrom":"void_moth","evolvesTo":"eclipse_monarch","attackType":"Boomerang","visualColor":"#7c3aed","particleType":"void","iconSymbol":"NE","description":"A curving shadow eel pierce that blinds and slightly slows enemies.","damage":27,"cooldown":3.35,"range":610,"duration":2.1,"durabilityMax":34,"knockback":8},{"id":"eclipse_monarch","name":"Eclipse Monarch","category":"monster","family":"Umbra","rarity":"Legendary","evolutionLine":"shadow_crow_line","evolutionStage":4,"evolvesFrom":"nightmare_eel","evolvesTo":null,"attackType":"Boomerang","visualColor":"#4c1d95","particleType":"void","iconSymbol":"EM","description":"A legendary monarch wing attack. Huge return path, strong Blind, and dark eclipse bursts.","damage":42,"cooldown":4.4,"range":720,"duration":3.3,"durabilityMax":50,"knockback":14},{"id":"star_cub","name":"Star Cub","category":"monster","family":"Starborn","rarity":"Common","evolutionLine":"star_cub_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"moon_rabbit","attackType":"Dash","visualColor":"#fef08a","particleType":"star","iconSymbol":"SC","description":"A small star beast dash that heals the player slightly on hit.","damage":14,"cooldown":2.25,"range":255,"durabilityMax":18,"knockback":5},{"id":"moon_rabbit","name":"Moon Rabbit","category":"monster","family":"Starborn","rarity":"Uncommon","evolutionLine":"star_cub_line","evolutionStage":2,"evolvesFrom":"star_cub","evolvesTo":"comet_deer","attackType":"Dash","visualColor":"#bfdbfe","particleType":"star","iconSymbol":"MR","description":"A quick moonlit dash with better heal-on-hit and a bright lunar trail.","damage":19,"cooldown":2.05,"range":330,"durabilityMax":24,"knockback":7},{"id":"comet_deer","name":"Comet Deer","category":"monster","family":"Starborn","rarity":"Rare","evolutionLine":"star_cub_line","evolutionStage":3,"evolvesFrom":"moon_rabbit","evolvesTo":"nova_seraph","attackType":"Dash","visualColor":"#fde68a","particleType":"star","iconSymbol":"CD","description":"A long comet-antler dash with heal-on-hit, a light burst, and light knockback.","damage":30,"cooldown":2.85,"range":470,"durabilityMax":34,"knockback":15},{"id":"nova_seraph","name":"Nova Seraph","category":"monster","family":"Starborn","rarity":"Mythic","evolutionLine":"star_cub_line","evolutionStage":4,"evolvesFrom":"comet_deer","evolvesTo":null,"attackType":"Pierce","visualColor":"#fef08a","particleType":"star","iconSymbol":"NS","description":"A mythic angelic star beast. Piercing light burst, strong heal-on-hit, and a huge radiant trail.","damage":46,"cooldown":4.05,"range":690,"durabilityMax":48,"knockback":18},{"id":"sand_scarab","name":"Sand Scarab","category":"monster","family":"Dunesoul","rarity":"Common","evolutionLine":"sand_scarab_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"dune_jackal","attackType":"Dash","visualColor":"#d97706","particleType":"sand","iconSymbol":"SS","description":"A small scarab dash that kicks up dust on impact.","damage":16,"cooldown":2.05,"range":235,"durabilityMax":20,"knockback":8},{"id":"dune_jackal","name":"Dune Jackal","category":"monster","family":"Dunesoul","rarity":"Uncommon","evolutionLine":"sand_scarab_line","evolutionStage":2,"evolvesFrom":"sand_scarab","evolvesTo":"obsidian_sphinx","attackType":"Dash","visualColor":"#f59e0b","particleType":"sand","iconSymbol":"DJ","description":"A fast sand jackal dash with a dust Blind chance.","damage":23,"cooldown":2.35,"range":335,"duration":1.0,"durabilityMax":26,"knockback":12},{"id":"obsidian_sphinx","name":"Obsidian Sphinx","category":"monster","family":"Dunesoul","rarity":"Rare","evolutionLine":"sand_scarab_line","evolutionStage":3,"evolvesFrom":"dune_jackal","evolvesTo":"sun_pharaoh","attackType":"Pierce","visualColor":"#78350f","particleType":"sand","iconSymbol":"OS","description":"A heavy obsidian line charge that weakens enemies.","damage":35,"cooldown":3.35,"range":500,"duration":2.8,"durabilityMax":38,"knockback":24},{"id":"sun_pharaoh","name":"Sun Pharaoh","category":"monster","family":"Dunesoul","rarity":"Epic","evolutionLine":"sand_scarab_line","evolutionStage":4,"evolvesFrom":"obsidian_sphinx","evolvesTo":null,"attackType":"Pierce","visualColor":"#fbbf24","particleType":"sand","iconSymbol":"SP","description":"A golden sand beam charge with dust Blind and heavy damage.","damage":44,"cooldown":4.1,"range":650,"duration":2.3,"durabilityMax":48,"knockback":20},{"id":"bubble_slime","name":"Bubble Slime","category":"monster","family":"Tidecall","rarity":"Common","evolutionLine":"bubble_slime_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"tide_otter","attackType":"Dash","visualColor":"#38bdf8","particleType":"water","iconSymbol":"BS","description":"A short bouncing water dash with tiny knockback.","damage":13,"cooldown":1.9,"range":220,"durabilityMax":20,"knockback":10},{"id":"tide_otter","name":"Tide Otter","category":"monster","family":"Tidecall","rarity":"Uncommon","evolutionLine":"bubble_slime_line","evolutionStage":2,"evolvesFrom":"bubble_slime","evolvesTo":"leviathan_pup","attackType":"Dash","visualColor":"#0ea5e9","particleType":"water","iconSymbol":"TO","description":"A water otter dash that pushes enemies back.","damage":21,"cooldown":2.35,"range":330,"durabilityMax":27,"knockback":20},{"id":"leviathan_pup","name":"Leviathan Pup","category":"monster","family":"Tidecall","rarity":"Rare","evolutionLine":"bubble_slime_line","evolutionStage":3,"evolvesFrom":"tide_otter","evolvesTo":"abyss_leviathan","attackType":"Pierce","visualColor":"#67e8f9","particleType":"water","iconSymbol":"LP","description":"A water serpent pierce with knockback and slow.","damage":30,"cooldown":3.05,"range":560,"duration":2.2,"durabilityMax":36,"knockback":25},{"id":"abyss_leviathan","name":"Abyss Leviathan","category":"monster","family":"Tidecall","rarity":"Legendary","evolutionLine":"bubble_slime_line","evolutionStage":4,"evolvesFrom":"leviathan_pup","evolvesTo":null,"attackType":"Pierce","visualColor":"#0369a1","particleType":"water","iconSymbol":"AL","description":"A legendary huge water serpent wave with a wide line attack and strong push.","damage":45,"cooldown":4.4,"range":760,"duration":2.8,"durabilityMax":52,"knockback":44},{"id":"bone_rat","name":"Bone Rat","category":"monster","family":"Graveborn","rarity":"Common","evolutionLine":"bone_rat_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"grave_hound","attackType":"Dash","visualColor":"#e5e7eb","particleType":"bone","iconSymbol":"BR","description":"A quick skeletal dash with tiny Bleed.","damage":14,"cooldown":1.65,"range":230,"duration":2.5,"durabilityMax":18,"knockback":4},{"id":"grave_hound","name":"Grave Hound","category":"monster","family":"Graveborn","rarity":"Uncommon","evolutionLine":"bone_rat_line","evolutionStage":2,"evolvesFrom":"bone_rat","evolvesTo":"skull_wyvern","attackType":"Dash","visualColor":"#d1d5db","particleType":"bone","iconSymbol":"GH","description":"A stronger undead hound dash with reliable Bleed.","damage":24,"cooldown":2.45,"range":340,"duration":3.2,"durabilityMax":28,"knockback":13},{"id":"skull_wyvern","name":"Skull Wyvern","category":"monster","family":"Graveborn","rarity":"Rare","evolutionLine":"bone_rat_line","evolutionStage":3,"evolvesFrom":"grave_hound","evolvesTo":"reaper_cerberus","attackType":"Pierce","visualColor":"#f8fafc","particleType":"bone","iconSymbol":"SW","description":"A flying bone strike with Bleed and knockback.","damage":34,"cooldown":3.25,"range":520,"duration":4.0,"durabilityMax":37,"knockback":22},{"id":"reaper_cerberus","name":"Reaper Cerberus","category":"monster","family":"Graveborn","rarity":"Epic","evolutionLine":"bone_rat_line","evolutionStage":4,"evolvesFrom":"skull_wyvern","evolvesTo":null,"attackType":"Dash","visualColor":"#ef4444","particleType":"bone","iconSymbol":"RC","description":"A three-headed undead charge with strong Bleed and fear-like knockback.","damage":44,"cooldown":4.25,"range":440,"duration":4.8,"durabilityMax":50,"knockback":40},{"id":"paper_imp","name":"Paper Imp","category":"monster","family":"Runebound","rarity":"Common","evolutionLine":"paper_imp_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"ink_raven","attackType":"Dash","visualColor":"#f8fafc","particleType":"rune","iconSymbol":"PI","description":"A quick living-paper dash with low cooldown.","damage":12,"cooldown":1.25,"range":250,"durabilityMax":17,"knockback":4},{"id":"ink_raven","name":"Ink Raven","category":"monster","family":"Runebound","rarity":"Uncommon","evolutionLine":"paper_imp_line","evolutionStage":2,"evolvesFrom":"paper_imp","evolvesTo":"rune_golem","attackType":"Boomerang","visualColor":"#111827","particleType":"rune","iconSymbol":"IR","description":"A boomerang ink raven that lightly blinds enemies.","damage":18,"cooldown":2.6,"range":510,"duration":1.35,"durabilityMax":25,"knockback":6},{"id":"rune_golem","name":"Rune Golem","category":"monster","family":"Runebound","rarity":"Rare","evolutionLine":"paper_imp_line","evolutionStage":3,"evolvesFrom":"ink_raven","evolvesTo":"archive_dragon","attackType":"Leap","visualColor":"#38bdf8","particleType":"rune","iconSymbol":"RG","description":"A heavy magic slam that weakens and can shock enemies.","damage":36,"cooldown":3.65,"range":315,"duration":2.7,"durabilityMax":40,"knockback":28},{"id":"archive_dragon","name":"Archive Dragon","category":"monster","family":"Runebound","rarity":"Epic","evolutionLine":"paper_imp_line","evolutionStage":4,"evolvesFrom":"rune_golem","evolvesTo":null,"attackType":"Pierce","visualColor":"#60a5fa","particleType":"rune","iconSymbol":"AD","description":"A rune dragon line attack with a wide magic trail and Weaken.","damage":43,"cooldown":4.0,"range":690,"duration":3.2,"durabilityMax":48,"knockback":18},{"id":"crystal_hare","name":"Crystal Hare","category":"monster","family":"Crystalbloom","rarity":"Common","evolutionLine":"crystal_hare_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"prism_lynx","attackType":"Dash","visualColor":"#93c5fd","particleType":"ice","iconSymbol":"CH","description":"A fast glassy rabbit dash with light Frost pressure. Low damage, great poke speed.","damage":15,"cooldown":1.85,"range":270,"duration":1.7,"durabilityMax":18,"knockback":5},{"id":"prism_lynx","name":"Prism Lynx","category":"monster","family":"Crystalbloom","rarity":"Uncommon","evolutionLine":"crystal_hare_line","evolutionStage":2,"evolvesFrom":"crystal_hare","evolvesTo":"mirror_stag","attackType":"Boomerang","visualColor":"#c4b5fd","particleType":"prism","iconSymbol":"PL","description":"A returning prism-cat slash that can briefly Blind enemies while zoning narrow paths.","damage":20,"cooldown":2.45,"range":455,"duration":1.25,"durabilityMax":25,"knockback":7},{"id":"mirror_stag","name":"Mirror Stag","category":"monster","family":"Crystalbloom","rarity":"Rare","evolutionLine":"crystal_hare_line","evolutionStage":3,"evolvesFrom":"prism_lynx","evolvesTo":"aurora_chimera","attackType":"Pierce","visualColor":"#bfdbfe","particleType":"prism","iconSymbol":"MG","description":"A piercing mirror-antler charge that chills enemies and lightly heals on clean hits.","damage":31,"cooldown":3.1,"range":555,"duration":2.6,"durabilityMax":34,"knockback":12},{"id":"aurora_chimera","name":"Aurora Chimera","category":"monster","family":"Crystalbloom","rarity":"Epic","evolutionLine":"crystal_hare_line","evolutionStage":4,"evolvesFrom":"mirror_stag","evolvesTo":null,"attackType":"Cone","visualColor":"#a78bfa","particleType":"prism","iconSymbol":"AC","description":"A wide aurora cone that chills, blinds, and rewards close-range timing without one-shotting.","damage":39,"cooldown":4.2,"range":390,"duration":3.2,"durabilityMax":46,"knockback":18},{"id":"rust_bat","name":"Rust Bat","category":"monster","family":"Bloodforge","rarity":"Common","evolutionLine":"rust_bat_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"sanguine_jackal","attackType":"Dash","visualColor":"#b91c1c","particleType":"bone","iconSymbol":"RB","description":"A quick rust-wing bite with low damage but reliable Bleed pressure.","damage":13,"cooldown":1.55,"range":260,"duration":2.6,"durabilityMax":18,"knockback":4},{"id":"sanguine_jackal","name":"Sanguine Jackal","category":"monster","family":"Bloodforge","rarity":"Uncommon","evolutionLine":"rust_bat_line","evolutionStage":2,"evolvesFrom":"rust_bat","evolvesTo":"bloodglass_manticore","attackType":"Dash","visualColor":"#dc2626","particleType":"poison","iconSymbol":"SJ","description":"A blood-forged jackal dash that stacks Bleed pressure and sometimes leaves venom in the wound.","damage":24,"cooldown":2.45,"range":335,"duration":3.2,"durabilityMax":27,"knockback":10},{"id":"bloodglass_manticore","name":"Bloodglass Manticore","category":"monster","family":"Bloodforge","rarity":"Rare","evolutionLine":"rust_bat_line","evolutionStage":3,"evolvesFrom":"sanguine_jackal","evolvesTo":"blood_anvil_colossus","attackType":"Pierce","visualColor":"#ef4444","particleType":"bone","iconSymbol":"BM","description":"A piercing bloodglass tail strike. Strong duelist pressure, but balanced by moderate cooldown.","damage":35,"cooldown":3.2,"range":540,"duration":4.0,"durabilityMax":36,"knockback":16},{"id":"blood_anvil_colossus","name":"Blood Anvil Colossus","category":"monster","family":"Bloodforge","rarity":"Epic","evolutionLine":"rust_bat_line","evolutionStage":4,"evolvesFrom":"bloodglass_manticore","evolvesTo":null,"attackType":"Leap","visualColor":"#991b1b","particleType":"bone","iconSymbol":"BA","description":"A heavy blood-iron leap that weakens on impact and leaves a short bleeding rupture zone.","damage":47,"cooldown":4.45,"range":360,"duration":3.6,"durabilityMax":52,"knockback":38},{"id":"aurelia_infernal_reaper","name":"Aurelia, Infernal Reaper","category":"monster","family":"Reaperborn","rarity":"Mythic","evolutionLine":"aurelia_infernal_reaper_line","evolutionStage":4,"evolvesFrom":null,"evolvesTo":null,"attackType":"Dash","visualColor":"#a855f7","particleType":"void","iconSymbol":"AR","description":"Aurelia glides forward, carves one enemy with a scythe swipe for 40-60 damage, then drains 75% of HP taken when she returns to her caster.","damage":50,"damageMin":40,"damageMax":60,"cooldown":8.5,"range":455,"duration":2.25,"durabilityMax":28,"knockback":10},{"id":"healing_veil","name":"Healing Veil","category":"magic","rarity":"Common","effectType":"HealOverTime","visualColor":"#34d399","particleType":"healing","iconSymbol":"HV","description":"Restores health over time with soft green-cyan particles.","cooldown":7,"uses":3,"duration":4.5},{"id":"cleanse_rune","name":"Cleanse Rune","category":"magic","rarity":"Common","effectType":"Cleanse","visualColor":"#bfdbfe","particleType":"cleanse","iconSymbol":"CR","description":"Removes Burn, Poison, Bleed, Frost, Shock, Blind, Root, and Weaken.","cooldown":4,"uses":2},{"id":"wind_step","name":"Wind Step","category":"magic","rarity":"Common","effectType":"SpeedBoost","visualColor":"#7dd3fc","particleType":"wind","iconSymbol":"WS","description":"Brief movement speed burst with wind swirl particles.","cooldown":8,"uses":3,"duration":4},{"id":"mana_shield","name":"Mana Shield","category":"magic","rarity":"Uncommon","effectType":"TemporaryShield","visualColor":"#38bdf8","particleType":"shield","iconSymbol":"MS","description":"Grants temporary shield HP for a few seconds.","cooldown":9,"uses":2,"duration":6},{"id":"ice_ball","name":"Ice Ball","category":"magic","rarity":"Uncommon","effectType":"MagicProjectile","visualColor":"#67e8f9","particleType":"ice","iconSymbol":"IB","description":"Launches a slower frost projectile that chills enemies.","damage":16,"cooldown":5.5,"range":500,"uses":3,"duration":2.4},{"id":"stone_skin","name":"Stone Skin","category":"magic","rarity":"Uncommon","effectType":"DamageReduction","visualColor":"#94a3b8","particleType":"stone","iconSymbol":"SS","description":"Temporarily reduces incoming damage.","cooldown":10,"uses":2,"duration":5.5},{"id":"blink_charm","name":"Blink Charm","category":"magic","rarity":"Rare","effectType":"BlinkDash","visualColor":"#8b5cf6","particleType":"blink","iconSymbol":"BC","description":"Teleports a short distance in the aimed direction.","cooldown":5,"uses":2},{"id":"fire_ball","name":"Fire Ball","category":"magic","rarity":"Rare","effectType":"FireProjectile","visualColor":"#f97316","particleType":"flame","iconSymbol":"FB","description":"Throws a fireball that explodes and burns enemies.","damage":24,"cooldown":6,"range":520,"uses":2,"duration":2.6},{"id":"mirror_shell","name":"Mirror Shell","category":"magic","rarity":"Rare","effectType":"ReflectNextHit","visualColor":"#c084fc","particleType":"prism","iconSymbol":"MSH","description":"Reflects part of the next incoming hit back at the attacker.","cooldown":11,"uses":2,"duration":8},{"id":"life_spark","name":"Life Spark","category":"magic","rarity":"Rare","effectType":"InstantHealShield","visualColor":"#fef08a","particleType":"healing","iconSymbol":"LS","description":"Instantly heals a small amount and adds a tiny shield.","cooldown":9,"uses":2},{"id":"null_pulse","name":"Null Pulse","category":"magic","rarity":"Rare","effectType":"NullPulse","visualColor":"#e5e7eb","particleType":"cleanse","iconSymbol":"NP","description":"Clears nearby magic and monster projectiles in a small radius.","cooldown":12,"uses":2},{"id":"chain_spikes","name":"Chain Spikes","category":"magic","rarity":"Epic","effectType":"ChainSpikes","visualColor":"#94a3b8","particleType":"chain","iconSymbol":"CS","description":"Shoots three chains forward and diagonally. Can Root and pull slightly.","damage":18,"cooldown":12,"range":470,"uses":2,"duration":1.25},{"id":"prism_beam","name":"Prism Beam","category":"magic","rarity":"Epic","effectType":"PrismBeam","visualColor":"#f0abfc","particleType":"prism","iconSymbol":"PB","description":"A thin high-damage beam with long cooldown and low uses.","damage":52,"cooldown":15,"range":760,"uses":1,"duration":2.5},{"id":"phoenix_drop","name":"Phoenix Drop","category":"magic","rarity":"Legendary","effectType":"PhoenixDrop","visualColor":"#f97316","particleType":"phoenix","iconSymbol":"PD","description":"Restores a large amount of HP and grants a small shield. One use.","cooldown":18,"uses":1},{"id":"ember_lance","name":"Ember Lance","category":"magic","rarity":"Common","effectType":"FireProjectile","visualColor":"#fb923c","particleType":"flame","iconSymbol":"EL","description":"A fast low-cost fire lance. Reliable poke, not a burst finisher.","damage":15,"cooldown":4.6,"range":570,"uses":3,"duration":2.0},{"id":"venom_comet","name":"Venom Comet","category":"magic","rarity":"Uncommon","effectType":"MagicProjectile","visualColor":"#84cc16","particleType":"poison","iconSymbol":"VC","description":"A slower toxic comet with a larger splash and strong poison pressure.","damage":18,"cooldown":7,"range":520,"uses":2,"duration":4.0},{"id":"aurora_ward","name":"Aurora Ward","category":"magic","rarity":"Rare","effectType":"TemporaryShield","visualColor":"#93c5fd","particleType":"shield","iconSymbol":"AW","description":"A polished defensive shield with higher uptime cost. Best before risky crate fights or revives.","cooldown":11,"uses":2,"duration":7},{"id":"thorn_chain_barrage","name":"Thorn Chain Barrage","category":"magic","rarity":"Epic","effectType":"ChainSpikes","visualColor":"#22c55e","particleType":"thorn","iconSymbol":"TC","description":"Three thorn chains that pull and root. Strong control, modest damage, and a real cooldown.","damage":16,"cooldown":13,"range":500,"uses":2,"duration":1.35},{"id":"revenge_thorn","name":"Revenge Thorn","category":"trap","rarity":"Common","effectType":"DamageCloseAttacker","triggerType":"OnHit","visualColor":"#22c55e","particleType":"thorn","iconSymbol":"RT","description":"When hit, damages a close attacker with a thorn burst.","damage":12,"cooldown":1.5,"uses":3},{"id":"static_trap","name":"Static Trap","category":"trap","rarity":"Common","effectType":"ShockNearbyEnemy","triggerType":"EnemyClose","visualColor":"#facc15","particleType":"electric","iconSymbol":"ST","description":"Triggers when an enemy gets very close, shocking them briefly.","damage":8,"cooldown":5,"uses":2,"duration":1},{"id":"tripvine","name":"Tripvine","category":"trap","rarity":"Common","effectType":"SlowNearbyEnemy","triggerType":"EnemyClose","visualColor":"#65a30d","particleType":"thorn","iconSymbol":"TV","description":"Slows the first enemy who crosses near you.","cooldown":4.5,"uses":2,"duration":2.2},{"id":"smoke_bloom","name":"Smoke Bloom","category":"trap","rarity":"Uncommon","effectType":"SmokeCloud","triggerType":"LowHP","visualColor":"#8b5cf6","particleType":"smoke","iconSymbol":"SB","description":"Below 35% HP, creates smoke that blocks vision.","cooldown":12,"uses":1,"duration":5},{"id":"snare_circle","name":"Snare Circle","category":"trap","rarity":"Uncommon","effectType":"RootNearbyEnemy","triggerType":"EnemyClose","visualColor":"#84cc16","particleType":"thorn","iconSymbol":"SC","description":"Triggers when an enemy steps close, briefly rooting them.","cooldown":6,"uses":2,"duration":1.6},{"id":"blood_mark","name":"Blood Mark","category":"trap","rarity":"Uncommon","effectType":"RevealAttacker","triggerType":"OnHit","visualColor":"#ef4444","particleType":"player","iconSymbol":"BM","description":"Reveals the attacker for a few seconds after they hit you.","cooldown":5,"uses":2,"duration":6},{"id":"shell_ward","name":"Shell Ward","category":"trap","rarity":"Uncommon","effectType":"NextHitReduction","triggerType":"OnHit","visualColor":"#38bdf8","particleType":"shield","iconSymbol":"SW","description":"After triggering, reduces the next hit taken.","cooldown":8,"uses":2},{"id":"panic_sigil","name":"Panic Sigil","category":"trap","rarity":"Rare","effectType":"BlindAttacker","triggerType":"OnHit","visualColor":"#a855f7","particleType":"void","iconSymbol":"PS","description":"Blinds the attacker after they hit you.","cooldown":7,"uses":2,"duration":2.2},{"id":"mirror_bite","name":"Mirror Bite","category":"trap","rarity":"Rare","effectType":"ReflectMonsterAttack","triggerType":"OnHit","visualColor":"#c084fc","particleType":"prism","iconSymbol":"MB","description":"Reflects one incoming monster hit partially.","cooldown":8,"uses":2},{"id":"curse_needle","name":"Curse Needle","category":"trap","rarity":"Rare","effectType":"CurseCloseAttacker","triggerType":"OnHit","visualColor":"#84cc16","particleType":"poison","iconSymbol":"CN","description":"Poisons and weakens a close attacker.","cooldown":7,"uses":2},{"id":"frost_snap","name":"Frost Snap","category":"trap","rarity":"Rare","effectType":"FrostRootNearbyEnemy","triggerType":"EnemyClose","visualColor":"#67e8f9","particleType":"ice","iconSymbol":"FS","description":"Freezes and roots an enemy who gets too close.","damage":6,"cooldown":7,"uses":2,"duration":1.4},{"id":"decoy_rune","name":"Decoy Rune","category":"trap","rarity":"Epic","effectType":"DecoyClone","triggerType":"OnHit","visualColor":"#60a5fa","particleType":"rune","iconSymbol":"DR","description":"Creates a fake clone when hit.","cooldown":12,"uses":1,"duration":4},{"id":"last_laugh","name":"Last Laugh","category":"trap","rarity":"Epic","effectType":"LowHpExplosion","triggerType":"LowHP","visualColor":"#f97316","particleType":"flame","iconSymbol":"LL","description":"At very low HP, creates a knockback explosion.","damage":24,"cooldown":16,"uses":1,"knockback":34},{"id":"glass_tripwire","name":"Glass Tripwire","category":"trap","rarity":"Common","effectType":"SlowNearbyEnemy","triggerType":"EnemyClose","visualColor":"#93c5fd","particleType":"ice","iconSymbol":"GT","description":"A wider close-range slow trap. Good early defense, low damage pressure.","cooldown":5.2,"uses":2,"duration":2.4},{"id":"volt_tripwire","name":"Volt Tripwire","category":"trap","rarity":"Uncommon","effectType":"ShockNearbyEnemy","triggerType":"EnemyClose","visualColor":"#facc15","particleType":"electric","iconSymbol":"VT","description":"A close shock trap for stopping aggressive rushes.","damage":10,"cooldown":6.5,"uses":2,"duration":1.15},{"id":"grave_rebuke","name":"Grave Rebuke","category":"trap","rarity":"Rare","effectType":"ReflectMonsterAttack","triggerType":"OnHit","visualColor":"#e5e7eb","particleType":"bone","iconSymbol":"GR","description":"Reflects a stronger slice of an incoming hit. Defensive, but limited by uses and cooldown.","cooldown":9,"uses":2},{"id":"blood_mire_sigil","name":"Blood Mire Sigil","category":"trap","rarity":"Epic","effectType":"CurseCloseAttacker","triggerType":"OnHit","visualColor":"#dc2626","particleType":"poison","iconSymbol":"BMS","description":"Poisons and weakens a close attacker after they hit you. Strong anti-melee punishment.","cooldown":10,"uses":2},{"id":"angel_seal","name":"Angel Seal","category":"trap","rarity":"Legendary","effectType":"PreventLethalHit","triggerType":"Lethal","visualColor":"#fef08a","particleType":"star","iconSymbol":"AS","description":"Prevents one lethal hit and leaves you at 1 HP.","cooldown":30,"uses":1}]</script>
+  <script>
+function escapeCardArtText(value = "") {
+            return `${value ?? ""}`.replace(/[&<>"']/g, char => ({
+                "&": "&amp;",
+                "<": "&lt;",
+                ">": "&gt;",
+                "\"": "&quot;",
+                "'": "&#39;"
+            }[char]));
+        }
+
+        function cardArtDataUri(svg) {
+            return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+        }
+
+        function getCardArtKind(card) {
+            if (!card) return "generic";
+            if (card.id === "aurelia_infernal_reaper" || card.family === "Reaperborn") return "reaper";
+            if (card.category === "magic") return "magic";
+            if (card.category === "trap") return "trap";
+
+            const family = card.family || "";
+            if (family === "Emberkin") return "ember";
+            if (family === "Ironhide") return "iron";
+            if (family === "Frostveil") return "ice";
+            if (family === "Voltbeast") return "electric";
+            if (family === "Thornwild") return "thorn";
+            if (family === "Plaguekin") return "frog";
+            if (family === "Umbra") return "umbra";
+            if (family === "Starborn") return "star";
+            if (family === "Dunesoul") return "sand";
+            if (family === "Tidecall") return "water";
+            if (family === "Graveborn") return "bone";
+            if (family === "Runebound") return "rune";
+            if (family === "Crystalbloom") return "crystal";
+            if (family === "Bloodforge") return "blood";
+            return "generic";
+        }
+
+        function buildCardArtworkSvg(card, variant = "slot") {
+            const color = card?.visualColor || "#38bdf8";
+            const kind = getCardArtKind(card);
+            const title = escapeCardArtText(card?.name || "Card");
+            const family = escapeCardArtText(card?.family || card?.category || "Card");
+            const typeLine = card?.category === "monster" ? `STAGE ${card.evolutionStage || 1}` : (card?.category || "CARD").toUpperCase();
+            const stage = Number(card?.evolutionStage || 1);
+            const scale = card?.category === "monster" ? (0.9 + Math.min(stage, 4) * 0.07).toFixed(2) : "1";
+            const bg2 = kind === "reaper" ? "#070012" : kind === "blood" ? "#2f0509" : kind === "trap" ? "#1e1035" : kind === "magic" ? "#081331" : "#020617";
+            const bodyFill = {
+                ember: "#7c2d12",
+                iron: "#475569",
+                ice: "#1e3a8a",
+                electric: "#713f12",
+                thorn: "#14532d",
+                frog: "#3f6212",
+                umbra: "#020617",
+                star: "#312e81",
+                sand: "#78350f",
+                water: "#164e63",
+                bone: "#57534e",
+                rune: "#312e81",
+                crystal: "#1e40af",
+                blood: "#7f1d1d"
+            }[kind] || "#1e293b";
+
+            const cardId = String(card?.id || "").toLowerCase();
+            const cardName = String(card?.name || "").toLowerCase();
+            const creatureKey = `${cardId} ${cardName}`;
+            const artScale = card?.category === "monster" ? (0.9 + Math.min(stage, 4) * 0.08).toFixed(2) : scale;
+            const rareGlow = String(card?.rarity || "").toLowerCase().includes("mythic") ? ".95" : String(card?.rarity || "").toLowerCase().includes("legendary") ? ".82" : ".66";
+            const creatureShadow = `<ellipse cx="120" cy="139" rx="68" ry="13" fill="#000" opacity=".38"/>`;
+            const creatureFrame = `<path d="M36 127 C62 88 82 51 120 48 C158 51 179 88 204 127" fill="none" stroke="${color}" stroke-width="3" opacity=".22"/><circle cx="55" cy="57" r="3" fill="#fff" opacity=".5"/><circle cx="188" cy="70" r="2.5" fill="#fff" opacity=".42"/><circle cx="176" cy="39" r="2" fill="${color}" opacity="${rareGlow}"/>`;
+
+            const creatureArt = (() => {
+                if (kind === "ember") {
+                    if (/phoenix|drake|dragon/.test(creatureKey)) {
+                        return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                            <path d="M73 110 C88 72 128 62 161 92 C144 91 129 99 119 121 C104 101 88 101 73 110Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                            <path d="M103 75 C82 53 70 45 46 40 C57 70 72 92 99 98Z" fill="#fb923c" stroke="#fed7aa" stroke-width="4"/>
+                            <path d="M137 75 C158 53 173 45 196 41 C184 72 169 92 141 98Z" fill="#fb923c" stroke="#fed7aa" stroke-width="4"/>
+                            <path d="M130 68 C147 55 160 58 168 72 C154 73 146 80 139 92Z" fill="#7c2d12" stroke="#fdba74" stroke-width="4"/>
+                            <path d="M164 77 L183 68 L171 87" fill="#fef3c7" stroke="#fb923c" stroke-width="3"/>
+                            <path d="M90 117 C70 128 58 121 47 103 C68 107 83 99 99 89" fill="none" stroke="#f97316" stroke-width="8" stroke-linecap="round"/>
+                            <path d="M92 66 C99 39 121 36 114 72 C130 52 153 62 136 88" fill="#f97316" opacity=".95"/>
+                            <circle cx="151" cy="73" r="4" fill="#fff7ed"/><circle cx="152" cy="73" r="2" fill="#111827"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M55 111 C70 78 102 64 138 76 C165 84 180 105 185 123 C156 111 125 112 94 128 C75 135 60 127 55 111Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                        <path d="M75 79 L62 48 L93 66 M113 67 L135 42 L132 76" fill="${bodyFill}" stroke="#fdba74" stroke-width="4"/>
+                        <path d="M71 83 C86 59 112 61 124 82 C111 78 95 80 83 95Z" fill="#431407" opacity=".75"/>
+                        <path d="M159 98 C191 76 198 51 183 35 C177 62 160 72 141 82" fill="none" stroke="#fb923c" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M76 63 C77 42 93 39 92 65 C104 44 126 51 114 77 C131 59 151 70 132 93" fill="#f97316" opacity=".96"/>
+                        <path d="M84 121 L72 145 M121 121 L118 146 M151 116 L165 140" stroke="#fed7aa" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="92" cy="80" r="4" fill="#fff7ed"/><circle cx="93" cy="80" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "iron") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M58 112 C70 80 100 62 137 70 C164 76 181 99 185 124 C157 116 129 117 95 128 C77 134 63 128 58 112Z" fill="${bodyFill}" stroke="#cbd5e1" stroke-width="5"/>
+                        <path d="M76 82 C82 58 113 54 128 76 L116 100 L82 98Z" fill="#334155" stroke="#e2e8f0" stroke-width="5"/>
+                        <path d="M74 74 C51 53 45 39 48 26 C68 39 79 52 88 71 M125 73 C141 48 156 37 177 31 C171 55 155 68 128 82" fill="none" stroke="#e2e8f0" stroke-width="7" stroke-linecap="round"/>
+                        <path d="M95 87 H156 M105 103 H172 M77 111 L56 128 M154 88 L177 75" stroke="#94a3b8" stroke-width="5" stroke-linecap="round"/>
+                        <rect x="108" y="76" width="35" height="28" rx="5" fill="#64748b" stroke="#f8fafc" stroke-width="3"/>
+                        <circle cx="92" cy="80" r="4" fill="#f8fafc"/><circle cx="93" cy="80" r="2" fill="#020617"/>
+                    </g>`;
+                }
+
+                if (kind === "ice") {
+                    return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                        <path d="M49 118 C78 78 117 72 148 88 C174 101 190 91 196 69 C205 111 174 139 132 127 C100 119 78 119 49 118Z" fill="#1e3a8a" stroke="#bfdbfe" stroke-width="5"/>
+                        <path d="M91 79 L101 48 L113 78 M124 75 L139 38 L148 83 M156 92 L185 73 L172 103 M72 99 L49 80 L59 111" fill="#e0f2fe" stroke="#60a5fa" stroke-width="3"/>
+                        <path d="M72 109 C103 87 141 92 173 113" fill="none" stroke="#eff6ff" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+                        <circle cx="171" cy="85" r="4" fill="#f8fafc"/><circle cx="172" cy="85" r="2" fill="#082f49"/>
+                    </g>`;
+                }
+
+                if (kind === "electric") {
+                    if (/wasp|hornet|bee/.test(creatureKey)) {
+                        return `<g transform="translate(120 96) scale(${artScale}) translate(-120 -96)">${creatureFrame}${creatureShadow}
+                            <ellipse cx="99" cy="83" rx="33" ry="20" fill="#e0f2fe" stroke="#fde047" stroke-width="4" opacity=".78" transform="rotate(-24 99 83)"/>
+                            <ellipse cx="137" cy="83" rx="33" ry="20" fill="#e0f2fe" stroke="#fde047" stroke-width="4" opacity=".78" transform="rotate(24 137 83)"/>
+                            <path d="M72 101 C95 65 139 65 165 101 C145 120 92 120 72 101Z" fill="#713f12" stroke="#facc15" stroke-width="5"/>
+                            <path d="M94 79 L112 118 M121 72 L139 119 M149 83 L132 116" stroke="#fde047" stroke-width="6" stroke-linecap="round"/>
+                            <path d="M164 101 L194 111 L164 119Z" fill="#fef08a" stroke="#facc15" stroke-width="3"/>
+                            <circle cx="86" cy="91" r="4" fill="#fefce8"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                        <path d="M58 113 C75 79 111 64 145 76 C168 84 181 103 186 126 C158 114 130 116 99 128 C76 137 62 128 58 113Z" fill="#713f12" stroke="#fde047" stroke-width="5"/>
+                        <path d="M84 76 L70 44 L101 64 M120 70 L145 44 L137 78" fill="#854d0e" stroke="#fef08a" stroke-width="4"/>
+                        <path d="M151 91 L180 64 L166 93 H190 L151 134 L163 103 H141Z" fill="#facc15" stroke="#fef08a" stroke-width="3"/>
+                        <path d="M82 120 L66 145 M121 121 L115 146 M153 116 L171 140" stroke="#fef08a" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="94" cy="82" r="4" fill="#fff7ed"/><circle cx="95" cy="82" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "thorn") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M59 114 C77 78 111 63 146 78 C168 87 181 108 185 128 C155 114 123 116 95 130 C76 138 63 130 59 114Z" fill="#14532d" stroke="#86efac" stroke-width="5"/>
+                        <path d="M81 77 C79 52 67 42 53 34 M105 70 C115 47 129 35 148 26 M123 76 C146 54 162 47 184 47" stroke="#22c55e" stroke-width="6" stroke-linecap="round"/>
+                        <ellipse cx="51" cy="33" rx="8" ry="15" fill="#86efac" transform="rotate(-38 51 33)"/>
+                        <ellipse cx="150" cy="25" rx="8" ry="16" fill="#bbf7d0" transform="rotate(35 150 25)"/>
+                        <path d="M74 93 L51 83 L76 73 M156 99 L188 86 L169 112" fill="#84cc16" stroke="#dcfce7" stroke-width="3"/>
+                        <path d="M82 121 L67 145 M123 123 L119 148 M151 117 L169 139" stroke="#bbf7d0" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="94" cy="82" r="4" fill="#ecfccb"/><circle cx="95" cy="82" r="2" fill="#052e16"/>
+                    </g>`;
+                }
+
+                if (kind === "frog") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <ellipse cx="120" cy="106" rx="58" ry="38" fill="#3f6212" stroke="#bef264" stroke-width="5"/>
+                        <circle cx="86" cy="72" r="19" fill="#84cc16" stroke="#d9f99d" stroke-width="4"/>
+                        <circle cx="147" cy="72" r="19" fill="#84cc16" stroke="#d9f99d" stroke-width="4"/>
+                        <circle cx="86" cy="72" r="7" fill="#111827"/><circle cx="147" cy="72" r="7" fill="#111827"/>
+                        <path d="M93 111 C111 124 134 124 151 111" fill="none" stroke="#fefce8" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M148 111 C179 101 184 87 165 79" fill="none" stroke="#fb7185" stroke-width="5" stroke-linecap="round"/>
+                        <circle cx="101" cy="96" r="5" fill="#84cc16"/><circle cx="132" cy="100" r="6" fill="#65a30d"/><circle cx="118" cy="84" r="4" fill="#bef264"/>
+                    </g>`;
+                }
+
+                if (kind === "umbra") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M62 123 C73 78 101 50 129 64 C151 75 158 107 184 122 C150 116 121 136 94 127Z" fill="#020617" stroke="#a78bfa" stroke-width="5"/>
+                        <path d="M89 79 C72 55 59 42 40 38 C46 72 62 94 91 102Z" fill="#18122f" stroke="#c084fc" stroke-width="4"/>
+                        <path d="M135 79 C153 55 169 43 190 39 C183 72 166 94 136 102Z" fill="#18122f" stroke="#c084fc" stroke-width="4"/>
+                        <path d="M78 92 C97 70 126 71 143 94 C119 86 98 87 78 92Z" fill="#0f172a"/>
+                        <circle cx="107" cy="83" r="5" fill="#d8b4fe"/><circle cx="135" cy="84" r="5" fill="#d8b4fe"/>
+                        <path d="M82 126 C66 147 44 141 37 123 M159 122 C181 144 199 133 205 114" stroke="#7c3aed" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+                    </g>`;
+                }
+
+                if (kind === "star") {
+                    return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                        <path d="M72 119 C90 81 128 64 160 91 C145 96 134 108 124 128 C105 107 88 108 72 119Z" fill="#312e81" stroke="#c4b5fd" stroke-width="5"/>
+                        <path d="M93 78 C76 51 63 39 42 33 C49 66 65 89 93 101Z" fill="#4f46e5" stroke="#ddd6fe" stroke-width="4"/>
+                        <path d="M142 79 C160 52 176 39 198 33 C188 68 171 90 142 101Z" fill="#4f46e5" stroke="#ddd6fe" stroke-width="4"/>
+                        <path d="M121 36 L130 64 L160 64 L136 81 L146 111 L121 93 L96 111 L106 81 L82 64 L112 64Z" fill="#fef08a" opacity=".9"/>
+                        <path d="M92 119 L77 144 M124 123 L122 150 M151 113 L170 137" stroke="#e0e7ff" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="144" cy="78" r="4" fill="#fefce8"/><circle cx="145" cy="78" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "sand") {
+                    if (/scarab|beetle/.test(creatureKey)) {
+                        return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                            <ellipse cx="120" cy="98" rx="45" ry="34" fill="#78350f" stroke="#fbbf24" stroke-width="5"/>
+                            <path d="M120 64 V132 M83 94 H157 M92 78 C106 91 134 91 148 78 M92 118 C107 105 134 105 148 118" stroke="#fde68a" stroke-width="4" stroke-linecap="round"/>
+                            <path d="M82 88 L49 71 M82 105 L46 107 M91 123 L62 143 M158 88 L191 71 M158 105 L194 107 M149 123 L178 143" stroke="#f59e0b" stroke-width="6" stroke-linecap="round"/>
+                            <path d="M105 57 L120 30 L135 57" fill="#fcd34d" stroke="#fef3c7" stroke-width="3"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M61 119 C81 82 115 68 149 84 C170 94 181 112 186 132 C153 116 121 118 94 132 C75 140 65 133 61 119Z" fill="#78350f" stroke="#fbbf24" stroke-width="5"/>
+                        <path d="M86 80 L72 49 L103 66 M121 72 L145 45 L139 78" fill="#92400e" stroke="#fde68a" stroke-width="4"/>
+                        <path d="M151 86 C178 59 199 84 173 103" fill="none" stroke="#fbbf24" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M173 103 L191 111 L173 119Z" fill="#fcd34d" stroke="#fef3c7" stroke-width="3"/>
+                        <path d="M86 121 L71 145 M124 122 L121 148 M152 118 L169 140" stroke="#fde68a" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="95" cy="82" r="4" fill="#fef3c7"/><circle cx="96" cy="82" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "water") {
+                    if (/slime|bubble/.test(creatureKey)) {
+                        return `<g transform="translate(120 101) scale(${artScale}) translate(-120 -101)">${creatureFrame}${creatureShadow}
+                            <path d="M65 121 C72 82 99 61 127 67 C158 74 179 98 181 126 C155 134 90 136 65 121Z" fill="#0e7490" stroke="#67e8f9" stroke-width="5"/>
+                            <circle cx="91" cy="80" r="13" fill="#bae6fd" opacity=".75"/><circle cx="150" cy="91" r="9" fill="#cffafe" opacity=".72"/><circle cx="125" cy="64" r="6" fill="#e0f2fe" opacity=".82"/>
+                            <circle cx="103" cy="101" r="5" fill="#082f49"/><circle cx="140" cy="101" r="5" fill="#082f49"/>
+                            <path d="M105 119 C119 129 137 128 150 118" fill="none" stroke="#ecfeff" stroke-width="4" stroke-linecap="round"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M47 113 C80 73 124 70 153 93 C170 106 184 99 199 84 C194 122 160 140 119 128 C90 120 69 119 47 113Z" fill="#164e63" stroke="#67e8f9" stroke-width="5"/>
+                        <path d="M73 89 C101 105 132 105 162 88" fill="none" stroke="#bae6fd" stroke-width="5" stroke-linecap="round"/>
+                        <path d="M155 88 L190 69 L177 103" fill="#0e7490" stroke="#cffafe" stroke-width="4"/>
+                        <path d="M79 112 L58 133 M116 123 L112 149 M151 115 L173 136" stroke="#a5f3fc" stroke-width="6" stroke-linecap="round"/>
+                        <circle cx="166" cy="86" r="4" fill="#ecfeff"/><circle cx="167" cy="86" r="2" fill="#082f49"/>
+                    </g>`;
+                }
+
+                if (kind === "bone") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M61 116 C78 79 113 63 149 79 C169 88 181 106 186 128 C158 116 129 118 97 130 C78 137 65 131 61 116Z" fill="#57534e" stroke="#e7e5e4" stroke-width="5"/>
+                        <path d="M82 84 C91 61 122 60 134 81 L123 101 L89 99Z" fill="#f5f5f4" stroke="#292524" stroke-width="4"/>
+                        <circle cx="97" cy="82" r="5" fill="#111827"/><circle cx="119" cy="82" r="5" fill="#111827"/>
+                        <path d="M90 97 H126 M74 112 H153 M91 96 L78 125 M114 100 L113 130 M137 96 L153 126" stroke="#292524" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M153 89 C179 69 198 83 188 106 C176 96 166 96 153 106Z" fill="#e7e5e4" stroke="#292524" stroke-width="4"/>
+                        <path d="M78 126 L62 146 M121 128 L118 150 M153 120 L172 141" stroke="#e7e5e4" stroke-width="7" stroke-linecap="round"/>
+                    </g>`;
+                }
+
+                if (kind === "rune") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M73 119 C83 82 105 58 127 68 C149 77 156 104 176 121 C147 115 123 132 98 127Z" fill="#312e81" stroke="#c4b5fd" stroke-width="5"/>
+                        <path d="M86 78 C67 61 55 52 39 48 C45 72 61 93 89 102Z" fill="#ddd6fe" stroke="#a78bfa" stroke-width="4"/>
+                        <path d="M138 77 C156 60 171 52 191 48 C183 75 164 94 137 102Z" fill="#ddd6fe" stroke="#a78bfa" stroke-width="4"/>
+                        <circle cx="120" cy="93" r="31" fill="none" stroke="#ddd6fe" stroke-width="4"/>
+                        <path d="M120 62 V124 M91 93 H149 M99 72 L141 114 M141 72 L99 114" stroke="#a78bfa" stroke-width="4" stroke-linecap="round"/>
+                        <text x="120" y="103" text-anchor="middle" font-family="serif" font-size="34" fill="#f5f3ff">R</text>
+                    </g>`;
+                }
+
+                if (kind === "crystal") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M64 120 C79 82 113 63 148 83 C169 94 181 113 184 131 C155 118 125 120 96 133 C77 141 67 134 64 120Z" fill="#1e40af" stroke="#bfdbfe" stroke-width="5"/>
+                        <path d="M91 74 L105 35 L121 75 M124 76 L146 39 L151 88 M72 99 L47 79 L60 112 M157 100 L190 83 L171 116" fill="#bfdbfe" stroke="#60a5fa" stroke-width="3"/>
+                        <path d="M101 89 L122 62 L142 90 L132 126 L108 126Z" fill="#dbeafe" stroke="#93c5fd" stroke-width="4" opacity=".9"/>
+                        <path d="M122 62 V126 M101 89 H142" stroke="#eff6ff" stroke-width="3" opacity=".85"/>
+                        <circle cx="94" cy="84" r="4" fill="#eff6ff"/><circle cx="95" cy="84" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "blood") {
+                    if (/bat/.test(creatureKey)) {
+                        return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                            <path d="M118 82 C93 55 68 47 40 54 C55 74 62 98 67 124 C86 105 100 96 118 98Z" fill="#450a0a" stroke="#fca5a5" stroke-width="4"/>
+                            <path d="M122 82 C148 55 174 47 201 54 C186 74 179 98 174 124 C155 105 140 96 122 98Z" fill="#450a0a" stroke="#fca5a5" stroke-width="4"/>
+                            <path d="M92 101 C102 75 136 75 148 101 C137 121 104 122 92 101Z" fill="#7f1d1d" stroke="#ef4444" stroke-width="5"/>
+                            <path d="M108 78 L100 55 L119 72 M132 78 L145 55 L140 82" fill="#991b1b" stroke="#fecaca" stroke-width="3"/>
+                            <circle cx="112" cy="91" r="4" fill="#fecaca"/><circle cx="132" cy="91" r="4" fill="#fecaca"/>
+                        </g>`;
+                    }
+
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M58 116 C74 78 112 62 149 80 C170 91 183 111 188 131 C158 115 126 118 96 132 C76 140 62 132 58 116Z" fill="#7f1d1d" stroke="#ef4444" stroke-width="5"/>
+                        <path d="M80 78 L63 49 L96 66 M119 70 L145 45 L137 79" fill="#991b1b" stroke="#fecaca" stroke-width="4"/>
+                        <path d="M152 92 L188 76 L170 105 L194 118 L160 120" fill="#991b1b" stroke="#fca5a5" stroke-width="4"/>
+                        <path d="M117 42 C143 69 135 92 117 96 C99 84 101 60 117 42Z" fill="#dc2626" stroke="#fecaca" stroke-width="3"/>
+                        <path d="M85 122 L69 146 M123 124 L120 150 M154 117 L172 141" stroke="#fecaca" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="94" cy="82" r="4" fill="#fee2e2"/><circle cx="95" cy="82" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                    <path d="M58 112 C72 78 104 62 138 73 C166 82 181 104 186 126 C157 114 128 116 98 130 C78 138 63 130 58 112Z" fill="${bodyFill}" stroke="${color}" stroke-width="5"/>
+                    <path d="M78 78 L59 49 L92 65 M116 68 L140 43 L134 77" fill="${bodyFill}" stroke="${color}" stroke-width="4"/>
+                    <path d="M159 102 C192 84 198 61 180 48" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M84 121 L69 146 M123 122 L119 148 M153 116 L171 140" stroke="${color}" stroke-width="7" stroke-linecap="round"/>
+                    <circle cx="94" cy="82" r="4" fill="#f8fafc"/><circle cx="95" cy="82" r="2" fill="#020617"/>
+                </g>`;
+            })();
+
+            const art = (() => {
+                if (kind === "reaper") {
+                    return `<g transform="translate(120 96) scale(${scale}) translate(-120 -96)">
+                        <ellipse cx="120" cy="142" rx="70" ry="15" fill="#000" opacity=".44"/>
+                        <path d="M58 139 C64 83 88 39 119 35 C152 36 175 83 184 139 C159 127 139 132 120 149 C101 132 82 127 58 139Z" fill="#020617" stroke="${color}" stroke-width="5"/>
+                        <path d="M75 137 L88 111 L97 145 L111 116 L121 150 L135 116 L147 145 L156 111 L171 137 C151 128 133 134 120 148 C104 134 88 128 75 137Z" fill="#0f172a" opacity=".95"/>
+                        <path d="M86 75 C91 45 108 31 122 31 C138 31 154 47 158 76 C142 62 103 62 86 75Z" fill="#050816" stroke="#475569" stroke-width="5"/>
+                        <path d="M97 75 C102 58 137 58 144 76 C138 94 104 94 97 75Z" fill="#f8fafc" stroke="#0f172a" stroke-width="4"/>
+                        <path d="M109 76 C112 72 117 72 119 77 C115 81 111 81 109 76Z M126 77 C129 72 134 72 137 77 C133 82 129 82 126 77Z" fill="#020617"/>
+                        <path d="M116 88 H129 M112 94 C118 98 127 98 134 94" stroke="#020617" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M105 105 H137 M111 113 H132 M116 121 H128" stroke="#e5e7eb" stroke-width="4" stroke-linecap="round" opacity=".75"/>
+                        <path d="M92 96 C71 83 57 71 39 54" fill="none" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M39 54 C64 48 90 36 116 19 C101 31 84 48 71 68" fill="none" stroke="#e5e7eb" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M116 19 C86 22 57 34 39 54" fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M145 96 C163 86 178 78 195 66" fill="none" stroke="#f8fafc" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M180 76 C191 75 202 81 210 92" stroke="#e5e7eb" stroke-width="4" stroke-linecap="round" opacity=".75"/>
+                        <path d="M72 123 C91 113 105 116 120 130 C136 116 153 113 173 124" fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" opacity=".92"/>
+                        <path d="M55 119 C39 103 42 88 61 80 M185 121 C205 105 200 88 180 80" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" opacity=".45"/>
+                        <circle cx="96" cy="47" r="3" fill="${color}" opacity=".8"/><circle cx="151" cy="51" r="2.5" fill="#fff" opacity=".65"/>
+                    </g>`;
+                }
+
+                if (kind === "magic") {
+                    return `<circle cx="120" cy="88" r="47" fill="none" stroke="${color}" stroke-width="5"/><circle cx="120" cy="88" r="27" fill="none" stroke="#e0f2fe" stroke-width="3"/><path d="M120 39 L164 115 H76Z" fill="none" stroke="${color}" stroke-width="4"/><path d="M80 88 H160 M120 41 V135" stroke="#bfdbfe" stroke-width="3" stroke-linecap="round"/><circle cx="120" cy="88" r="9" fill="#fefce8"/>`;
+                }
+
+                if (kind === "trap") {
+                    return `<path d="M72 125 L120 44 L168 125Z" fill="#1e1b4b" stroke="${color}" stroke-width="6"/><circle cx="120" cy="93" r="25" fill="#020617" stroke="#e9d5ff" stroke-width="4"/><path d="M83 125 L105 96 M157 125 L135 96 M120 44 V93" stroke="#c4b5fd" stroke-width="5" stroke-linecap="round"/><circle cx="120" cy="93" r="8" fill="${color}"/>`;
+                }
+
+                return creatureArt;
+            })();
+
+            return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-label="${title}">
+                <defs>
+                    <radialGradient id="cardBg" cx="50%" cy="30%" r="75%">
+                        <stop offset="0%" stop-color="${color}" stop-opacity=".68"/>
+                        <stop offset="48%" stop-color="${bg2}" stop-opacity=".94"/>
+                        <stop offset="100%" stop-color="#020617"/>
+                    </radialGradient>
+                    <filter id="cardGlow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                </defs>
+                <rect width="240" height="180" fill="url(#cardBg)"/>
+                <path d="M0 152 C40 130 76 146 118 130 C163 113 201 133 240 112 V180 H0Z" fill="#020617" opacity=".52"/>
+                <g opacity=".2" stroke="#fff" stroke-width="1">${Array.from({ length: 9 }, (_, i) => `<path d="M${i * 30 - 20} 0 L${i * 30 + 45} 180"/>`).join("")}</g>
+                <g filter="url(#cardGlow)">${art}</g>
+                <rect x="8" y="8" width="224" height="164" rx="8" fill="none" stroke="#ffffff" stroke-opacity=".16"/>
+                <rect x="0" y="0" width="240" height="34" fill="#020617" opacity=".62"/>
+                <text x="13" y="22" font-family="Orbitron, Arial, sans-serif" font-size="11" font-weight="900" fill="#ffffff">${family}</text>
+                <text x="227" y="22" text-anchor="end" font-family="Orbitron, Arial, sans-serif" font-size="10" font-weight="900" fill="${color}">${typeLine}</text>
+                <text x="120" y="166" text-anchor="middle" font-family="Orbitron, Arial, sans-serif" font-size="12" font-weight="900" fill="#f8fafc">${title}</text>
+            </svg>`;
+        }
+
+        
+
+    const CARD_POOL = JSON.parse(document.getElementById("duelio-card-data").textContent);
+    const rarityOrder = { Common:1, Uncommon:2, Rare:3, Epic:4, Legendary:5, Mythic:6 };
+    const featuredIds = ["aurelia_infernal_reaper","nova_seraph","neon_kirin","abyss_leviathan","infernal_fenrir","absolute_hydra","eclipse_monarch","blood_anvil_colossus","titan_breaker","reaper_cerberus","archive_dragon","aurora_chimera"];
+    const effectIds = ["infernal_fenrir","absolute_hydra","neon_kirin","elder_thorn_king","pestilent_king","eclipse_monarch","aurelia_infernal_reaper","healing_veil","mana_burst"];
+    const categoryLabels = { monster:"Creatures", magic:"Magic", trap:"Traps" };
+    const shortFamilyCopy = { Emberkin:"fast fire pressure", Ironhide:"heavy armor and knockback", Frostveil:"cold control and slows", Voltbeast:"speed, shock, and chase", Thornwild:"roots, poison, and plant pressure", Plaguekin:"poison and nasty trades", Umbra:"shadow plays and dark pressure", Starborn:"cosmic burst damage", Dunesoul:"sand, sun, and control", Tidecall:"water pressure and big finishers", Graveborn:"bones, bleed, and fear", Runebound:"runes, paper, and weird tricks", Crystalbloom:"clean crystal burst", Bloodforge:"blood iron and heavy hits", Reaperborn:"mythic reaper energy" };
+
+    function byId(id) { return CARD_POOL.find(card => card.id === id); }
+    function cardSort(a,b) { return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0) || (b.evolutionStage || 0) - (a.evolutionStage || 0) || a.name.localeCompare(b.name); }
+    function text(value) { return String(value ?? ""); }
+
+    function makeCard(card, compact = false) {
+      const color = card.visualColor || "#67e8f9";
+      const img = cardArtDataUri(buildCardArtworkSvg(card, compact ? "mini" : "detail"));
+      const damageText = card.damageMin && card.damageMax ? `${card.damageMin}-${card.damageMax} DMG` : card.damage ? `${card.damage} DMG` : card.effectType || card.triggerType || "Utility";
+      return `
+        <article class="creature-card" style="--card-color:${color}">
+          <div class="card-art-frame"><img src="${img}" alt="${escapeCardArtText(card.name)} card art" loading="lazy"></div>
+          <div class="card-info">
+            <h3>${card.name}</h3>
+            <div class="card-meta-row">
+              <span class="card-chip rarity-${card.rarity}">${card.rarity || "Card"}</span>
+              <span class="card-chip">${card.family || categoryLabels[card.category] || card.category}</span>
+              <span class="card-chip">${damageText}</span>
+            </div>
+            <p>${card.description || "A Duel.io card with its own timing, color, and match use."}</p>
+          </div>
+        </article>`;
+    }
+
+    function renderHero() {
+      const stackIds = ["infernal_fenrir","neon_kirin","aurelia_infernal_reaper","absolute_hydra"];
+      document.getElementById("hero-card-stack").innerHTML = stackIds.map(id => makeCard(byId(id) || CARD_POOL[0], true)).join("");
+    }
+
+    function renderStats() {
+      document.getElementById("stat-creatures").textContent = CARD_POOL.filter(c => c.category === "monster").length;
+      document.getElementById("stat-magic").textContent = CARD_POOL.filter(c => c.category === "magic").length;
+      document.getElementById("stat-traps").textContent = CARD_POOL.filter(c => c.category === "trap").length;
+    }
+
+    function renderFeatured() {
+      const cards = featuredIds.map(byId).filter(Boolean);
+      document.getElementById("featured-card-grid").innerHTML = cards.map(card => makeCard(card)).join("");
+    }
+
+    function renderFamilies() {
+      const monsters = CARD_POOL.filter(c => c.category === "monster");
+      const families = [...new Set(monsters.map(c => c.family).filter(Boolean))];
+      document.getElementById("family-grid").innerHTML = families.map(family => {
+        const line = monsters.filter(c => c.family === family).sort((a,b) => (a.evolutionStage || 0) - (b.evolutionStage || 0));
+        const boss = [...line].sort(cardSort)[0] || line[0];
+        const names = line.map(c => `<span class="card-chip rarity-${c.rarity}">${c.name}</span>`).join("");
+        return `<article class="family-card">
+          ${makeCard(boss, true)}
+          <div class="family-copy"><h3>${family}</h3><p>${shortFamilyCopy[family] || "a creature line with its own match identity"}. The line goes from early-match pressure to a much louder final form.</p><div class="evo-line">${names}</div></div>
+        </article>`;
+      }).join("");
+    }
+
+    function renderEffects() {
+      const cards = effectIds.map(byId).filter(Boolean);
+      document.getElementById("effect-grid").innerHTML = cards.map((card, index) => {
+        const color = card.visualColor || "#67e8f9";
+        const rot = ["-8deg","14deg","0deg","-18deg","22deg","8deg","-26deg","0deg","12deg"][index % 9];
+        return `<article class="effect-card" style="--fx-color:${color}; --fx-rot:${rot}">
+          <div class="effect-stage" aria-hidden="true"><span class="fx-orb" style="--i:0;--j:1"></span><span class="fx-orb" style="--i:2;--j:0"></span><span class="fx-orb" style="--i:4;--j:2"></span><span class="fx-orb" style="--i:5;--j:1"></span></div>
+          <h3>${card.name}</h3>
+          <p>${card.particleType || "card"} style • ${card.attackType || card.effectType || card.triggerType || "utility"}</p>
+        </article>`;
+      }).join("");
+    }
+
+    let activeFilter = "all";
+    function renderControls() {
+      const filters = ["all","monster","magic","trap","Common","Uncommon","Rare","Epic","Legendary","Mythic"];
+      document.getElementById("library-controls").innerHTML = filters.map(filter => `<button class="filter-btn ${activeFilter === filter ? "active" : ""}" type="button" data-filter="${filter}">${filter === "all" ? "All Cards" : filter === "monster" ? "Creatures" : filter}</button>`).join("");
+      document.querySelectorAll(".filter-btn").forEach(btn => btn.addEventListener("click", () => { activeFilter = btn.dataset.filter; renderLibrary(); renderControls(); }));
+    }
+
+    function renderLibrary() {
+      const cards = CARD_POOL.filter(card => activeFilter === "all" || card.category === activeFilter || card.rarity === activeFilter).sort(cardSort);
+      document.getElementById("library-grid").innerHTML = cards.map(card => makeCard(card, true)).join("");
+    }
+
+    renderHero();
+    renderStats();
+    renderFeatured();
+    renderFamilies();
+    renderEffects();
+    renderControls();
+    renderLibrary();
+  </script>
+</body>
+</html>
