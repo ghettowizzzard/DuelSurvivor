@@ -233,8 +233,13 @@ if (RANKED_STORAGE_DRIVER === "upstash" && !RANKED_UPSTASH_ENABLED) {
 
 const PARTY_MAX_SIZE = 4;
 const MATCH_TOTAL_SLOTS = 100;
-const MATCH_BOT_MIN = 40;
-const MATCH_BOT_MAX = 99;
+const MATCH_HUMAN_RESERVED_SLOTS = 15;
+const MATCH_BOT_MIN = 25;
+const MATCH_BOT_COMMON_MAX = 68;
+const MATCH_BOT_HIGH_MIN = 69;
+const MATCH_BOT_HIGH_MAX = 80;
+const MATCH_BOT_MAX = 85;
+const MATCH_BOT_RARE_MAX_CHANCE = 0.10;
 const ONLINE_QUEUE_MS = 15000;
 const WORLD_SNAPSHOT_MIN_MS = 160;
 const PROFILE_MAX_LEVEL = 100;
@@ -261,24 +266,33 @@ function clampNumber(value, min, max) {
 
 function rollMatchBotTarget(humanCount = 1) {
   const safeHumanCount = Math.max(1, Number(humanCount) || 1);
-  const maxBotsForSlots = Math.max(0, MATCH_TOTAL_SLOTS - safeHumanCount);
+  const reservedCap = Math.max(0, MATCH_TOTAL_SLOTS - safeHumanCount);
+  const preferredCap = Math.max(0, MATCH_TOTAL_SLOTS - safeHumanCount - MATCH_HUMAN_RESERVED_SLOTS + Math.min(safeHumanCount, MATCH_HUMAN_RESERVED_SLOTS));
+  const maxBotsForSlots = Math.min(MATCH_BOT_MAX, reservedCap, Math.max(MATCH_BOT_MIN, preferredCap));
+
   if (maxBotsForSlots <= 0) return 0;
 
   const minBots = Math.min(MATCH_BOT_MIN, maxBotsForSlots);
   const activeOnline = Math.max(safeHumanCount, players.size || safeHumanCount);
   const popularityRatio = clampNumber((activeOnline - safeHumanCount) / Math.max(1, MATCH_TOTAL_SLOTS - safeHumanCount), 0, 1);
-  const lowPopulationTarget = MATCH_BOT_MIN + Math.round((MATCH_BOT_MAX - MATCH_BOT_MIN) * (1 - popularityRatio));
-  const jitter = Math.floor(Math.random() * 17) - 8;
 
-  let target = clampNumber(lowPopulationTarget + jitter, minBots, maxBotsForSlots);
+  let low = minBots;
+  let high = Math.min(MATCH_BOT_COMMON_MAX, maxBotsForSlots);
+  const roll = Math.random();
 
-  if (Math.random() < (popularityRatio < 0.18 ? 0.22 : 0.08)) {
-    target = maxBotsForSlots;
-  } else if (Math.random() < 0.12) {
-    target = clampNumber(target - Math.floor(Math.random() * 18), minBots, maxBotsForSlots);
+  if (roll > 1 - MATCH_BOT_RARE_MAX_CHANCE) {
+    low = Math.min(MATCH_BOT_HIGH_MAX, maxBotsForSlots);
+    high = maxBotsForSlots;
+  } else if (roll > 0.70) {
+    low = Math.min(MATCH_BOT_HIGH_MIN, maxBotsForSlots);
+    high = Math.min(MATCH_BOT_HIGH_MAX, maxBotsForSlots);
   }
 
-  return Math.round(target);
+  const popularityTrim = Math.round(popularityRatio * 18);
+  high = Math.max(low, high - popularityTrim);
+
+  const target = low + Math.floor(Math.random() * Math.max(1, high - low + 1));
+  return Math.round(clampNumber(target, minBots, maxBotsForSlots));
 }
 
 function getMatchBotTarget(match, humanCount = getMatchHumanCount(match)) {
