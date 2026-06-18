@@ -7097,6 +7097,28 @@ ${mpState.connectionError ? `
             return perfDetectDeviceClass().preset;
         }
 
+        function perfIsMobileRuntime() {
+            const device = perfState?.deviceClass;
+            return !!(
+                device?.mobile ||
+                /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+                (window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
+            );
+        }
+
+        function perfGetMobileSimulationBudget() {
+            if (!perfIsMobileRuntime()) return Infinity;
+
+            const preset = perfSettings?.preset || perfState?.deviceClass?.preset || "medium";
+            const pressure = typeof perfGetFramePressure === "function" ? perfGetFramePressure() : 0;
+            const base =
+                preset === "high" ? 54 :
+                preset === "medium" ? 42 :
+                30;
+
+            return Math.max(22, Math.round(base - pressure * 14));
+        }
+
         function perfSaveSettings() {
             try {
                 localStorage.setItem(PERF_STORAGE_KEY, JSON.stringify(perfSettings));
@@ -7199,7 +7221,17 @@ ${mpState.connectionError ? `
         function perfGetViewportCoverScale() {
             const logicalW = Math.max(320, perfGetLogicalCanvasWidth());
             const logicalH = Math.max(240, perfGetLogicalCanvasHeight());
-            return Math.max(logicalW / DS_FIXED_VIEWPORT_WIDTH, logicalH / DS_FIXED_VIEWPORT_HEIGHT, 0.55);
+            const baseCover = Math.max(logicalW / DS_FIXED_VIEWPORT_WIDTH, logicalH / DS_FIXED_VIEWPORT_HEIGHT, 0.55);
+            const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+                (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+            const portrait = logicalH > logicalW * 1.08;
+
+            if (mobile && portrait) {
+                const minPortraitWorldWidth = 900;
+                return Math.min(baseCover, Math.max(0.42, logicalW / minPortraitWorldWidth));
+            }
+
+            return baseCover;
         }
 
         function perfGetCameraScale() {
@@ -7893,7 +7925,9 @@ ${mpState.connectionError ? `
 
             let interval = perfSettings.botFarTickMs;
 
-            const localCombatBubble = dist < 720;
+            const mobileRuntime = typeof perfIsMobileRuntime === "function" && perfIsMobileRuntime();
+            const pressure = typeof perfGetFramePressure === "function" ? perfGetFramePressure() : 0;
+            const localCombatBubble = dist < (mobileRuntime ? 540 : 720);
 
             if (teammate || bot.isDowned || threatened || visible || localCombatBubble) {
                 interval = perfSettings.botNearTickMs;
@@ -7903,9 +7937,17 @@ ${mpState.connectionError ? `
                 interval = Math.max(perfSettings.botMidTickMs, Math.round(perfSettings.botFarTickMs * 0.72));
             }
 
+            if (!teammate) {
+                const tickScale = mobileRuntime
+                    ? 1.2 + pressure * 2.1 + (!visible && dist > 900 ? 0.65 : 0)
+                    : 1 + pressure * 0.45;
+
+                interval = Math.round(interval * tickScale);
+            }
+
             perfWatchdogWakeBot(bot, time, index);
 
-            const jitter = (index % 11) * 3;
+            const jitter = (index % 11) * (mobileRuntime ? 7 : 3);
             const nextAllowed = bot.perfNextAiTime || 0;
 
             if (time < nextAllowed) {
@@ -20908,17 +20950,19 @@ function spawnBuildingLootCrates() {
 
         function rollLocalLobbyBotTarget() {
             const maxBots = Math.max(0, LOBBY_FILL_CONFIG.totalSlots - 1);
-            const minBots = Math.min(LOBBY_FILL_CONFIG.minBotTarget, maxBots);
+            const runtimeBotCap = Math.min(maxBots, perfGetMobileSimulationBudget());
+            const maxTarget = Math.max(1, Number.isFinite(runtimeBotCap) ? runtimeBotCap : maxBots);
+            const minBots = Math.min(LOBBY_FILL_CONFIG.minBotTarget, maxTarget);
             const onlinePressure = clamp01((mpState.onlinePlayers?.length || 0) / Math.max(1, LOBBY_FILL_CONFIG.totalSlots));
             const base = LOBBY_FILL_CONFIG.minBotTarget + Math.round((LOBBY_FILL_CONFIG.maxBotTarget - LOBBY_FILL_CONFIG.minBotTarget) * (1 - onlinePressure));
             const jitter = Math.floor(Math.random() * 19) - 9;
 
-            let target = Math.round(clamp(base + jitter, minBots, maxBots));
+            let target = Math.round(clamp(base + jitter, minBots, maxTarget));
 
             if (Math.random() < (onlinePressure < 0.18 ? 0.22 : 0.08)) {
-                target = maxBots;
+                target = maxTarget;
             } else if (Math.random() < 0.14) {
-                target = Math.round(clamp(target - (8 + Math.random() * 20), minBots, maxBots));
+                target = Math.round(clamp(target - (8 + Math.random() * 20), minBots, maxTarget));
             }
 
             return target;
