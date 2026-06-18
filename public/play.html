@@ -20937,35 +20937,57 @@ function spawnBuildingLootCrates() {
 
         const LOBBY_FILL_CONFIG = {
             totalSlots: 100,
+            reservedHumanSlots: 15,
             visibleWarmupBots: 3,
-            minBotTarget: 40,
-            maxBotTarget: 99,
+            minBotTarget: 25,
+            commonBotTargetMax: 68,
+            highBotTargetMin: 69,
+            highBotTargetMax: 80,
+            maxBotTarget: 85,
+            rareMaxBotChance: 0.10,
             primaryFillMinMs: 30000,
-            primaryFillMaxMs: 42000,
+            primaryFillMaxMs: 46000,
             countdownSeconds: 15
         };
 
         let lobbyBotTarget = 59;
         let lobbyPrimaryBotTarget = 40;
 
+        function getLobbyRuntimeBotCap() {
+            const reserveCap = Math.max(0, LOBBY_FILL_CONFIG.totalSlots - 1 - (LOBBY_FILL_CONFIG.reservedHumanSlots || 0));
+            const configCap = Math.min(LOBBY_FILL_CONFIG.maxBotTarget, reserveCap);
+            const mobileBudget = typeof perfGetMobileSimulationBudget === "function"
+                ? perfGetMobileSimulationBudget()
+                : Infinity;
+
+            return Math.max(
+                LOBBY_FILL_CONFIG.visibleWarmupBots,
+                Math.min(configCap, Number.isFinite(mobileBudget) ? mobileBudget : configCap)
+            );
+        }
+
         function rollLocalLobbyBotTarget() {
-            const maxBots = Math.max(0, LOBBY_FILL_CONFIG.totalSlots - 1);
-            const runtimeBotCap = Math.min(maxBots, perfGetMobileSimulationBudget());
-            const maxTarget = Math.max(1, Number.isFinite(runtimeBotCap) ? runtimeBotCap : maxBots);
-            const minBots = Math.min(LOBBY_FILL_CONFIG.minBotTarget, maxTarget);
+            const maxTarget = getLobbyRuntimeBotCap();
+            const minTarget = Math.min(LOBBY_FILL_CONFIG.minBotTarget, maxTarget);
             const onlinePressure = clamp01((mpState.onlinePlayers?.length || 0) / Math.max(1, LOBBY_FILL_CONFIG.totalSlots));
-            const base = LOBBY_FILL_CONFIG.minBotTarget + Math.round((LOBBY_FILL_CONFIG.maxBotTarget - LOBBY_FILL_CONFIG.minBotTarget) * (1 - onlinePressure));
-            const jitter = Math.floor(Math.random() * 19) - 9;
 
-            let target = Math.round(clamp(base + jitter, minBots, maxTarget));
+            let low = minTarget;
+            let high = Math.min(LOBBY_FILL_CONFIG.commonBotTargetMax, maxTarget);
+            const roll = Math.random();
 
-            if (Math.random() < (onlinePressure < 0.18 ? 0.22 : 0.08)) {
-                target = maxTarget;
-            } else if (Math.random() < 0.14) {
-                target = Math.round(clamp(target - (8 + Math.random() * 20), minBots, maxTarget));
+            if (roll > 1 - LOBBY_FILL_CONFIG.rareMaxBotChance) {
+                low = Math.min(LOBBY_FILL_CONFIG.highBotTargetMax, maxTarget);
+                high = maxTarget;
+            } else if (roll > 0.70) {
+                low = Math.min(LOBBY_FILL_CONFIG.highBotTargetMin, maxTarget);
+                high = Math.min(LOBBY_FILL_CONFIG.highBotTargetMax, maxTarget);
             }
 
-            return target;
+            const pressureTrim = Math.round(onlinePressure * 18);
+            high = Math.max(low, high - pressureTrim);
+
+            const target = low + Math.floor(Math.random() * Math.max(1, high - low + 1));
+            return Math.round(clamp(target, minTarget, maxTarget));
         }
 
         function configureLobbyBotTargets(mode = mpState.matchMode) {
@@ -30342,7 +30364,15 @@ document.getElementById('game-timer-label').textContent = "DUELISTS FOUND";
                     getAliveBotCount() < getLobbyBotTarget()
                 ) {
                     spawnLobbyBot();
-                    lobbyNextBotFillAt = time + Math.random() * 450 + 450;
+
+                    const aliveBots = getAliveBotCount();
+                    const slowMidFill = aliveBots >= 40 && aliveBots < 60;
+                    const lateFill = aliveBots >= getLobbyPrimaryBotTarget();
+
+                    const minDelay = slowMidFill ? 900 : lateFill ? 1150 : 520;
+                    const maxDelay = slowMidFill ? 1800 : lateFill ? 2400 : 980;
+
+                    lobbyNextBotFillAt = time + minDelay + Math.random() * (maxDelay - minDelay);
                 }
 
                 if (needsNpcTeammates) {
