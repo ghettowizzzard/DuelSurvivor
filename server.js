@@ -635,7 +635,7 @@ function publicPlayer(p) {
     voiceMuted: !!p.voiceMuted,
     voiceMode: p.voiceMode || "ptt",
     voiceRange: Number(p.voiceRange || 650),
-    seasonRewards: rankedRewardInbox.get(p.playerId) || []
+    seasonRewards: rankedFilterRewardsForPlayer(p.playerId)
   };
 }
 
@@ -691,6 +691,36 @@ function getRankedSeasonInfo(time = Date.now()) {
     endAt,
     updatedAt: Date.now()
   };
+}
+
+function rankedSeasonIndexFromId(seasonId = "") {
+  const match = String(seasonId || "").match(/ranked_(\d+)/i);
+  return match ? Number(match[1]) || 0 : 0;
+}
+
+function rankedIsRewardExpired(reward, time = Date.now()) {
+  const rewardSeasonIndex = rankedSeasonIndexFromId(reward?.seasonId);
+  if (!rewardSeasonIndex) return false;
+  return getRankedSeasonInfo(time).index >= rewardSeasonIndex + 2;
+}
+
+function rankedFilterRewardsForPlayer(playerId, options = {}) {
+  const rewards = rankedRewardInbox.get(playerId) || [];
+  const includeClaimed = !!options.includeClaimed;
+  let changed = false;
+
+  const fresh = rewards.filter(reward => {
+    const expired = rankedIsRewardExpired(reward);
+    if (expired) changed = true;
+    return !expired;
+  });
+
+  if (changed) {
+    rankedRewardInbox.set(playerId, fresh);
+    rankedScheduleSave();
+  }
+
+  return fresh.filter(reward => includeClaimed || !reward.claimed);
 }
 
 function defaultServerRankedBucket() {
@@ -1278,11 +1308,15 @@ function rankedRewardForPosition(position = 999, mode = "solo") {
 function rankedQueueReward(playerId, reward) {
   if (!playerId || !reward?.id) return;
 
-  const rewards = rankedRewardInbox.get(playerId) || [];
+  const rewards = rankedFilterRewardsForPlayer(playerId, { includeClaimed: true });
   if (rewards.some(existing => existing.id === reward.id)) return;
+
+  const seasonIndex = rankedSeasonIndexFromId(reward.seasonId);
 
   rewards.push({
     ...reward,
+    seasonIndex,
+    expiresAfterSeasonIndex: seasonIndex ? seasonIndex + 1 : null,
     claimed: false,
     paidAt: null,
     createdAt: Date.now()
@@ -1480,6 +1514,9 @@ function getLeaderboardPayload() {
     rankedSolo: sortedRankedLeaderboardRows("solo"),
     rankedDuo: sortedRankedLeaderboardRows("duo"),
     rankedSeason: getRankedSeasonInfo(),
+    rankedArchives: [...rankedSeasonArchives.values()]
+      .sort((a, b) => Number(b.finalizedAt || 0) - Number(a.finalizedAt || 0))
+      .slice(0, 8),
     updatedAt: Date.now()
   };
 }
@@ -2814,6 +2851,34 @@ socket.on("matchLocalDeath", data => {
     socket.emit("profileAssigned", publicPlayer(p));
     broadcastOnlineList();
     broadcastLeaderboards();
+  });
+
+  socket.on("claimRankedSeasonReward", (data = {}, cb) => {
+    const p = getPlayer(socket.id);
+    if (!p?.playerId) return cb?.({ ok: false, error: "Player profile not ready." });
+
+    const rewardId = String(data?.rewardId || "").trim();
+    const rewards = rankedFilterRewardsForPlayer(p.playerId, { includeClaimed: true });
+    const reward = rewards.find(entry => entry.id === rewardId);
+
+    if (!reward) return cb?.({ ok: false, error: "Reward not found or expired." });
+    if (reward.claimed) return cb?.({ ok: false, error: "Reward already claimed." });
+    if (rankedIsRewardExpired(reward)) return cb?.({ ok: false, error: "Reward expired." });
+
+    reward.claimed = true;
+    reward.paidAt = Date.now();
+
+    p.gold = Number(p.gold || 0) + safeStatInt(reward.gold);
+    p.gems = Number(p.gems || 0) + safeStatInt(reward.gems);
+
+    rankedRewardInbox.set(p.playerId, rewards);
+    rankedScheduleSave();
+
+    const publicProfile = publicPlayer(p);
+    socket.emit("profileAssigned", publicProfile);
+    cb?.({ ok: true, reward, profile: publicProfile });
+
+    broadcastOnlineList();
   });
 
   socket.on("leaderboardRequest", () => {
