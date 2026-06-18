@@ -49,7 +49,23 @@
     .card-art-frame img { width:100%; height:100%; object-fit:cover; display:block; }
     .card-art-frame::after { content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,.10),transparent 30%,transparent 70%,rgba(103,232,249,.08)); pointer-events:none; }
     .card-info { padding:10px 4px 4px; }
-    .card-info h3 { margin:0; color:#f8fafc; font-size:15px; letter-spacing:.06em; text-transform:uppercase; line-height:1.12; }
+    .card-info h3 {
+      margin:0;
+      color:#f8fafc;
+      font-size:clamp(11px, 1.05vw, 15px);
+      letter-spacing:.035em;
+      text-transform:uppercase;
+      line-height:1.12;
+      overflow-wrap:anywhere;
+      text-wrap:balance;
+    }
+
+    .hero-card-stack .card-info h3,
+    .family-card .card-info h3 {
+      font-size:clamp(9px, .82vw, 12px);
+      letter-spacing:.025em;
+      line-height:1.08;
+    }
     .card-info p { margin:7px 0 0; color:#94a3b8; font-size:12px; line-height:1.42; }
     .card-meta-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
     .card-chip { display:inline-flex; align-items:center; justify-content:center; min-height:22px; padding:4px 7px; border-radius:999px; border:1px solid rgba(103,232,249,.22); background:rgba(2,6,23,.55); color:#bae6fd; font-size:9px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; }
@@ -60,14 +76,352 @@
     .family-copy h3 { margin:0; color:#f8fafc; font-size:20px; letter-spacing:.08em; text-transform:uppercase; }
     .family-copy p { margin:8px 0 0; color:#cbd5e1; line-height:1.5; font-size:14px; }
     .evo-line { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
-    .effect-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:18px; }
-    .effect-card { position:relative; min-height:230px; border-radius:22px; border:1px solid color-mix(in srgb,var(--fx-color,#67e8f9) 44%, transparent); overflow:hidden; background:radial-gradient(circle at 50% 20%, color-mix(in srgb,var(--fx-color,#67e8f9) 18%, transparent), transparent 42%),linear-gradient(135deg,rgba(2,6,23,.88),rgba(15,23,42,.64)); padding:16px; box-shadow:inset 0 0 24px rgba(255,255,255,.03),0 18px 42px rgba(0,0,0,.28); }
-    .effect-stage { position:relative; height:132px; border-radius:18px; border:1px solid rgba(255,255,255,.10); background:radial-gradient(circle at 50% 50%, color-mix(in srgb,var(--fx-color,#67e8f9) 16%, transparent), transparent 42%),rgba(2,6,23,.75); overflow:hidden; }
-    .effect-stage::before,.effect-stage::after { content:""; position:absolute; inset:26% 10%; border-radius:999px; background:linear-gradient(90deg,transparent,var(--fx-color,#67e8f9),transparent); filter:blur(2px); transform:rotate(var(--fx-rot,0deg)); animation:fxPulse 1.7s ease-in-out infinite; }
-    .effect-stage::after { inset:42% 4%; opacity:.58; transform:rotate(calc(var(--fx-rot,0deg) * -1)); animation-delay:-.55s; }
-    .fx-orb { position:absolute; width:42px; height:42px; border-radius:50%; left:calc(16% + var(--i,0)*15%); top:calc(18% + var(--j,0)*18%); background:var(--fx-color,#67e8f9); filter:blur(1px); opacity:.72; box-shadow:0 0 20px var(--fx-color,#67e8f9); animation:fxFloat 2.4s ease-in-out infinite; animation-delay:calc(var(--i,0)*-.28s); }
-    .effect-card h3 { margin:12px 0 0; color:#f8fafc; text-transform:uppercase; letter-spacing:.08em; }
-    .effect-card p { color:#94a3b8; line-height:1.45; font-size:13px; margin:6px 0 0; }
+    .effect-grid {
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+      margin-top:18px;
+    }
+
+    .effect-card {
+      position:relative;
+      min-height:260px;
+      border-radius:22px;
+      border:1px solid color-mix(in srgb,var(--fx-color,#67e8f9) 46%, transparent);
+      overflow:hidden;
+      background:
+        radial-gradient(circle at 18% 12%, color-mix(in srgb,var(--fx-color,#67e8f9) 18%, transparent), transparent 38%),
+        radial-gradient(circle at 88% 82%, rgba(250,204,21,.08), transparent 34%),
+        linear-gradient(135deg,rgba(2,6,23,.90),rgba(15,23,42,.66));
+      padding:16px;
+      box-shadow:
+        inset 0 0 24px rgba(255,255,255,.03),
+        0 18px 42px rgba(0,0,0,.28),
+        0 0 24px color-mix(in srgb,var(--fx-color,#67e8f9) 18%, transparent);
+    }
+
+    .projectile-stage {
+      position:relative;
+      height:150px;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.10);
+      background:
+        linear-gradient(rgba(103,232,249,.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(103,232,249,.055) 1px, transparent 1px),
+        radial-gradient(circle at 18% 50%, color-mix(in srgb,var(--fx-color,#67e8f9) 18%, transparent), transparent 30%),
+        radial-gradient(circle at 86% 50%, rgba(239,68,68,.16), transparent 26%),
+        rgba(2,6,23,.76);
+      background-size:32px 32px,32px 32px,auto,auto,auto;
+      overflow:hidden;
+    }
+
+    .projectile-stage::before {
+      content:"TARGET";
+      position:absolute;
+      right:16px;
+      top:50%;
+      transform:translateY(-50%);
+      width:48px;
+      height:48px;
+      display:grid;
+      place-items:center;
+      border-radius:50%;
+      border:2px solid rgba(248,113,113,.40);
+      background:rgba(127,29,29,.20);
+      color:rgba(254,202,202,.72);
+      font-size:8px;
+      font-weight:1000;
+      letter-spacing:.10em;
+      box-shadow:0 0 18px rgba(248,113,113,.18);
+    }
+
+    .projectile-card-chip {
+      position:absolute;
+      left:12px;
+      top:50%;
+      width:44px;
+      height:60px;
+      transform:translateY(-50%) rotate(-7deg);
+      border-radius:9px;
+      border:1px solid color-mix(in srgb,var(--fx-color,#67e8f9) 58%, transparent);
+      background:#020617;
+      overflow:hidden;
+      box-shadow:0 0 16px color-mix(in srgb,var(--fx-color,#67e8f9) 26%, transparent);
+    }
+
+    .projectile-card-chip img {
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    }
+
+    .projectile-burst {
+      position:absolute;
+      left:58px;
+      top:50%;
+      width:28px;
+      height:28px;
+      transform:translateY(-50%);
+      border-radius:50%;
+      background:var(--fx-color,#67e8f9);
+      filter:blur(.3px);
+      opacity:.86;
+      box-shadow:
+        0 0 16px var(--fx-color,#67e8f9),
+        0 0 32px color-mix(in srgb,var(--fx-color,#67e8f9) 70%, transparent);
+      animation:projectileBurst 1.15s ease-in-out infinite;
+    }
+
+    .projectile-trail {
+      position:absolute;
+      left:72px;
+      top:50%;
+      width:var(--trail-size,8px);
+      height:var(--trail-size,8px);
+      border-radius:50%;
+      background:var(--fx-color,#67e8f9);
+      transform:translateY(calc(-50% + var(--trail-y,0px)));
+      opacity:.72;
+      filter:blur(.5px);
+      box-shadow:0 0 12px var(--fx-color,#67e8f9);
+      animation:projectileTrail 1.65s linear infinite;
+      animation-delay:var(--trail-delay,0s);
+    }
+
+    .projectile-creature {
+      position:absolute;
+      left:32%;
+      top:50%;
+      width:58px;
+      height:38px;
+      transform:translateY(-50%);
+      color:var(--fx-color,#67e8f9);
+      animation:projectileRun 2.15s ease-in-out infinite;
+      filter:
+        drop-shadow(0 0 8px var(--fx-color,#67e8f9))
+        drop-shadow(0 10px 12px rgba(0,0,0,.38));
+    }
+
+    .projectile-creature::before,
+    .projectile-creature::after {
+      content:"";
+      position:absolute;
+      display:block;
+    }
+
+    .projectile-creature::before {
+      inset:7px 7px 7px 4px;
+      border-radius:55% 45% 48% 52%;
+      background:linear-gradient(90deg,#f8fafc,var(--fx-color,#67e8f9),#020617);
+      border:2px solid rgba(255,255,255,.72);
+    }
+
+    .projectile-creature::after {
+      right:0;
+      top:8px;
+      width:21px;
+      height:21px;
+      border-radius:50%;
+      background:var(--fx-color,#67e8f9);
+      border:2px solid rgba(255,255,255,.78);
+    }
+
+    .projectile-emberkin::after {
+      clip-path:polygon(0 55%,35% 0,62% 42%,100% 5%,78% 62%,100% 100%,42% 76%,0 100%);
+      border-radius:0;
+      background:#fb923c;
+    }
+
+    .projectile-frostveil {
+      width:72px;
+      height:26px;
+    }
+
+    .projectile-frostveil::before {
+      inset:7px 2px;
+      border-radius:999px;
+      transform:skewX(-18deg);
+      background:linear-gradient(90deg,#e0f2fe,#7dd3fc,#1e3a8a);
+    }
+
+    .projectile-frostveil::after {
+      right:-4px;
+      top:1px;
+      width:28px;
+      height:28px;
+      border-radius:0;
+      clip-path:polygon(0 50%,36% 0,100% 50%,36% 100%);
+      background:#e0f2fe;
+    }
+
+    .projectile-voltbeast {
+      width:48px;
+      height:48px;
+      animation-name:projectileZigzag;
+    }
+
+    .projectile-voltbeast::before {
+      inset:15px 5px;
+      border-radius:999px;
+      background:#facc15;
+    }
+
+    .projectile-voltbeast::after {
+      inset:5px 2px;
+      width:auto;
+      height:auto;
+      border-radius:0;
+      clip-path:polygon(36% 0,60% 0,48% 36%,75% 36%,28% 100%,40% 52%,15% 52%);
+      background:#fef08a;
+      border:0;
+      box-shadow:0 0 18px #facc15;
+    }
+
+    .projectile-thornwild::before {
+      inset:16px 0;
+      border-radius:999px;
+      background:linear-gradient(90deg,#86efac,#16a34a,#052e16);
+      transform:rotate(-8deg);
+    }
+
+    .projectile-thornwild::after {
+      left:38px;
+      top:7px;
+      width:22px;
+      height:22px;
+      border-radius:0;
+      clip-path:polygon(50% 0,72% 34%,100% 50%,70% 66%,50% 100%,30% 66%,0 50%,28% 34%);
+      background:#bbf7d0;
+    }
+
+    .projectile-plaguekin::before {
+      inset:5px 13px 7px 7px;
+      border-radius:48% 52% 42% 58%;
+      background:linear-gradient(135deg,#bef264,#65a30d,#365314);
+    }
+
+    .projectile-plaguekin::after {
+      right:3px;
+      top:10px;
+      width:22px;
+      height:18px;
+      border-radius:50%;
+      background:#84cc16;
+    }
+
+    .projectile-umbra::before,
+    .projectile-reaperborn::before {
+      inset:10px 0;
+      border-radius:999px;
+      background:linear-gradient(90deg,transparent,#e9d5ff,var(--fx-color,#a855f7),transparent);
+      transform:skewX(-28deg);
+    }
+
+    .projectile-umbra::after,
+    .projectile-reaperborn::after {
+      right:0;
+      top:4px;
+      width:34px;
+      height:30px;
+      border-radius:0;
+      clip-path:polygon(0 50%,70% 0,100% 14%,56% 52%,100% 86%,70% 100%);
+      background:#f8fafc;
+      border:0;
+      box-shadow:0 0 16px var(--fx-color,#a855f7);
+    }
+
+    .projectile-bloodforge::before {
+      inset:6px 10px;
+      border-radius:14px;
+      background:linear-gradient(135deg,#991b1b,#7f1d1d,#020617);
+      transform:rotate(12deg);
+    }
+
+    .projectile-bloodforge::after {
+      right:2px;
+      top:3px;
+      width:28px;
+      height:28px;
+      border-radius:8px;
+      background:#ef4444;
+      transform:rotate(18deg);
+    }
+
+    .projectile-tidecall::before {
+      inset:13px 0;
+      border-radius:999px;
+      background:linear-gradient(90deg,#cffafe,#06b6d4,#0e7490);
+    }
+
+    .projectile-tidecall::after {
+      right:0;
+      top:6px;
+      width:30px;
+      height:26px;
+      border-radius:50%;
+      background:#67e8f9;
+      clip-path:polygon(0 60%,35% 15%,72% 34%,100% 0,88% 100%,44% 72%);
+    }
+
+    .projectile-label {
+      position:absolute;
+      left:12px;
+      bottom:10px;
+      z-index:4;
+      padding:6px 9px;
+      border-radius:999px;
+      border:1px solid color-mix(in srgb,var(--fx-color,#67e8f9) 42%, transparent);
+      background:rgba(2,6,23,.68);
+      color:#bae6fd;
+      font-size:9px;
+      font-weight:1000;
+      letter-spacing:.10em;
+      text-transform:uppercase;
+      backdrop-filter:blur(10px);
+    }
+
+    .effect-card h3 {
+      margin:12px 0 0;
+      color:#f8fafc;
+      text-transform:uppercase;
+      letter-spacing:.055em;
+      font-size:clamp(14px,1.35vw,18px);
+      line-height:1.1;
+      overflow-wrap:anywhere;
+    }
+
+    .effect-card p {
+      color:#94a3b8;
+      line-height:1.45;
+      font-size:13px;
+      margin:6px 0 0;
+    }
+
+    @keyframes projectileRun {
+      0% { transform:translate(-4px,-50%) rotate(-2deg) scale(.92); opacity:.15; }
+      14% { opacity:1; }
+      48% { transform:translate(62px,calc(-50% - 8px)) rotate(3deg) scale(1.03); }
+      82% { opacity:1; }
+      100% { transform:translate(145px,-50%) rotate(-1deg) scale(.88); opacity:.08; }
+    }
+
+    @keyframes projectileZigzag {
+      0% { transform:translate(-4px,-50%) rotate(-8deg) scale(.9); opacity:.15; }
+      25% { transform:translate(40px,calc(-50% - 18px)) rotate(10deg) scale(1.02); opacity:1; }
+      55% { transform:translate(88px,calc(-50% + 14px)) rotate(-12deg) scale(1.04); opacity:1; }
+      100% { transform:translate(145px,calc(-50% - 6px)) rotate(7deg) scale(.88); opacity:.08; }
+    }
+
+    @keyframes projectileTrail {
+      0% { transform:translate(0,calc(-50% + var(--trail-y,0px))) scale(1); opacity:.82; }
+      100% { transform:translate(145px,calc(-50% + var(--trail-y,0px))) scale(.25); opacity:0; }
+    }
+
+    @keyframes projectileBurst {
+      0%,100% { transform:translateY(-50%) scale(.72); opacity:.55; }
+      50% { transform:translateY(-50%) scale(1.15); opacity:1; }
+    }
     .library-controls { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
     .filter-btn { min-height:36px; padding:8px 12px; border-radius:999px; border:1px solid rgba(103,232,249,.30); background:rgba(2,6,23,.55); color:#bae6fd; font-size:10px; font-weight:900; letter-spacing:.10em; text-transform:uppercase; cursor:pointer; }
     .filter-btn.active,.filter-btn:hover { border-color:#facc15; color:#fde68a; background:rgba(113,63,18,.25); }
@@ -107,7 +461,7 @@
     </section>
 
     <section class="content-panel cards-panel">
-      <div class="cards-section-top"><div><p class="kicker">Attack Style</p><h2 class="section-heading">How the cards feel in motion.</h2><p>These are not gameplay screenshots. They are little animated style plates using the same colors and particle types from the cards, so players can get the idea without you needing to capture every attack one by one.</p></div></div>
+      <div class="cards-section-top"><div><p class="kicker">Creature Projectiles</p><h2 class="section-heading">How creature cards fire in-game.</h2><p>When you shoot a creature card, it does not just become a random glow. It launches forward with its own little shape, trail, color, movement, and hit style. These previews show that projectile feel without needing a screenshot for every single card.</p></div></div>
       <div id="effect-grid" class="effect-grid"></div>
     </section>
 
@@ -163,8 +517,45 @@ function escapeCardArtText(value = "") {
         function buildCardArtworkSvg(card, variant = "slot") {
             const color = card?.visualColor || "#38bdf8";
             const kind = getCardArtKind(card);
-            const title = escapeCardArtText(card?.name || "Card");
+            const rawTitle = String(card?.name || "Card");
+            const title = escapeCardArtText(rawTitle);
             const family = escapeCardArtText(card?.family || card?.category || "Card");
+
+            const makeSvgTitleLines = (name) => {
+                const safeName = String(name || "Card").trim();
+                const words = safeName.split(/\s+/);
+                const lines = [];
+
+                if (safeName.length <= 18) {
+                    lines.push(safeName);
+                } else {
+                    let current = "";
+                    for (const word of words) {
+                        const next = current ? `${current} ${word}` : word;
+                        if (next.length > 18 && current) {
+                            lines.push(current);
+                            current = word;
+                        } else {
+                            current = next;
+                        }
+                    }
+                    if (current) lines.push(current);
+                }
+
+                const finalLines = lines.slice(0, 2);
+                if (lines.length > 2) {
+                    finalLines[1] = `${finalLines[1].replace(/[,.]$/, "")}…`;
+                }
+
+                const fontSize = safeName.length > 24 ? 9 : safeName.length > 18 ? 10 : 12;
+                const startY = finalLines.length > 1 ? 158 : 166;
+
+                return finalLines.map((line, index) =>
+                    `<text x="120" y="${startY + index * 11}" text-anchor="middle" font-family="Orbitron, Arial, sans-serif" font-size="${fontSize}" font-weight="900" fill="#f8fafc">${escapeCardArtText(line)}</text>`
+                ).join("");
+            };
+
+            const titleSvg = makeSvgTitleLines(rawTitle);
             const typeLine = card?.category === "monster" ? `STAGE ${card.evolutionStage || 1}` : (card?.category || "CARD").toUpperCase();
             const stage = Number(card?.evolutionStage || 1);
             const scale = card?.category === "monster" ? (0.9 + Math.min(stage, 4) * 0.07).toFixed(2) : "1";
@@ -458,7 +849,7 @@ function escapeCardArtText(value = "") {
                 <rect x="0" y="0" width="240" height="34" fill="#020617" opacity=".62"/>
                 <text x="13" y="22" font-family="Orbitron, Arial, sans-serif" font-size="11" font-weight="900" fill="#ffffff">${family}</text>
                 <text x="227" y="22" text-anchor="end" font-family="Orbitron, Arial, sans-serif" font-size="10" font-weight="900" fill="${color}">${typeLine}</text>
-                <text x="120" y="166" text-anchor="middle" font-family="Orbitron, Arial, sans-serif" font-size="12" font-weight="900" fill="#f8fafc">${title}</text>
+                ${titleSvg}
             </svg>`;
         }
 
@@ -467,7 +858,7 @@ function escapeCardArtText(value = "") {
     const CARD_POOL = JSON.parse(document.getElementById("duelio-card-data").textContent);
     const rarityOrder = { Common:1, Uncommon:2, Rare:3, Epic:4, Legendary:5, Mythic:6 };
     const featuredIds = ["aurelia_infernal_reaper","nova_seraph","neon_kirin","abyss_leviathan","infernal_fenrir","absolute_hydra","eclipse_monarch","blood_anvil_colossus","titan_breaker","reaper_cerberus","archive_dragon","aurora_chimera"];
-    const effectIds = ["infernal_fenrir","absolute_hydra","neon_kirin","elder_thorn_king","pestilent_king","eclipse_monarch","aurelia_infernal_reaper","healing_veil","mana_burst"];
+    const effectIds = ["infernal_fenrir","absolute_hydra","neon_kirin","elder_thorn_king","pestilent_king","eclipse_monarch","aurelia_infernal_reaper","abyss_leviathan","blood_anvil_colossus"];
     const categoryLabels = { monster:"Creatures", magic:"Magic", trap:"Traps" };
     const shortFamilyCopy = { Emberkin:"fast fire pressure", Ironhide:"heavy armor and knockback", Frostveil:"cold control and slows", Voltbeast:"speed, shock, and chase", Thornwild:"roots, poison, and plant pressure", Plaguekin:"poison and nasty trades", Umbra:"shadow plays and dark pressure", Starborn:"cosmic burst damage", Dunesoul:"sand, sun, and control", Tidecall:"water pressure and big finishers", Graveborn:"bones, bleed, and fear", Runebound:"runes, paper, and weird tricks", Crystalbloom:"clean crystal burst", Bloodforge:"blood iron and heavy hits", Reaperborn:"mythic reaper energy" };
 
@@ -524,15 +915,51 @@ function escapeCardArtText(value = "") {
       }).join("");
     }
 
+    function projectileFamilyClass(card) {
+      const family = String(card?.family || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (family) return family;
+      const particle = String(card?.particleType || "").toLowerCase();
+      if (particle.includes("fire") || particle.includes("flame")) return "emberkin";
+      if (particle.includes("ice") || particle.includes("frost")) return "frostveil";
+      if (particle.includes("electric") || particle.includes("shock")) return "voltbeast";
+      if (particle.includes("poison")) return "plaguekin";
+      if (particle.includes("void") || particle.includes("shadow")) return "umbra";
+      if (particle.includes("bone")) return "reaperborn";
+      if (particle.includes("water")) return "tidecall";
+      return "generic";
+    }
+
+    function projectilePreview(card, index = 0) {
+      const color = card.visualColor || "#67e8f9";
+      const familyClass = projectileFamilyClass(card);
+      const img = cardArtDataUri(buildCardArtworkSvg(card, "mini"));
+      const attackLabel = card.attackType || "Projectile";
+      const particleLabel = card.particleType || "creature";
+
+      return `
+        <div class="projectile-stage projectile-stage-${familyClass}" aria-label="${escapeCardArtText(card.name)} projectile preview">
+          <span class="projectile-card-chip"><img src="${img}" alt="${escapeCardArtText(card.name)} mini card"></span>
+          <span class="projectile-burst"></span>
+
+          <span class="projectile-trail" style="--trail-y:-22px; --trail-size:7px; --trail-delay:${-0.10 * index}s"></span>
+          <span class="projectile-trail" style="--trail-y:-9px; --trail-size:10px; --trail-delay:${-0.18 * index - .22}s"></span>
+          <span class="projectile-trail" style="--trail-y:10px; --trail-size:6px; --trail-delay:${-0.14 * index - .44}s"></span>
+          <span class="projectile-trail" style="--trail-y:23px; --trail-size:8px; --trail-delay:${-0.20 * index - .66}s"></span>
+
+          <span class="projectile-creature projectile-${familyClass}"></span>
+          <span class="projectile-label">${attackLabel} • ${particleLabel}</span>
+        </div>
+      `;
+    }
+
     function renderEffects() {
-      const cards = effectIds.map(byId).filter(Boolean);
+      const cards = effectIds.map(byId).filter(Boolean).filter(card => card.category === "monster");
       document.getElementById("effect-grid").innerHTML = cards.map((card, index) => {
         const color = card.visualColor || "#67e8f9";
-        const rot = ["-8deg","14deg","0deg","-18deg","22deg","8deg","-26deg","0deg","12deg"][index % 9];
-        return `<article class="effect-card" style="--fx-color:${color}; --fx-rot:${rot}">
-          <div class="effect-stage" aria-hidden="true"><span class="fx-orb" style="--i:0;--j:1"></span><span class="fx-orb" style="--i:2;--j:0"></span><span class="fx-orb" style="--i:4;--j:2"></span><span class="fx-orb" style="--i:5;--j:1"></span></div>
+        return `<article class="effect-card" style="--fx-color:${color}">
+          ${projectilePreview(card, index)}
           <h3>${card.name}</h3>
-          <p>${card.particleType || "card"} style • ${card.attackType || card.effectType || card.triggerType || "utility"}</p>
+          <p>${card.family || "Creature"} projectile • ${card.attackType || "Attack"} • ${card.damageMin && card.damageMax ? `${card.damageMin}-${card.damageMax}` : card.damage || "?"} damage</p>
         </article>`;
       }).join("");
     }
