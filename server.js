@@ -1,5 +1,7 @@
 const express = require("express");
+const compression = require("compression");
 const cors = require("cors");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { createServer } = require("http");
@@ -24,8 +26,105 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors());
+const SOCKET_MAX_HTTP_BUFFER_SIZE = 256 * 1024;
+
+function normalizeBrowserOrigin(rawOrigin) {
+  const value = String(rawOrigin || "").trim();
+  if (!value) return "";
+
+  try {
+    const url = new URL(value);
+
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return "";
+    }
+
+    return url.origin;
+  } catch (err) {
+    return "";
+  }
+}
+
+function splitAllowedOrigins(value) {
+  return String(value || "")
+    .split(",")
+    .map(normalizeBrowserOrigin)
+    .filter(Boolean);
+}
+
+const GAME_ALLOWED_ORIGINS = new Set([
+  "https://duelio.lol",
+  "https://www.duelio.lol",
+
+  // itch.io HTML5 game iframe origins.
+  "https://html.itch.zone",
+  "https://html-classic.itch.zone",
+
+  // Game Jolt main host origins.
+  "https://gamejolt.com",
+  "https://www.gamejolt.com",
+
+  // Optional extra verified origins set in Render.
+  ...splitAllowedOrigins(process.env.GAME_ALLOWED_ORIGINS),
+
+  // Allows your direct Render URL only when Render provides it.
+  normalizeBrowserOrigin(process.env.RENDER_EXTERNAL_URL)
+].filter(Boolean));
+
+function isAllowedBrowserOrigin(rawOrigin) {
+  const origin = normalizeBrowserOrigin(rawOrigin);
+  if (!origin) return false;
+
+  if (GAME_ALLOWED_ORIGINS.has(origin)) {
+    return true;
+  }
+
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.toLowerCase();
+
+    // Production browser connections must use HTTPS.
+    if (url.protocol !== "https:") {
+      return (
+        process.env.NODE_ENV === "development" &&
+        (host === "localhost" || host === "127.0.0.1" || host === "[::1]")
+      );
+    }
+
+    // Allows Game Jolt-owned HTTPS subdomains, but not unrelated domains.
+    return host.endsWith(".gamejolt.com");
+  } catch (err) {
+    return false;
+  }
+}
+
+const GAME_CORS_OPTIONS = Object.freeze({
+  origin(origin, callback) {
+    // Requests without an Origin header can still read public HTTP routes,
+    // but browser CORS permission is not granted.
+    callback(null, !!origin && isAllowedBrowserOrigin(origin));
+  },
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"],
+  maxAge: 86400,
+  optionsSuccessStatus: 204
+});
+
+app.use(cors(GAME_CORS_OPTIONS));
 app.use(express.json());
+
+function shouldCompressResponse(req, res) {
+  if (req.headers["x-no-compression"] || req.headers.range) return false;
+  if (req.path.startsWith("/socket.io/")) return false;
+
+  return compression.filter(req, res);
+}
+
+app.use(compression({
+  threshold: "1kb",
+  level: 4,
+  filter: shouldCompressResponse
+}));
 
 const publicDir = path.join(__dirname, "public");
 
@@ -91,15 +190,145 @@ app.get("/sitemap.txt", (req, res) => {
   ].join("\n"));
 });
 
-app.use(express.static(publicDir));
+const STATIC_FINGERPRINT_RE = /(?:^|[._-])[a-f0-9]{8,}(?:[._-]|$)/i;
+const STATIC_CACHEABLE_EXTENSIONS = new Set([
+  ".css",
+  ".js",
+  ".mjs",
+  ".map",
+  ".json",
+  ".wasm",
+  ".data",
+  ".bin",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".avif",
+  ".gif",
+  ".svg",
+  ".ico",
+  ".mp3",
+  ".ogg",
+  ".wav",
+  ".webm",
+  ".mp4",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".otf"
+]);
+
+function setStaticCacheHeaders(res, filePath) {
+  const filename = path.basename(filePath).toLowerCase();
+  const extension = path.extname(filename).toLowerCase();
+
+  // Your main single-file game is the current release manifest.
+  // Always revalidate HTML so players never get trapped on an old release.
+  if (
+    extension === ".html" ||
+    filename === "manifest.json" ||
+    filename === "manifest.webmanifest"
+  ) {
+    res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
+    return;
+  }
+
+  // A full-year cache is only safe for filename-hashed assets,
+  // such as game.83b71a4c.js or background.2a9cd8ef.webp.
+  if (STATIC_FINGERPRINT_RE.test(filename)) {
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    return;
+  }
+
+  // Your current unversioned files remain update-safe while still
+  // benefiting from browser/CDN caching on repeat visits.
+  if (STATIC_CACHEABLE_EXTENSIONS.has(extension)) {
+    res.setHeader(
+      "Cache-Control",
+      "public, max-age=3600, stale-while-revalidate=86400"
+    );
+    return;
+  }
+
+  res.setHeader("Cache-Control", "public, max-age=300, must-revalidate");
+}
+
+const DEFAULT_VOICE_STUN_URLS = [
+  "stun:stun.l.google.com:19302",
+  "stun:stun1.l.google.com:19302"
+];
+
+function splitVoiceIceUrls(value) {
+  return String(value || "")
+    .split(",")
+    .map(url => url.trim())
+    .filter(Boolean);
+}
+
+function getVoiceIceConfig() {
+  const stunUrls = splitVoiceIceUrls(process.env.VOICE_STUN_URLS);
+  const turnUrls = splitVoiceIceUrls(process.env.VOICE_TURN_URLS);
+  const turnUsername = String(process.env.VOICE_TURN_USERNAME || "").trim();
+  const turnCredential = String(process.env.VOICE_TURN_CREDENTIAL || "").trim();
+
+  const iceServers = [
+    { urls: stunUrls.length ? stunUrls : DEFAULT_VOICE_STUN_URLS }
+  ];
+
+  if (turnUrls.length && turnUsername && turnCredential) {
+    iceServers.push({
+      urls: turnUrls,
+      username: turnUsername,
+      credential: turnCredential
+    });
+  }
+
+  return {
+    iceServers,
+    usingTurn: iceServers.length > 1
+  };
+}
+
+app.get("/voice-config", (req, res) => {
+  const config = getVoiceIceConfig();
+
+  res.status(200);
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    ok: true,
+    iceServers: config.iceServers,
+    usingTurn: config.usingTurn,
+    warning: config.usingTurn ? "" : "TURN is not configured. Voice can fail on strict NAT, mobile carrier, school, or workplace networks."
+  });
+});
+
+if (!getVoiceIceConfig().usingTurn) {
+  console.warn("[voice] TURN relay is not configured. WebRTC voice will fall back to public STUN only and may fail on strict NAT networks.");
+}
+
+app.use(express.static(publicDir, {
+  cacheControl: false,
+  etag: true,
+  lastModified: true,
+  setHeaders: setStaticCacheHeaders
+}));
 
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+  cors: GAME_CORS_OPTIONS,
+
+  // CORS headers alone do not stop every WebSocket handshake.
+  // Reject browser connections not coming from approved game hosts.
+  allowRequest(req, callback) {
+    callback(null, isAllowedBrowserOrigin(req.headers.origin));
   },
+
+  // Global per-message Socket.IO cap.
+  // Large enough for sanitized world snapshots, but rejects oversized floods.
+  maxHttpBufferSize: SOCKET_MAX_HTTP_BUFFER_SIZE,
+
   transports: ["websocket", "polling"]
 });
 
@@ -110,6 +339,72 @@ const idToSocket = new Map();
 const parties = new Map();
 const matches = new Map();
 const leaderboardProfiles = new Map();
+
+const PLAYER_SESSION_SECRET = String(process.env.PLAYER_SESSION_SECRET || "").trim();
+const PLAYER_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 180;
+const PLAYER_ID_BYTES = 18;
+const MATCH_STATE_MIN_MS = 35;
+const MATCH_MAX_MOVE_PER_SECOND = 420;
+const MATCH_MOVE_GRACE_DISTANCE = 190;
+const MATCH_WORLD_WIDTH = 7600;
+const MATCH_WORLD_HEIGHT = 11200;
+const MATCH_QUEUE_WORLD_SIZE = 1200;
+const MATCH_MAX_DAMAGE_PACKET = 100;
+const MATCH_DAMAGE_MIN_INTERVAL_MS = 95;
+const MATCH_DAMAGE_BUDGET_WINDOW_MS = 1000;
+const MATCH_DAMAGE_BUDGET_PER_WINDOW = 220;
+
+const MATCH_ACTION_MAX_PAYLOAD_BYTES = 8 * 1024;
+const MATCH_ACTION_CAST_ORIGIN_MAX_DISTANCE = 950;
+const MATCH_ACTION_PING_EXTRA_RANGE = 280;
+const MATCH_ACTION_REVIVE_RANGE = 135;
+const MATCH_ACTION_AIRDROP_MIN_INTERVAL_MS = 90000;
+
+const MATCH_ACTION_RULES = Object.freeze({
+  monsterCast: { cooldownMs: 75, windowMs: 1000, maxInWindow: 12 },
+  magicUse: { cooldownMs: 90, windowMs: 1000, maxInWindow: 10 },
+  meleeSwing: { cooldownMs: 35, windowMs: 1000, maxInWindow: 28 },
+  matchPing: { cooldownMs: 500, windowMs: 10000, maxInWindow: 8 },
+  revivePlayer: { cooldownMs: 900, windowMs: 10000, maxInWindow: 3 },
+  playerEmote: { cooldownMs: 550, windowMs: 10000, maxInWindow: 8 },
+  airdropRoute: {
+    cooldownMs: MATCH_ACTION_AIRDROP_MIN_INTERVAL_MS,
+    windowMs: 120000,
+    maxInWindow: 1
+  }
+});
+
+const MATCH_ACTION_PING_TYPES = new Set([
+  "move",
+  "follow",
+  "loot",
+  "enemy",
+  "danger",
+  "revive",
+  "building",
+  "storm"
+]);
+
+const MATCH_ACTION_EMOTE_IDS = new Set([
+  "heart",
+  "heart_eyes",
+  "smile_devil",
+  "angry",
+  "puke",
+  "laugh",
+  "nerd",
+  "cry",
+  "skull",
+  "fire",
+  "gg",
+  "sparkle",
+  "bp_magic_crown",
+  "bp_crystal_heart",
+  "bp_reaper_laugh",
+  "bp_mana_bloom",
+  "bp_dragon_fire",
+  "share_ufo_alien"
+]);
 
 const RANKED_STATE_FILENAME = "ranked-season-state.json";
 const RANKED_LEGACY_STATE_DIR = path.join(__dirname, "data");
@@ -242,6 +537,7 @@ const MATCH_BOT_MAX = 85;
 const MATCH_BOT_RARE_MAX_CHANCE = 0.10;
 const ONLINE_QUEUE_MS = 15000;
 const WORLD_SNAPSHOT_MIN_MS = 160;
+const MATCH_RECONNECT_GRACE_MS = 45000;
 const PROFILE_MAX_LEVEL = 100;
 
 function profileXpForNextLevel(level = 1) {
@@ -254,6 +550,276 @@ const TEAM_SIZE_BY_MODE = {
   duo: 2,
   team: 4
 };
+
+function createSecurePlayerId() {
+  return `ds_${crypto.randomBytes(PLAYER_ID_BYTES).toString("hex")}`;
+}
+
+function encodePlayerSession(payload) {
+  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+}
+
+function signPlayerSession(encodedPayload) {
+  return crypto
+    .createHmac("sha256", PLAYER_SESSION_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+}
+
+function issuePlayerSessionToken(playerId) {
+  if (!PLAYER_SESSION_SECRET) return "";
+
+  const now = Date.now();
+  const encodedPayload = encodePlayerSession({
+    v: 1,
+    playerId,
+    issuedAt: now,
+    expiresAt: now + PLAYER_SESSION_TTL_MS
+  });
+
+  return `${encodedPayload}.${signPlayerSession(encodedPayload)}`;
+}
+
+function verifyPlayerSessionToken(token) {
+  if (!PLAYER_SESSION_SECRET || typeof token !== "string") return null;
+
+  const [encodedPayload, signature] = token.split(".");
+  if (!encodedPayload || !signature) return null;
+
+  const expectedSignature = signPlayerSession(encodedPayload);
+  const expected = Buffer.from(expectedSignature);
+  const provided = Buffer.from(signature);
+
+  if (
+    expected.length !== provided.length ||
+    !crypto.timingSafeEqual(expected, provided)
+  ) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+
+    if (
+      !payload ||
+      payload.v !== 1 ||
+      typeof payload.playerId !== "string" ||
+      !payload.playerId.startsWith("ds_") ||
+      payload.expiresAt <= Date.now()
+    ) {
+      return null;
+    }
+
+    return payload;
+  } catch (err) {
+    return null;
+  }
+}
+
+function privatePlayerProfile(p) {
+  return {
+    ...publicPlayer(p),
+    sessionToken: p?.sessionToken || ""
+  };
+}
+
+function clampFiniteNumber(value, fallback, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, numeric));
+}
+
+function getMatchBounds(match, gameState = "MATCH") {
+  if (gameState === "QUEUE_LOBBY") {
+    return {
+      width: MATCH_QUEUE_WORLD_SIZE,
+      height: MATCH_QUEUE_WORLD_SIZE
+    };
+  }
+
+  return {
+    width: MATCH_WORLD_WIDTH,
+    height: MATCH_WORLD_HEIGHT
+  };
+}
+
+function sanitizeMatchCoordinate(value, fallback, limit) {
+  return clampFiniteNumber(value, fallback, 0, limit);
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function matchActionPayloadTooLarge(value) {
+  try {
+    return Buffer.byteLength(JSON.stringify(value), "utf8") > MATCH_ACTION_MAX_PAYLOAD_BYTES;
+  } catch (err) {
+    return true;
+  }
+}
+
+function sanitizeMatchActionId(value, maxLength = 64) {
+  const id = typeof value === "string" ? value.trim() : "";
+  if (!id || id.length > maxLength) return "";
+  return /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id) ? id : "";
+}
+
+function sanitizeMatchActionText(value, maxLength = 64, fallback = "") {
+  const text = typeof value === "string"
+    ? value.replace(/[\u0000-\u001f\u007f]/g, "").trim()
+    : "";
+
+  return (text || fallback).slice(0, maxLength);
+}
+
+function sanitizeMatchActionColor(value, fallback = "#38bdf8") {
+  const color = typeof value === "string" ? value.trim() : "";
+  return /^#[0-9a-f]{3,8}$/i.test(color) ? color : fallback;
+}
+
+function getServerMatchPhase(match, now = Date.now()) {
+  return now < Number(match?.deployAt || 0)
+    ? "QUEUE_LOBBY"
+    : "MATCH";
+}
+
+function getMatchEntryFloor(entry) {
+  return sanitizeMatchActionText(entry?.state?.floor, 64, "surface") || "surface";
+}
+
+function isActiveMatchEntry(entry) {
+  return !!(
+    entry &&
+    !entry.leftMatch &&
+    !entry.disconnected &&
+    entry.alive !== false
+  );
+}
+
+function getMatchEntryPoint(entry) {
+  const x = Number(entry?.x);
+  const y = Number(entry?.y);
+
+  return Number.isFinite(x) && Number.isFinite(y)
+    ? { x, y }
+    : null;
+}
+
+function isPointInBounds(x, y, bounds, margin = 0) {
+  return Number.isFinite(x) &&
+    Number.isFinite(y) &&
+    x >= -margin &&
+    x <= bounds.width + margin &&
+    y >= -margin &&
+    y <= bounds.height + margin;
+}
+
+function sameMatchTeam(a, b) {
+  if (!a || !b) return false;
+
+  return String(a.teamId || a.socketId) ===
+    String(b.teamId || b.socketId);
+}
+
+function allowMatchAction(entry, type, now = Date.now()) {
+  const rule = MATCH_ACTION_RULES[type];
+  if (!entry || !rule) return false;
+
+  if (!isPlainObject(entry.matchActionRate)) {
+    entry.matchActionRate = Object.create(null);
+  }
+
+  const bucket = entry.matchActionRate[type] || {
+    lastAt: 0,
+    windowStartedAt: now,
+    count: 0
+  };
+
+  if (now - Number(bucket.lastAt || 0) < rule.cooldownMs) {
+    return false;
+  }
+
+  if (now - Number(bucket.windowStartedAt || 0) >= rule.windowMs) {
+    bucket.windowStartedAt = now;
+    bucket.count = 0;
+  }
+
+  if (Number(bucket.count || 0) >= rule.maxInWindow) {
+    return false;
+  }
+
+  bucket.lastAt = now;
+  bucket.count = Number(bucket.count || 0) + 1;
+  entry.matchActionRate[type] = bucket;
+
+  return true;
+}
+
+function sanitizeMatchActionWeapon(rawWeapon) {
+  if (!isPlainObject(rawWeapon)) return null;
+
+  const id = sanitizeMatchActionId(rawWeapon.id, 64);
+  if (!id) return null;
+
+  return {
+    id,
+    name: sanitizeMatchActionText(rawWeapon.name, 64, id),
+    rarity: sanitizeMatchActionText(rawWeapon.rarity, 32, "Common"),
+    damage: clampFiniteNumber(rawWeapon.damage, 0, 0, MATCH_MAX_DAMAGE_PACKET),
+    objectDamage: clampFiniteNumber(rawWeapon.objectDamage, 0, 0, MATCH_MAX_DAMAGE_PACKET),
+    range: clampFiniteNumber(rawWeapon.range, 60, 20, 260),
+    cooldownMs: clampFiniteNumber(rawWeapon.cooldownMs, 450, 80, 30000),
+    swingDuration: clampFiniteNumber(rawWeapon.swingDuration, 130, 60, 1000),
+    color: sanitizeMatchActionColor(rawWeapon.color, "#e0f2fe"),
+    iconSymbol: sanitizeMatchActionText(rawWeapon.iconSymbol, 16, ""),
+    shape: sanitizeMatchActionId(rawWeapon.shape, 32)
+  };
+}
+
+function emitMatchActionToTeam(match, teamId, payload, excludedSocketId = null) {
+  if (!match) return;
+
+  for (const [socketId, entry] of match.players) {
+    if (socketId === excludedSocketId) continue;
+    if (!isActiveMatchEntry(entry)) continue;
+
+    if (String(entry.teamId || socketId) !== String(teamId || socketId)) {
+      continue;
+    }
+
+    io.to(socketId).emit("matchAction", payload);
+  }
+}
+
+function resolveServerDamage(target, rawAmount) {
+  const incoming = Math.max(0, Math.min(MATCH_MAX_DAMAGE_PACKET, Math.round(rawAmount || 0)));
+  const shieldBefore = Math.max(0, Math.round(target.shieldHp || 0));
+  const armorBefore = Math.max(0, Math.round(target.armorHp || 0));
+  const hpBefore = Math.max(0, Math.round(target.hp || 0));
+
+  let remaining = incoming;
+  const shieldDamage = Math.min(shieldBefore, remaining);
+  remaining -= shieldDamage;
+
+  const armorDamage = Math.min(armorBefore, remaining);
+  remaining -= armorDamage;
+
+  const hpDamage = Math.min(hpBefore, remaining);
+
+  target.shieldHp = shieldBefore - shieldDamage;
+  target.armorHp = armorBefore - armorDamage;
+  target.hp = hpBefore - hpDamage;
+
+  if (target.shieldHp <= 0) target.shieldMax = 0;
+
+  return {
+    rawDamage: incoming,
+    hpDamage,
+    armorDamage,
+    shieldDamage
+  };
+}
 
 function getMatchHumanCount(match) {
   if (!match) return 0;
@@ -306,15 +872,61 @@ function getMatchBotTarget(match, humanCount = getMatchHumanCount(match)) {
   return Math.min(MATCH_BOT_MIN, maxBotsForSlots);
 }
 
+function isEligibleWorldAuthority(match, socketId) {
+  if (!match || !socketId) return false;
+
+  const entry = match.players.get(socketId);
+  const socket = io.sockets.sockets.get(socketId);
+
+  return !!(
+    entry &&
+    socket?.connected &&
+    !entry.leftMatch &&
+    !entry.disconnected &&
+    entry.alive !== false
+  );
+}
+
 function chooseWorldAuthority(match) {
   if (!match) return null;
 
   const current = match.worldAuthoritySocketId;
-  if (current && match.players.has(current) && io.sockets.sockets.has(current)) return current;
+  if (isEligibleWorldAuthority(match, current)) return current;
 
-  const next = [...match.players.keys()].find(socketId => io.sockets.sockets.has(socketId)) || null;
+  const next = [...match.players.keys()].find(socketId => isEligibleWorldAuthority(match, socketId)) || null;
   match.worldAuthoritySocketId = next;
   return next;
+}
+
+function reconcileWorldAuthority(match, reason = "sync") {
+  if (!match) {
+    return {
+      changed: false,
+      previousSocketId: null,
+      worldAuthoritySocketId: null
+    };
+  }
+
+  const previousSocketId = match.worldAuthoritySocketId || null;
+  const worldAuthoritySocketId = chooseWorldAuthority(match);
+  const changed = previousSocketId !== worldAuthoritySocketId;
+
+  if (changed) {
+    io.to(match.matchId).emit("worldAuthorityChanged", {
+      matchId: match.matchId,
+      previousSocketId,
+      worldAuthoritySocketId,
+      reason,
+      serverNow: Date.now(),
+      worldSnapshot: match.worldSnapshot || null
+    });
+  }
+
+  return {
+    changed,
+    previousSocketId,
+    worldAuthoritySocketId
+  };
 }
 
 function makeMatchSyncPayload(match) {
@@ -356,9 +968,14 @@ function makeMatchSyncPayload(match) {
   };
 }
 
-function broadcastMatchSync(match) {
-  if (!match) return;
-  io.to(match.matchId).emit("matchSync", makeMatchSyncPayload(match));
+function broadcastMatchSync(match, authorityReason = "sync") {
+  if (!match) return null;
+
+  reconcileWorldAuthority(match, authorityReason);
+
+  const payload = makeMatchSyncPayload(match);
+  io.to(match.matchId).emit("matchSync", payload);
+  return payload;
 }
 
 function sanitizeWorldSnapshot(snapshot) {
@@ -901,6 +1518,98 @@ function safeStatInt(value, fallback = 0, max = 999999) {
   return Math.max(0, Math.min(max, Math.round(n)));
 }
 
+function normalizeLeaderboardName(name = "") {
+  return String(name || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function isCanonicalLeaderboardName(name = "") {
+  const key = normalizeLeaderboardName(name);
+  if (key.length < 3) return false;
+  if (key === "survivor") return false;
+  if (/^survivor\d{3,}$/i.test(key)) return false;
+  return true;
+}
+
+function findLeaderboardEntryByName(name = "", exceptPlayerId = "") {
+  if (!isCanonicalLeaderboardName(name)) return null;
+
+  const key = normalizeLeaderboardName(name);
+  const except = String(exceptPlayerId || "").trim();
+
+  for (const entry of leaderboardProfiles.values()) {
+    if (except && entry.playerId === except) continue;
+    if (normalizeLeaderboardName(entry.name) === key) return entry;
+  }
+
+  return null;
+}
+
+function mergeRewardInboxPlayerId(fromPlayerId, toPlayerId) {
+  if (!fromPlayerId || !toPlayerId || fromPlayerId === toPlayerId) return;
+
+  const fromRewards = rankedRewardInbox.get(fromPlayerId) || [];
+  if (!fromRewards.length) return;
+
+  const toRewards = rankedRewardInbox.get(toPlayerId) || [];
+  const seen = new Set(toRewards.map(reward => reward?.id).filter(Boolean));
+
+  for (const reward of fromRewards) {
+    if (!reward?.id || seen.has(reward.id)) continue;
+    toRewards.push({ ...reward, playerId: toPlayerId });
+    seen.add(reward.id);
+  }
+
+  rankedRewardInbox.set(toPlayerId, toRewards);
+  rankedRewardInbox.delete(fromPlayerId);
+}
+
+function mergeLeaderboardEntries(target, source = {}) {
+  if (!target || !source) return target;
+
+  const sourceReportKeys = source.reportKeys instanceof Set
+    ? source.reportKeys
+    : new Set(Array.isArray(source.reportKeys) ? source.reportKeys : []);
+
+  if (!(target.reportKeys instanceof Set)) {
+    target.reportKeys = new Set(Array.isArray(target.reportKeys) ? target.reportKeys : []);
+  }
+
+  for (const key of sourceReportKeys) target.reportKeys.add(key);
+  if (target.reportKeys.size > 120) target.reportKeys = new Set([...target.reportKeys].slice(-80));
+
+  target.rank = String(target.rank || source.rank || "SURVIVOR").trim().slice(0, 32);
+  target.level = Math.max(safeStatInt(target.level, 1, PROFILE_MAX_LEVEL), safeStatInt(source.level, 1, PROFILE_MAX_LEVEL));
+  target.profileXp = Math.max(safeStatInt(target.profileXp, 0, 999999999), safeStatInt(source.profileXp ?? source.xp, 0, 999999999));
+  if (target.level >= PROFILE_MAX_LEVEL) target.profileXp = 0;
+  target.wins = Math.max(safeStatInt(target.wins), safeStatInt(source.wins));
+  target.kills = Math.max(safeStatInt(target.kills), safeStatInt(source.kills));
+  target.deaths = Math.max(safeStatInt(target.deaths), safeStatInt(source.deaths));
+  target.losses = Math.max(safeStatInt(target.losses), safeStatInt(source.losses));
+  target.revives = Math.max(safeStatInt(target.revives), safeStatInt(source.revives));
+  target.rankedPoints = Math.max(safeStatInt(target.rankedPoints, 1000, 999999), safeStatInt(source.rankedPoints, 1000, 999999));
+  target.color = target.color || source.color || "#38bdf8";
+  target.icon = target.icon || source.icon || "DS";
+  target.firstSeenAt = Math.min(Number(target.firstSeenAt || Date.now()), Number(source.firstSeenAt || Date.now()));
+  target.updatedAt = Math.max(Number(target.updatedAt || 0), Number(source.updatedAt || 0), Date.now());
+
+  applyRankedProfileToEntry(target, source.ranked || {});
+
+  for (const mode of ["solo", "duo"]) {
+    const targetBucket = target.ranked?.[mode];
+    const sourceBucket = source.ranked?.[mode];
+    if (!targetBucket || !sourceBucket?.bestPlacement) continue;
+    targetBucket.bestPlacement = targetBucket.bestPlacement
+      ? Math.min(targetBucket.bestPlacement, sourceBucket.bestPlacement)
+      : sourceBucket.bestPlacement;
+  }
+
+  if (source.playerId && target.playerId && source.playerId !== target.playerId) {
+    mergeRewardInboxPlayerId(source.playerId, target.playerId);
+  }
+
+  return target;
+}
+
 function serializeLeaderboardEntry(entry = {}) {
   return {
     ...entry,
@@ -925,6 +1634,15 @@ function hydrateLeaderboardEntry(raw = {}) {
 
   if (!entry.ranked.solo) entry.ranked.solo = defaultServerRankedBucket();
   if (!entry.ranked.duo) entry.ranked.duo = defaultServerRankedBucket();
+
+  entry.gold = safeStatInt(entry.gold, 1000, 999999999);
+  entry.gems = safeStatInt(entry.gems, 0, 999999999);
+
+  const existingById = leaderboardProfiles.get(entry.playerId);
+  if (existingById) {
+    mergeLeaderboardEntries(existingById, entry);
+    return;
+  }
 
   leaderboardProfiles.set(entry.playerId, entry);
 }
@@ -1004,6 +1722,8 @@ function rankedParseStatePayload(raw, sourceLabel = "ranked-state") {
 function rankedApplyLoadedState(data, sourceLabel = "ranked-state") {
   if (!data || typeof data !== "object") return false;
 
+  const rawProfileCount = Array.isArray(data.profiles) ? data.profiles.length : 0;
+
   leaderboardProfiles.clear();
   for (const raw of data.profiles || []) {
     hydrateLeaderboardEntry(raw);
@@ -1026,6 +1746,7 @@ function rankedApplyLoadedState(data, sourceLabel = "ranked-state") {
   console.log(`[ranked] loaded ${leaderboardProfiles.size} profiles and ${rankedSeasonArchives.size} season archives from ${sourceLabel}.`);
   rankedStateEverLoaded = true;
   rankedHighestKnownProfileCount = Math.max(rankedHighestKnownProfileCount, leaderboardProfiles.size);
+  if (rawProfileCount > leaderboardProfiles.size) rankedScheduleSave();
   return true;
 }
 
@@ -1429,29 +2150,32 @@ function requireRankedAdmin(req, res) {
 }
 
 function getOrCreateLeaderboardEntry(profile = {}) {
-  const playerId = String(profile.playerId || "").trim() || makeSurvivorId();
+  const playerId = String(profile.playerId || "").trim() || createSecurePlayerId();
+  const requestedName = String(profile.name || "Survivor").trim().slice(0, 24) || "Survivor";
 
   let entry = leaderboardProfiles.get(playerId);
 
   if (!entry) {
     entry = {
       playerId,
-      name: String(profile.name || playerId).trim().slice(0, 24),
-      rank: String(profile.rank || "SURVIVOR").trim().slice(0, 32),
-      level: Math.min(PROFILE_MAX_LEVEL, safeStatInt(profile.level, 1, PROFILE_MAX_LEVEL)),
-      profileXp: safeStatInt(profile.profileXp ?? profile.xp, 0, 999999999),
+      name: requestedName,
+      rank: "SURVIVOR",
+      level: 1,
+      profileXp: 0,
       wins: 0,
       kills: 0,
       deaths: 0,
       losses: 0,
       revives: 0,
+      gold: 1000,
+      gems: 0,
       rankedPoints: 1000,
       ranked: {
         solo: defaultServerRankedBucket(),
         duo: defaultServerRankedBucket()
       },
-      color: profile.color || "#38bdf8",
-      icon: profile.icon || "DS",
+      color: String(profile.color || "#38bdf8").slice(0, 24),
+      icon: String(profile.icon || "DS").slice(0, 12),
       reportKeys: new Set(),
       firstSeenAt: Date.now(),
       updatedAt: Date.now()
@@ -1462,20 +2186,32 @@ function getOrCreateLeaderboardEntry(profile = {}) {
 
   if (!(entry.reportKeys instanceof Set)) entry.reportKeys = new Set();
 
-  entry.name = String(profile.name || entry.name || playerId).trim().slice(0, 24);
-  entry.rank = String(profile.rank || entry.rank || "SURVIVOR").trim().slice(0, 32);
-  entry.level = Math.min(PROFILE_MAX_LEVEL, Math.max(safeStatInt(entry.level, 1, PROFILE_MAX_LEVEL), safeStatInt(profile.level, 1, PROFILE_MAX_LEVEL)));
-  entry.profileXp = Math.max(safeStatInt(entry.profileXp, 0, 999999999), safeStatInt(profile.profileXp ?? profile.xp, 0, 999999999));
-  if (entry.level >= PROFILE_MAX_LEVEL) entry.profileXp = 0;
-  entry.color = profile.color || entry.color || "#38bdf8";
-  entry.icon = profile.icon || entry.icon || "DS";
+  if (!entry.ranked || typeof entry.ranked !== "object") {
+    entry.ranked = {
+      solo: defaultServerRankedBucket(),
+      duo: defaultServerRankedBucket()
+    };
+  }
 
-  entry.wins = Math.max(safeStatInt(entry.wins), safeStatInt(profile.wins));
-  entry.kills = Math.max(safeStatInt(entry.kills), safeStatInt(profile.kills));
-  entry.deaths = Math.max(safeStatInt(entry.deaths), safeStatInt(profile.deaths));
-  entry.losses = Math.max(safeStatInt(entry.losses), safeStatInt(profile.losses));
-  entry.revives = Math.max(safeStatInt(entry.revives), safeStatInt(profile.revives));
-  applyRankedProfileToEntry(entry, profile.ranked || {});
+  if (!entry.ranked.solo) entry.ranked.solo = defaultServerRankedBucket();
+  if (!entry.ranked.duo) entry.ranked.duo = defaultServerRankedBucket();
+
+  entry.name = requestedName || entry.name || "Survivor";
+  entry.color = String(profile.color || entry.color || "#38bdf8").slice(0, 24);
+  entry.icon = String(profile.icon || entry.icon || "DS").slice(0, 12);
+  entry.rank = String(entry.rank || "SURVIVOR").slice(0, 32);
+  entry.level = safeStatInt(entry.level, 1, PROFILE_MAX_LEVEL);
+  entry.profileXp = entry.level >= PROFILE_MAX_LEVEL
+    ? 0
+    : safeStatInt(entry.profileXp, 0, 999999999);
+  entry.wins = safeStatInt(entry.wins);
+  entry.kills = safeStatInt(entry.kills);
+  entry.deaths = safeStatInt(entry.deaths);
+  entry.losses = safeStatInt(entry.losses);
+  entry.revives = safeStatInt(entry.revives);
+  entry.gold = safeStatInt(entry.gold, 1000, 999999999);
+  entry.gems = safeStatInt(entry.gems, 0, 999999999);
+  entry.rankedPoints = safeStatInt(entry.rankedPoints, 1000, 999999);
   entry.updatedAt = Date.now();
 
   return entry;
@@ -1547,6 +2283,12 @@ function applyLeaderboardMatchReport(socketId, data = {}) {
     ...p,
     ...(data.profile || {})
   });
+
+  if (entry.playerId !== p.playerId) {
+    if (p.playerId && idToSocket.get(p.playerId) === socket.id) idToSocket.delete(p.playerId);
+    p.playerId = entry.playerId;
+    idToSocket.set(p.playerId, socket.id);
+  }
 
   const reportKey = String(data.reportKey || `${entry.playerId}:${data.matchId || Date.now()}`).slice(0, 160);
   if (entry.reportKeys.has(reportKey)) {
@@ -2122,36 +2864,207 @@ function cancelMatchBackToPartyLobby(match, reason = "Queue cancelled.") {
   broadcastOnlineList();
 }
 
-function checkMatchWinner(match) {
-  if (!match) return;
+function finalizeServerMatchResults(match, winners) {
+  if (!match || match.resultsFinalized) return;
 
-  const alive = [...match.players.values()].filter(p => p.alive);
+  match.resultsFinalized = true;
+
+  const winnerSocketIds = new Set(winners.map(entry => entry.socketId));
+
+  for (const entry of match.players.values()) {
+    if (!entry?.playerId) continue;
+
+    const won = winnerSocketIds.has(entry.socketId);
+    const profileEntry = getOrCreateLeaderboardEntry({
+      playerId: entry.playerId,
+      name: entry.name || "Survivor"
+    });
+
+    const verifiedKills = safeStatInt(entry.matchKills, 0, MATCH_TOTAL_SLOTS);
+
+    profileEntry.kills += verifiedKills;
+    profileEntry.wins += won ? 1 : 0;
+    profileEntry.losses += won ? 0 : 1;
+    profileEntry.deaths += won ? 0 : 1;
+    profileEntry.updatedAt = Date.now();
+
+    const liveProfile = getPlayer(entry.socketId);
+
+    if (liveProfile) {
+      liveProfile.rank = profileEntry.rank;
+      liveProfile.level = profileEntry.level;
+      liveProfile.profileXp = profileEntry.profileXp || 0;
+      liveProfile.wins = profileEntry.wins;
+      liveProfile.kills = profileEntry.kills;
+      liveProfile.deaths = profileEntry.deaths;
+      liveProfile.losses = profileEntry.losses;
+      liveProfile.revives = profileEntry.revives;
+
+      io.to(entry.socketId).emit("profileAssigned", privatePlayerProfile(liveProfile));
+    }
+  }
+
+  rankedScheduleSave();
+  broadcastLeaderboards();
+}
+
+function checkMatchWinner(match) {
+  if (!match || match.resultsFinalized) return;
+
+  const alive = [...match.players.values()].filter(entry => entry.alive);
   if (alive.length <= 0) return;
 
-  const aliveTeams = [...new Set(alive.map(p => p.teamId || p.socketId))];
+  const aliveTeams = [...new Set(alive.map(entry => entry.teamId || entry.socketId))];
+  if (aliveTeams.length !== 1) return;
 
-  if (aliveTeams.length === 1) {
-    const winners = alive.filter(p => (p.teamId || p.socketId) === aliveTeams[0]);
+  const winners = alive.filter(entry => (entry.teamId || entry.socketId) === aliveTeams[0]);
 
-    for (const entry of match.players.values()) {
-      const won = winners.some(w => w.socketId === entry.socketId);
+  finalizeServerMatchResults(match, winners);
 
-      io.to(entry.socketId).emit("matchWinner", {
-        matchId: match.matchId,
-        won,
-        winners
-      });
+  for (const entry of match.players.values()) {
+    const won = winners.some(winner => winner.socketId === entry.socketId);
 
-      const profile = getPlayer(entry.socketId);
-      if (profile) {
-        profile.inMatch = false;
-        profile.matchId = null;
-      }
+    io.to(entry.socketId).emit("matchWinner", {
+      matchId: match.matchId,
+      won,
+      winners
+    });
+
+    const profile = getPlayer(entry.socketId);
+
+    if (profile) {
+      profile.inMatch = false;
+      profile.matchId = null;
     }
-
-    matches.delete(match.matchId);
-    broadcastOnlineList();
   }
+
+  matches.delete(match.matchId);
+  broadcastOnlineList();
+}
+
+function makeReconnectPlayerPayload(entry) {
+  const state = entry?.state || {};
+
+  return {
+    ...state,
+    socketId: entry.socketId,
+    playerId: entry.playerId,
+    name: entry.name,
+    teamId: entry.teamId,
+    alive: entry.alive !== false,
+    hp: entry.hp ?? state.hp ?? state.health ?? 100,
+    health: entry.hp ?? state.hp ?? state.health ?? 100,
+    maxHp: entry.maxHp ?? state.maxHp ?? 100,
+    shieldHp: entry.shieldHp ?? state.shieldHp ?? 0,
+    shieldMax: entry.shieldMax ?? state.shieldMax ?? 0,
+    armorHp: entry.armorHp ?? state.armorHp ?? 0,
+    armorMax: entry.armorMax ?? state.armorMax ?? 100,
+    x: entry.x ?? state.x ?? 0,
+    y: entry.y ?? state.y ?? 0,
+    angle: entry.angle ?? state.angle ?? 0,
+    disconnected: !!entry.disconnected,
+    leftMatch: !!entry.leftMatch
+  };
+}
+
+function removeExpiredMatchPartyMember(match, socketId) {
+  const party = match?.partyId ? parties.get(match.partyId) : null;
+  if (!party) return;
+
+  party.members = party.members.filter(id => id !== socketId);
+  delete party.ready[socketId];
+
+  if (party.members.length <= 0) {
+    parties.delete(party.partyId);
+    return;
+  }
+
+  if (party.leaderId === socketId) {
+    party.leaderId = party.members[0];
+  }
+
+  emitPartyUpdate(party.partyId);
+}
+
+function expireDisconnectedMatchPlayer(matchId, socketId, playerId) {
+  const match = matches.get(matchId);
+  const entry = match?.players.get(socketId);
+
+  if (!match || !entry || entry.playerId !== playerId || !entry.disconnected) return;
+
+  const disconnectedFor = Date.now() - Number(entry.disconnectedAt || 0);
+
+  if (disconnectedFor < MATCH_RECONNECT_GRACE_MS) {
+    entry.reconnectTimer = setTimeout(() => {
+      expireDisconnectedMatchPlayer(matchId, socketId, playerId);
+    }, MATCH_RECONNECT_GRACE_MS - disconnectedFor);
+
+    entry.reconnectTimer.unref?.();
+    return;
+  }
+
+  entry.disconnected = false;
+  entry.leftMatch = true;
+  entry.reconnectExpired = true;
+  entry.alive = false;
+  entry.hp = 0;
+  entry.state = {
+    ...(entry.state || {}),
+    alive: false,
+    hp: 0,
+    health: 0,
+    isDowned: false,
+    updatedAt: Date.now()
+  };
+
+  removeExpiredMatchPartyMember(match, socketId);
+
+  io.to(matchId).emit("matchPlayerLeft", {
+    socketId,
+    playerId,
+    name: entry.name,
+    reason: "reconnect_timeout",
+    finalLeave: true
+  });
+
+  broadcastMatchSync(match);
+  checkMatchWinner(match);
+  broadcastOnlineList();
+}
+
+function holdMatchPlayerForReconnect(match, entry, player) {
+  if (!match || !entry || !player) return;
+
+  clearTimeout(entry.reconnectTimer);
+
+  const now = Date.now();
+
+  entry.disconnected = true;
+  entry.disconnectedAt = now;
+  entry.reconnectGraceUntil = now + MATCH_RECONNECT_GRACE_MS;
+  entry.leftMatch = false;
+  entry.reconnectExpired = false;
+  entry.state = {
+    ...(entry.state || {}),
+    updatedAt: now
+  };
+
+  entry.reconnectTimer = setTimeout(() => {
+    expireDisconnectedMatchPlayer(match.matchId, entry.socketId, entry.playerId);
+  }, MATCH_RECONNECT_GRACE_MS);
+
+  entry.reconnectTimer.unref?.();
+
+  io.to(match.matchId).emit("matchPlayerLeft", {
+    socketId: entry.socketId,
+    playerId: entry.playerId,
+    name: entry.name,
+    reason: "disconnected",
+    finalLeave: false,
+    reconnectGraceMs: MATCH_RECONNECT_GRACE_MS
+  });
+
+  broadcastMatchSync(match);
 }
 
 let rankedSeasonTimer = null;
@@ -2188,48 +3101,64 @@ io.on("connection", socket => {
   console.log("[socket] connected:", socket.id);
 
   socket.on("register", data => {
-    console.log("[socket] register:", socket.id, data?.playerId, data?.name);
-    let playerId = String(data?.playerId || "").trim();
-
-    if (!playerId || idToSocket.has(playerId)) {
-      playerId = makeSurvivorId();
+    if (!PLAYER_SESSION_SECRET) {
+      socket.emit("securityError", "Server account security is not configured.");
+      return;
     }
 
-    idToSocket.set(playerId, socket.id);
+    const session = verifyPlayerSessionToken(data?.sessionToken);
+    const playerId = session?.playerId || createSecurePlayerId();
+    const existingSocketId = idToSocket.get(playerId);
+
+    if (existingSocketId && existingSocketId !== socket.id) {
+      const existingSocket = io.sockets.sockets.get(existingSocketId);
+      const existingPlayer = players.get(existingSocketId);
+
+      if (existingPlayer) existingPlayer.replacedBySocketId = socket.id;
+
+      if (existingSocket?.connected) {
+        existingSocket.emit("profileSessionReplaced", { playerId });
+        existingSocket.disconnect(true);
+      } else {
+        players.delete(existingSocketId);
+      }
+
+      idToSocket.delete(playerId);
+    }
+
+    const profileEntry = getOrCreateLeaderboardEntry({
+      playerId,
+      name: String(data?.name || "Survivor").trim().slice(0, 24),
+      color: data?.color,
+      icon: data?.icon
+    });
 
     const p = {
       socketId: socket.id,
       playerId,
-      name: String(data?.name || playerId).trim().slice(0, 24),
-      rank: data?.rank || "SURVIVOR",
-      level: Math.max(1, Math.min(PROFILE_MAX_LEVEL, Number(data?.level || 1))),
-      profileXp: Number(data?.profileXp || data?.xp || 0),
-      wins: Number(data?.wins || 0),
-      kills: Number(data?.kills || 0),
-      deaths: Number(data?.deaths || 0),
-      losses: Number(data?.losses || 0),
-      revives: Number(data?.revives || 0),
-      gold: Number(data?.gold || 0),
-      gems: Number(data?.gems || 0),
-      color: data?.color || "#38bdf8",
-      icon: data?.icon || "DS",
+      name: profileEntry.name,
+      rank: profileEntry.rank,
+      level: profileEntry.level,
+      profileXp: profileEntry.profileXp || 0,
+      wins: profileEntry.wins,
+      kills: profileEntry.kills,
+      deaths: profileEntry.deaths,
+      losses: profileEntry.losses,
+      revives: profileEntry.revives,
+      gold: profileEntry.gold,
+      gems: profileEntry.gems,
+      color: profileEntry.color,
+      icon: profileEntry.icon,
       partyId: null,
       inMatch: false,
-      matchId: null
+      matchId: null,
+      sessionToken: issuePlayerSessionToken(playerId)
     };
 
+    idToSocket.set(playerId, socket.id);
     players.set(socket.id, p);
 
-    const leaderboardEntry = getOrCreateLeaderboardEntry(p);
-    p.level = leaderboardEntry.level;
-    p.profileXp = leaderboardEntry.profileXp || 0;
-    p.wins = leaderboardEntry.wins;
-    p.kills = leaderboardEntry.kills;
-    p.deaths = leaderboardEntry.deaths;
-    p.losses = leaderboardEntry.losses;
-    p.revives = leaderboardEntry.revives;
-
-    socket.emit("profileAssigned", publicPlayer(p));
+    socket.emit("profileAssigned", privatePlayerProfile(p));
     broadcastOnlineList();
     broadcastLeaderboards();
   });
@@ -2448,6 +3377,162 @@ io.on("connection", socket => {
     }
   });
 
+  socket.on("matchReconnectRequest", data => {
+    const p = getPlayer(socket.id);
+    const session = data?.session || {};
+    const requestedMatchId = String(session.matchId || "").trim();
+
+    if (!p || !requestedMatchId) {
+      socket.emit("matchReconnectRejected", {
+        reason: "Reconnect request is missing match information.",
+        clearSession: true
+      });
+      return;
+    }
+
+    if (session.playerId && session.playerId !== p.playerId) {
+      socket.emit("matchReconnectRejected", {
+        reason: "Reconnect profile does not match this session.",
+        clearSession: true
+      });
+      return;
+    }
+
+    const match = matches.get(requestedMatchId);
+
+    if (!match) {
+      socket.emit("matchReconnectRejected", {
+        reason: "That match is no longer active.",
+        clearSession: true
+      });
+      return;
+    }
+
+    const entry = [...match.players.values()].find(candidate => candidate?.playerId === p.playerId);
+
+    if (
+      !entry ||
+      !entry.disconnected ||
+      entry.leftMatch ||
+      entry.reconnectExpired ||
+      Date.now() > Number(entry.reconnectGraceUntil || 0)
+    ) {
+      socket.emit("matchReconnectRejected", {
+        reason: "Your reconnect window has expired.",
+        clearSession: true
+      });
+      return;
+    }
+
+    const oldSocketId = entry.socketId;
+
+    clearTimeout(entry.reconnectTimer);
+
+    match.players.delete(oldSocketId);
+
+    entry.socketId = socket.id;
+    entry.playerId = p.playerId;
+    entry.name = p.name;
+    entry.disconnected = false;
+    entry.disconnectedAt = 0;
+    entry.reconnectGraceUntil = 0;
+    entry.reconnectExpired = false;
+    entry.leftMatch = false;
+    entry.reconnectTimer = null;
+    entry.state = {
+      ...(entry.state || {}),
+      socketId: socket.id,
+      playerId: p.playerId,
+      name: p.name,
+      updatedAt: Date.now()
+    };
+
+    match.players.set(socket.id, entry);
+
+    p.inMatch = true;
+    p.matchId = match.matchId;
+    p.partyId = match.partyId || null;
+
+    socket.join(match.matchId);
+
+    const party = match.partyId ? parties.get(match.partyId) : null;
+
+    if (party) {
+      const memberIndex = party.members.indexOf(oldSocketId);
+
+      if (memberIndex >= 0) {
+        party.members[memberIndex] = socket.id;
+      } else if (!party.members.includes(socket.id)) {
+        party.members.push(socket.id);
+      }
+
+      party.ready[socket.id] = party.ready[oldSocketId] ?? false;
+      delete party.ready[oldSocketId];
+
+      if (party.leaderId === oldSocketId) {
+        party.leaderId = socket.id;
+      }
+
+      emitPartyUpdate(party.partyId);
+    }
+
+    if (match.worldAuthoritySocketId === oldSocketId) {
+      match.worldAuthoritySocketId = socket.id;
+    }
+
+    const serverNow = Date.now();
+    const playerPayload = makeReconnectPlayerPayload(entry);
+    const teammates = publicMatchTeammates(match);
+    const gameState =
+      entry.state?.gameState ||
+      (serverNow < Number(match.deployAt || 0) ? "QUEUE_LOBBY" : "MATCH");
+
+    socket.emit("matchReconnectAccepted", {
+      matchId: match.matchId,
+      seed: match.seed,
+      mode: match.mode,
+      teamSize: match.teamSize || TEAM_SIZE_BY_MODE[match.mode] || 2,
+      totalSlots: match.totalSlots || MATCH_TOTAL_SLOTS,
+      queueStartAt: match.queueStartAt,
+      deployAt: match.deployAt,
+      serverNow,
+      worldAuthoritySocketId: chooseWorldAuthority(match),
+      teammates,
+      players: [...match.players.values()].map(makeReconnectPlayerPayload),
+      player: playerPayload,
+      storm: match.worldSnapshot?.storm || null,
+      worldSnapshot: match.worldSnapshot || null,
+      session: {
+        matchId: match.matchId,
+        seed: match.seed,
+        mode: match.mode,
+        playerId: p.playerId,
+        teammates,
+        gameState,
+        isSpectator: !!session.isSpectator || entry.alive === false,
+        spectateTargetKey: session.spectateTargetKey || null,
+        player: playerPayload,
+        storm: match.worldSnapshot?.storm || null
+      }
+    });
+
+    socket.to(match.matchId).emit("matchPlayerReconnected", {
+      oldSocketId,
+      socketId: socket.id,
+      playerId: p.playerId,
+      name: p.name,
+      alive: entry.alive !== false,
+      player: playerPayload
+    });
+
+    if (match.publicQueue) {
+      emitPublicMatchTeamUpdate(match);
+    }
+
+    broadcastMatchSync(match);
+    broadcastOnlineList();
+  });
+
   socket.on("matchJoin", data => {
     const p = getPlayer(socket.id);
     if (!p || !data?.matchId) return;
@@ -2463,81 +3548,733 @@ io.on("connection", socket => {
     if (match.worldSnapshot) socket.emit("matchWorldSnapshot", match.worldSnapshot);
   });
 
-  socket.on("matchState", state => {
+ socket.on("matchState", rawState => {
     const p = getPlayer(socket.id);
-    if (!p || !p.matchId) return;
+    if (!p || !p.matchId || !rawState || typeof rawState !== "object" || Array.isArray(rawState)) return;
 
     const match = matches.get(p.matchId);
-    if (!match) return;
+    const entry = match?.players.get(socket.id);
+    if (!match || !entry || entry.leftMatch || entry.disconnected) return;
 
-    let entry = match.players.get(socket.id);
+    const now = Date.now();
+    if (now - Number(entry.lastStateAt || 0) < MATCH_STATE_MIN_MS) return;
 
-    if (!entry) {
-      entry = {
-        socketId: socket.id,
-        playerId: p.playerId,
-        name: p.name,
-        teamId: p.partyId || state?.teamId || socket.id,
-        alive: true,
-        hp: 100,
-        x: 0,
-        y: 0,
-        angle: 0
-      };
+    // Server controls which map phase is active. Clients cannot claim a phase
+    // merely to bypass movement validation or use different world bounds.
+    const gameState = now < Number(match.deployAt || 0) ? "QUEUE_LOBBY" : "MATCH";
+    const bounds = getMatchBounds(match, gameState);
 
-      match.players.set(socket.id, entry);
-      socket.join(p.matchId);
+    const hadAcceptedState = Number(entry.lastStateAt || 0) > 0;
+    const previousGameState = String(entry.state?.gameState || "");
+    const phaseChanged = !!previousGameState && previousGameState !== gameState;
+
+    const previousX = sanitizeMatchCoordinate(entry.x, bounds.width / 2, bounds.width);
+    const previousY = sanitizeMatchCoordinate(entry.y, bounds.height / 2, bounds.height);
+    const nextX = sanitizeMatchCoordinate(rawState.x, previousX, bounds.width);
+    const nextY = sanitizeMatchCoordinate(rawState.y, previousY, bounds.height);
+
+    // Prevent normal-state teleports while still allowing the queue-map to
+    // island-map transition, where both maps use different coordinate spaces.
+    if (hadAcceptedState && !phaseChanged) {
+      const elapsedSeconds = Math.max(
+        MATCH_STATE_MIN_MS,
+        now - Number(entry.lastStateAt || now)
+      ) / 1000;
+
+      const allowedDistance =
+        MATCH_MAX_MOVE_PER_SECOND * elapsedSeconds +
+        MATCH_MOVE_GRACE_DISTANCE;
+
+      if (Math.hypot(nextX - previousX, nextY - previousY) > allowedDistance) {
+        return;
+      }
     }
 
-    entry.x = Number(state?.x || 0);
-    entry.y = Number(state?.y || 0);
-    entry.angle = Number(state?.angle || 0);
-    entry.hp = Number(state?.hp ?? entry.hp);
-    entry.maxHp = Number(state?.maxHp ?? entry.maxHp ?? 100);
-    entry.shieldHp = Math.max(0, Math.round(Number(state?.shieldHp ?? entry.shieldHp ?? 0)));
-    entry.shieldMax = Math.max(0, Math.round(Number(state?.shieldMax ?? entry.shieldMax ?? 0)));
-    entry.armorHp = Math.max(0, Math.round(Number(state?.armorHp ?? entry.armorHp ?? 0)));
-    entry.armorMax = Math.max(1, Math.round(Number(state?.armorMax ?? entry.armorMax ?? 100)));
-    entry.alive = state?.alive !== false;
-    entry.state = {
-      ...(entry.state || {}),
-      ...state,
-      hp: entry.hp,
-      health: entry.hp,
-      maxHp: entry.maxHp,
-      shieldHp: entry.shieldHp,
-      shieldMax: entry.shieldMax,
-      armorHp: entry.armorHp,
-      armorMax: entry.armorMax,
-      gameState: state?.gameState || entry.state?.gameState || "MATCH",
-      floor: state?.floor || entry.state?.floor || "surface",
-      updatedAt: Date.now()
-    };
+    const maxHp = clampFiniteNumber(
+      rawState.maxHp ?? rawState.maxHealth,
+      entry.maxHp ?? 100,
+      1,
+      1000
+    );
 
-    socket.to(p.matchId).emit("matchState", {
-      ...state,
+    const shieldMax = clampFiniteNumber(
+      rawState.shieldMax,
+      entry.shieldMax ?? 0,
+      0,
+      1000
+    );
+
+    const armorMax = clampFiniteNumber(
+      rawState.armorMax,
+      entry.armorMax ?? 100,
+      0,
+      1000
+    );
+
+    const rawCustomizations =
+      rawState.customizations &&
+      typeof rawState.customizations === "object" &&
+      !Array.isArray(rawState.customizations)
+        ? rawState.customizations
+        : {};
+
+    const customizations = {};
+
+    for (const slot of ["hair", "hat", "glasses", "face"]) {
+      const id = String(rawCustomizations[slot] || "").trim().slice(0, 64);
+      if (id) customizations[slot] = id;
+    }
+
+    const rawWeapon =
+      rawState.meleeWeapon &&
+      typeof rawState.meleeWeapon === "object" &&
+      !Array.isArray(rawState.meleeWeapon)
+        ? rawState.meleeWeapon
+        : null;
+
+    const meleeWeapon = rawWeapon
+      ? {
+          id: String(rawWeapon.id || "").slice(0, 64),
+          name: String(rawWeapon.name || "").slice(0, 64),
+          rarity: String(rawWeapon.rarity || "").slice(0, 32),
+          damage: clampFiniteNumber(rawWeapon.damage, 0, 0, MATCH_MAX_DAMAGE_PACKET),
+          objectDamage: clampFiniteNumber(rawWeapon.objectDamage, 0, 0, MATCH_MAX_DAMAGE_PACKET),
+          range: clampFiniteNumber(rawWeapon.range, 0, 0, 1800),
+          cooldownMs: clampFiniteNumber(rawWeapon.cooldownMs, 0, 0, 30000),
+          swingDuration: clampFiniteNumber(rawWeapon.swingDuration, 0, 0, 10),
+          color: String(rawWeapon.color || "").slice(0, 24),
+          iconSymbol: String(rawWeapon.iconSymbol || "").slice(0, 16),
+          shape: String(rawWeapon.shape || "").slice(0, 32)
+        }
+      : null;
+
+    const state = {
       socketId: socket.id,
       playerId: p.playerId,
       name: p.name,
-      color: p.color,
-      level: p.level,
-      rank: p.rank,
       teamId: entry.teamId,
-      matchMode: match.mode,
-      teamSize: match.teamSize || 2
-    });
+      gameState,
+
+      x: nextX,
+      y: nextY,
+      angle: clampFiniteNumber(
+        rawState.angle,
+        entry.angle ?? 0,
+        -Math.PI * 4,
+        Math.PI * 4
+      ),
+      radius: clampFiniteNumber(rawState.radius, 16, 8, 48),
+
+      hp: clampFiniteNumber(
+        rawState.hp ?? rawState.health,
+        entry.hp ?? 100,
+        0,
+        maxHp
+      ),
+      maxHp,
+
+      shieldHp: clampFiniteNumber(
+        rawState.shieldHp,
+        entry.shieldHp ?? 0,
+        0,
+        shieldMax
+      ),
+      shieldMax,
+
+      armorHp: clampFiniteNumber(
+        rawState.armorHp,
+        entry.armorHp ?? 0,
+        0,
+        armorMax
+      ),
+      armorMax,
+
+      alive: entry.alive !== false && rawState.alive !== false,
+      isDowned: entry.alive !== false && !!rawState.isDowned,
+      downedTimer: clampFiniteNumber(rawState.downedTimer, 0, 0, 120),
+
+      color: String(p.color || "#38bdf8").slice(0, 24),
+      titleId: String(rawState.titleId || "").slice(0, 64),
+      frameId: String(rawState.frameId || "").slice(0, 64),
+      customizations,
+
+      floor: String(rawState.floor || "surface").slice(0, 64),
+      scopeLevel: String(rawState.scopeLevel || "x1").slice(0, 8),
+      visionRadius: clampFiniteNumber(rawState.visionRadius, 320, 120, 2500),
+
+      selectedMelee: !!rawState.selectedMelee,
+      meleeWeapon,
+      updatedAt: now
+    };
+
+    // Keep match-entry values current so matchDamage range checks and
+    // reconnect snapshots use approved coordinates rather than spawn defaults.
+    entry.x = state.x;
+    entry.y = state.y;
+    entry.angle = state.angle;
+    entry.hp = state.hp;
+    entry.maxHp = state.maxHp;
+    entry.shieldHp = state.shieldHp;
+    entry.shieldMax = state.shieldMax;
+    entry.armorHp = state.armorHp;
+    entry.armorMax = state.armorMax;
+    entry.alive = state.alive;
+    entry.lastStateAt = now;
+    entry.state = state;
+
+    socket.to(match.matchId).emit("matchState", state);
   });
 
-    socket.on("matchAction", action => {
-    const p = getPlayer(socket.id);
-    if (!p || !p.matchId) return;
+  socket.on("matchDamage", data => {
+    const source = getPlayer(socket.id);
+    if (!source || !source.matchId || !data || typeof data !== "object") return;
 
-    socket.to(p.matchId).emit("matchAction", {
-      ...action,
+    const match = matches.get(source.matchId);
+    if (!match) return;
+
+    const sourceEntry = match.players.get(socket.id);
+    const targetSocketId = String(data?.targetSocketId || "");
+    const target = match.players.get(targetSocketId);
+
+if (!sourceEntry || !sourceEntry.alive || !target || !target.alive) return;
+if (sourceEntry.state?.isDowned || target.state?.isDowned) return;
+if (targetSocketId === socket.id) return;
+    if ((sourceEntry.teamId || socket.id) === (target.teamId || targetSocketId)) return;
+
+    const now = Date.now();
+    if (now - Number(sourceEntry.lastDamageEventAt || 0) < MATCH_DAMAGE_MIN_INTERVAL_MS) return;
+
+    const sx = Number(sourceEntry.x);
+    const sy = Number(sourceEntry.y);
+    const tx = Number(target.x);
+    const ty = Number(target.y);
+    const distance = Math.hypot(tx - sx, ty - sy);
+
+    if (!Number.isFinite(distance) || distance > 1800) return;
+
+    const requestedDamage = clampFiniteNumber(
+      data?.rawDamage ?? data?.amount,
+      0,
+      0,
+      MATCH_MAX_DAMAGE_PACKET
+    );
+
+    if (requestedDamage <= 0) return;
+
+    if (now - Number(sourceEntry.damageBudgetStartedAt || 0) > MATCH_DAMAGE_BUDGET_WINDOW_MS) {
+      sourceEntry.damageBudgetStartedAt = now;
+      sourceEntry.damageBudgetUsed = 0;
+    }
+
+    const budgetRemaining = Math.max(
+      0,
+      MATCH_DAMAGE_BUDGET_PER_WINDOW - Number(sourceEntry.damageBudgetUsed || 0)
+    );
+
+    const permittedDamage = Math.min(Math.round(requestedDamage), budgetRemaining);
+    if (permittedDamage <= 0) return;
+
+    sourceEntry.lastDamageEventAt = now;
+    sourceEntry.damageBudgetUsed = Number(sourceEntry.damageBudgetUsed || 0) + permittedDamage;
+
+    const resolved = resolveServerDamage(target, permittedDamage);
+const damageType = String(data?.damageType || "online").slice(0, 40);
+
+const supportsDownedState =
+  (match.mode === "duo" || match.mode === "team") &&
+  getServerMatchPhase(match, now) === "MATCH" &&
+  !target.state?.isDowned;
+
+// Duo/Squad players enter a server-recorded downed state instead of being
+// immediately removed. This keeps revive validation and winner checks in
+// sync with the existing client-side downed/revive flow.
+if (target.hp <= 0 && supportsDownedState) {
+  const downedMaxHp = clampFiniteNumber(
+    target.maxHp ?? target.state?.maxHp,
+    100,
+    1,
+    1000
+  );
+
+  target.hp = 1;
+  target.maxHp = downedMaxHp;
+  target.alive = true;
+
+  target.state = {
+    ...(target.state || {}),
+    hp: 1,
+    health: 1,
+    maxHp: downedMaxHp,
+    alive: true,
+    isDowned: true,
+    downedTimer: 40,
+    updatedAt: now
+  };
+}
+
+target.lastDamageAt = now;
+    target.lastDamageSourceSocketId = socket.id;
+    target.lastRawDamage = resolved.rawDamage;
+    target.lastHpDamage = resolved.hpDamage;
+    target.lastArmorDamage = resolved.armorDamage;
+    target.lastShieldDamage = resolved.shieldDamage;
+    target.state = {
+      ...(target.state || {}),
+      hp: target.hp,
+      health: target.hp,
+      maxHp: target.maxHp,
+      shieldHp: target.shieldHp,
+      shieldMax: target.shieldMax,
+      armorHp: target.armorHp,
+      armorMax: target.armorMax,
+      updatedAt: now
+    };
+
+    io.to(targetSocketId).emit("matchDamageTaken", {
+      ...resolved,
+      amount: resolved.rawDamage,
+      damageType,
+      sourceSocketId: socket.id,
+      sourceName: source.name,
+      targetHp: target.hp,
+      targetHealth: target.hp,
+      targetMaxHp: target.maxHp,
+      targetShieldHp: target.shieldHp,
+      targetShieldMax: target.shieldMax,
+      targetArmorHp: target.armorHp,
+      targetArmorMax: target.armorMax
+    });
+
+    io.to(source.matchId).emit("matchDamageFx", {
+      targetSocketId,
+      amount: resolved.hpDamage || resolved.armorDamage || resolved.shieldDamage || resolved.rawDamage,
+      ...resolved,
+      targetHp: target.hp,
+      targetHealth: target.hp,
+      targetMaxHp: target.maxHp,
+      targetShieldHp: target.shieldHp,
+      targetShieldMax: target.shieldMax,
+      targetArmorHp: target.armorHp,
+      targetArmorMax: target.armorMax,
+      x: target.x,
+      y: target.y,
+      damageType
+    });
+
+    if (target.hp <= 0) {
+      target.alive = false;
+      sourceEntry.matchKills = Number(sourceEntry.matchKills || 0) + 1;
+
+      io.to(source.matchId).emit("matchPlayerEliminated", {
+        victimSocketId: targetSocketId,
+        killerSocketId: socket.id,
+        victimName: target.name,
+        killerName: source.name,
+        damageType
+      });
+
+      checkMatchWinner(match);
+    }
+  });
+
+  socket.on("matchAction", rawAction => {
+    const p = getPlayer(socket.id);
+
+    if (
+      !p ||
+      !p.matchId ||
+      !isPlainObject(rawAction) ||
+      matchActionPayloadTooLarge(rawAction)
+    ) {
+      return;
+    }
+
+    const match = matches.get(p.matchId);
+    const sourceEntry = match?.players.get(socket.id);
+
+    if (!match || !isActiveMatchEntry(sourceEntry)) return;
+
+    const now = Date.now();
+    const type = sanitizeMatchActionId(rawAction.type, 32);
+    const rule = MATCH_ACTION_RULES[type];
+
+    if (!rule) return;
+
+    const phase = getServerMatchPhase(match, now);
+    const bounds = getMatchBounds(match, phase);
+    const sourcePoint = getMatchEntryPoint(sourceEntry);
+    const sourceFloor = getMatchEntryFloor(sourceEntry);
+    const sourceIsDowned = !!sourceEntry.state?.isDowned;
+
+    const base = {
       fromSocketId: socket.id,
       fromPlayerId: p.playerId,
       fromName: p.name
-    });
+    };
+
+    // Emotes work in queue or match. Every other action is match-only.
+    if (type !== "playerEmote" && phase !== "MATCH") return;
+
+    if (type === "monsterCast") {
+      if (!sourcePoint || sourceIsDowned) return;
+
+      const cardId = sanitizeMatchActionId(rawAction.cardId, 80);
+      const x = Number(rawAction.x);
+      const y = Number(rawAction.y);
+      const angle = clampFiniteNumber(
+        rawAction.angle,
+        sourceEntry.angle || 0,
+        -Math.PI * 2,
+        Math.PI * 2
+      );
+
+      if (!cardId || !isPointInBounds(x, y, bounds)) return;
+
+      if (
+        Math.hypot(x - sourcePoint.x, y - sourcePoint.y) >
+        MATCH_ACTION_CAST_ORIGIN_MAX_DISTANCE
+      ) {
+        return;
+      }
+
+      if (!allowMatchAction(sourceEntry, type, now)) return;
+
+      socket.to(match.matchId).emit("matchAction", {
+        ...base,
+        type,
+        cardId,
+        x,
+        y,
+        angle,
+        color: sanitizeMatchActionColor(rawAction.color, "#38bdf8")
+      });
+
+      return;
+    }
+
+    if (type === "magicUse") {
+      if (!sourcePoint || sourceIsDowned) return;
+
+      const cardId = sanitizeMatchActionId(rawAction.cardId, 80);
+      if (!cardId || !allowMatchAction(sourceEntry, type, now)) return;
+
+      socket.to(match.matchId).emit("matchAction", {
+        ...base,
+        type,
+        cardId,
+        x: sourcePoint.x,
+        y: sourcePoint.y,
+        angle: clampFiniteNumber(
+          sourceEntry.angle,
+          0,
+          -Math.PI * 2,
+          Math.PI * 2
+        ),
+        color: sanitizeMatchActionColor(rawAction.color, "#38bdf8")
+      });
+
+      return;
+    }
+
+    if (type === "meleeSwing") {
+      if (sourceIsDowned) return;
+
+      const sourceType = rawAction.sourceType === "bot" ? "bot" : "player";
+
+      let x = sourcePoint?.x;
+      let y = sourcePoint?.y;
+      let floor = sourceFloor;
+      let sourceId = socket.id;
+
+      // Only the current world authority can relay bot visual actions.
+      if (sourceType === "bot") {
+        const authority =
+          reconcileWorldAuthority(match, "match_action").worldAuthoritySocketId;
+
+        if (
+          authority !== socket.id ||
+          !isEligibleWorldAuthority(match, socket.id)
+        ) {
+          return;
+        }
+
+        const botId = sanitizeMatchActionId(rawAction.sourceId, 80);
+        const rawX = Number(rawAction.x);
+        const rawY = Number(rawAction.y);
+
+        if (!botId || !isPointInBounds(rawX, rawY, bounds)) return;
+
+        x = rawX;
+        y = rawY;
+        floor = sanitizeMatchActionText(rawAction.floor, 64, "surface") || "surface";
+        sourceId = botId;
+      } else if (!sourcePoint) {
+        return;
+      }
+
+      if (!allowMatchAction(sourceEntry, type, now)) return;
+
+      socket.to(match.matchId).emit("matchAction", {
+        ...base,
+        type,
+        sourceType,
+        sourceId,
+        x,
+        y,
+        floor,
+        angle: clampFiniteNumber(
+          rawAction.angle,
+          sourceEntry.angle || 0,
+          -Math.PI * 2,
+          Math.PI * 2
+        ),
+        hit: !!rawAction.hit,
+        color: sanitizeMatchActionColor(rawAction.color, "#e0f2fe"),
+        range: clampFiniteNumber(rawAction.range, 60, 20, 260),
+        coneHalfAngle: clampFiniteNumber(
+          rawAction.coneHalfAngle,
+          Math.PI / 5,
+          0.02,
+          Math.PI
+        ),
+        swingDuration: clampFiniteNumber(
+          rawAction.swingDuration,
+          130,
+          60,
+          1000
+        ),
+        weapon: sanitizeMatchActionWeapon(rawAction.weapon)
+      });
+
+      return;
+    }
+
+    if (type === "matchPing") {
+      if (!sourcePoint || sourceIsDowned) return;
+
+      const pingType = sanitizeMatchActionId(rawAction.pingType, 24);
+      const x = Number(rawAction.x);
+      const y = Number(rawAction.y);
+
+      const maxPingDistance = Math.min(
+        2800,
+        Math.max(
+          950,
+          Number(sourceEntry.state?.visionRadius || 950) +
+          MATCH_ACTION_PING_EXTRA_RANGE
+        )
+      );
+
+      if (!MATCH_ACTION_PING_TYPES.has(pingType)) return;
+      if (!isPointInBounds(x, y, bounds)) return;
+
+      if (Math.hypot(x - sourcePoint.x, y - sourcePoint.y) > maxPingDistance) {
+        return;
+      }
+
+      if (!allowMatchAction(sourceEntry, type, now)) return;
+
+      // Pings are teammate-only.
+      emitMatchActionToTeam(
+        match,
+        sourceEntry.teamId || socket.id,
+        {
+          ...base,
+          type,
+          pingType,
+          x,
+          y,
+          floor: sourceFloor,
+          sourceName: p.name
+        },
+        socket.id
+      );
+
+      return;
+    }
+
+    if (type === "revivePlayer") {
+      if (!sourcePoint || sourceIsDowned) return;
+
+      const targetSocketId = sanitizeMatchActionText(
+        rawAction.targetSocketId,
+        128,
+        ""
+      );
+
+      const targetEntry = match.players.get(targetSocketId);
+      const targetPoint = getMatchEntryPoint(targetEntry);
+
+      if (
+        !targetSocketId ||
+        targetSocketId === socket.id ||
+        !isActiveMatchEntry(targetEntry)
+      ) {
+        return;
+      }
+
+      if (!sameMatchTeam(sourceEntry, targetEntry)) return;
+      if (!targetEntry.state?.isDowned) return;
+      if (!targetPoint || getMatchEntryFloor(targetEntry) !== sourceFloor) return;
+
+      if (
+        Math.hypot(
+          targetPoint.x - sourcePoint.x,
+          targetPoint.y - sourcePoint.y
+        ) > MATCH_ACTION_REVIVE_RANGE
+      ) {
+        return;
+      }
+
+      if (!allowMatchAction(sourceEntry, type, now)) return;
+
+      const revivedMaxHp = clampFiniteNumber(
+        targetEntry.maxHp ?? targetEntry.state?.maxHp,
+        100,
+        1,
+        1000
+      );
+
+      const revivedHp = Math.max(35, Math.floor(revivedMaxHp * 0.35));
+
+      targetEntry.alive = true;
+      targetEntry.hp = revivedHp;
+      targetEntry.maxHp = revivedMaxHp;
+
+      targetEntry.state = {
+        ...(targetEntry.state || {}),
+        x: targetPoint.x,
+        y: targetPoint.y,
+        hp: revivedHp,
+        health: revivedHp,
+        maxHp: revivedMaxHp,
+        alive: true,
+        isDowned: false,
+        downedTimer: 0,
+        updatedAt: now
+      };
+
+      emitMatchActionToTeam(
+        match,
+        sourceEntry.teamId || socket.id,
+        {
+          ...base,
+          type,
+          targetSocketId,
+          reviverName: p.name,
+          x: targetPoint.x,
+          y: targetPoint.y,
+          floor: sourceFloor,
+          revivedHp,
+          revivedMaxHp
+        },
+        socket.id
+      );
+
+      return;
+    }
+
+    if (type === "playerEmote") {
+      if (!sourcePoint) return;
+
+      const emoteId = sanitizeMatchActionId(rawAction.emoteId, 64);
+
+      if (!MATCH_ACTION_EMOTE_IDS.has(emoteId)) return;
+      if (!allowMatchAction(sourceEntry, type, now)) return;
+
+      socket.to(match.matchId).emit("matchAction", {
+        ...base,
+        type,
+        emoteId,
+        x: sourcePoint.x,
+        y: sourcePoint.y,
+        floor: sourceFloor,
+        sourceName: p.name
+      });
+
+      return;
+    }
+
+    if (type === "airdropRoute") {
+      const authority =
+        reconcileWorldAuthority(match, "match_action").worldAuthoritySocketId;
+
+      if (
+        authority !== socket.id ||
+        !isEligibleWorldAuthority(match, socket.id)
+      ) {
+        return;
+      }
+
+      const routeId = sanitizeMatchActionId(rawAction.routeId, 96);
+      const travelMs = clampFiniteNumber(
+        rawAction.travelMs,
+        18000,
+        10000,
+        30000
+      );
+
+      const edgeMargin = Math.max(bounds.width, bounds.height) + 3000;
+
+      const startX = Number(rawAction.startX);
+      const startY = Number(rawAction.startY);
+      const endX = Number(rawAction.endX);
+      const endY = Number(rawAction.endY);
+
+      const rawTargets = Array.isArray(rawAction.targets)
+        ? rawAction.targets
+        : [];
+
+      if (!routeId || rawTargets.length < 1 || rawTargets.length > 2) return;
+
+      if (!isPointInBounds(startX, startY, bounds, edgeMargin)) return;
+      if (!isPointInBounds(endX, endY, bounds, edgeMargin)) return;
+
+      if (
+        now - Number(match.lastAirdropRouteAt || 0) <
+        MATCH_ACTION_AIRDROP_MIN_INTERVAL_MS
+      ) {
+        return;
+      }
+
+      const targets = [];
+
+      for (let index = 0; index < rawTargets.length; index++) {
+        const rawTarget = rawTargets[index];
+
+        if (!isPlainObject(rawTarget)) return;
+
+        const id = sanitizeMatchActionId(rawTarget.id, 96);
+        const x = Number(rawTarget.x);
+        const y = Number(rawTarget.y);
+
+        if (!id || !isPointInBounds(x, y, bounds)) return;
+
+        targets.push({
+          id,
+          x,
+          y,
+          fallMs: clampFiniteNumber(rawTarget.fallMs, 9000, 4000, 16000),
+          dropT: clampFiniteNumber(rawTarget.dropT, 0.5, 0.15, 0.9)
+        });
+      }
+
+      if (!allowMatchAction(sourceEntry, type, now)) return;
+
+      match.lastAirdropRouteAt = now;
+
+      socket.to(match.matchId).emit("matchAction", {
+        ...base,
+        type,
+        routeId,
+        startX,
+        startY,
+        endX,
+        endY,
+        travelMs,
+        targets
+      });
+    }
   });
 
   socket.on("voiceJoin", data => {
@@ -2629,13 +4366,13 @@ io.on("connection", socket => {
     const match = matches.get(p.matchId);
     if (!match) return;
 
-    const authority = chooseWorldAuthority(match);
-    if (authority && authority !== socket.id) return;
+    const authority = reconcileWorldAuthority(match, "snapshot_recovery").worldAuthoritySocketId;
+    if (authority !== socket.id) return;
+    if (!isEligibleWorldAuthority(match, socket.id)) return;
 
     const now = Date.now();
     if (now - (match.lastWorldSnapshotAt || 0) < WORLD_SNAPSHOT_MIN_MS) return;
 
-    match.worldAuthoritySocketId = socket.id;
     match.lastWorldSnapshotAt = now;
     match.worldSnapshot = {
       ...sanitizeWorldSnapshot(snapshot),
@@ -2643,128 +4380,6 @@ io.on("connection", socket => {
     };
 
     socket.to(p.matchId).emit("matchWorldSnapshot", match.worldSnapshot);
-  });
-
-  socket.on("matchDamage", data => {
-    const source = getPlayer(socket.id);
-    if (!source || !source.matchId) return;
-
-    const match = matches.get(source.matchId);
-    if (!match) return;
-
-    const sourceEntry = match.players.get(socket.id);
-    const targetSocketId = String(data?.targetSocketId || "");
-    const target = match.players.get(targetSocketId);
-
-    if (!sourceEntry || !sourceEntry.alive || !target || !target.alive) return;
-    if (targetSocketId === socket.id) return;
-    if ((sourceEntry.teamId || socket.id) === (target.teamId || targetSocketId)) return;
-
-    const rawAmount = Number(data?.rawDamage ?? data?.amount ?? 0);
-    const rawHpDamage = Number(data?.hpDamage ?? rawAmount);
-    const rawArmorDamage = Number(data?.armorDamage ?? 0);
-    const rawShieldDamage = Number(data?.shieldDamage ?? 0);
-
-    if (![rawAmount, rawHpDamage, rawArmorDamage, rawShieldDamage].some(Number.isFinite)) return;
-
-    const sx = Number(sourceEntry.x);
-    const sy = Number(sourceEntry.y);
-    const tx = Number(target.x);
-    const ty = Number(target.y);
-
-    if (Number.isFinite(sx) && Number.isFinite(sy) && Number.isFinite(tx) && Number.isFinite(ty)) {
-      const dist = Math.hypot(tx - sx, ty - sy);
-      if (dist > 1800) return;
-    }
-
-    const amount = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawAmount) ? rawAmount : 0)));
-    const hpDamage = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawHpDamage) ? rawHpDamage : amount)));
-    const armorDamage = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawArmorDamage) ? rawArmorDamage : 0)));
-    const shieldDamage = Math.max(0, Math.min(120, Math.round(Number.isFinite(rawShieldDamage) ? rawShieldDamage : 0)));
-    const damageType = String(data?.damageType || "online").slice(0, 40);
-
-    if (amount <= 0 && hpDamage <= 0 && armorDamage <= 0 && shieldDamage <= 0) return;
-
-    const reportedTargetHp = Number(data?.targetHp ?? data?.targetHealth);
-    const reportedTargetMaxHp = Number(data?.targetMaxHp ?? data?.targetMaxHealth);
-    const reportedTargetShieldHp = Number(data?.targetShieldHp);
-    const reportedTargetShieldMax = Number(data?.targetShieldMax);
-    const reportedTargetArmorHp = Number(data?.targetArmorHp);
-    const reportedTargetArmorMax = Number(data?.targetArmorMax);
-
-    target.hp = Math.max(0, Number.isFinite(reportedTargetHp) ? Math.round(reportedTargetHp) : target.hp - hpDamage);
-    target.maxHp = Math.max(1, Math.round(Number.isFinite(reportedTargetMaxHp) ? reportedTargetMaxHp : target.maxHp ?? target.state?.maxHp ?? 100));
-    target.shieldHp = Math.max(0, Math.round(Number.isFinite(reportedTargetShieldHp) ? reportedTargetShieldHp : target.shieldHp ?? target.state?.shieldHp ?? 0));
-    target.shieldMax = Math.max(0, Math.round(Number.isFinite(reportedTargetShieldMax) ? reportedTargetShieldMax : target.shieldMax ?? target.state?.shieldMax ?? 0));
-    target.armorHp = Math.max(0, Math.round(Number.isFinite(reportedTargetArmorHp) ? reportedTargetArmorHp : target.armorHp ?? target.state?.armorHp ?? 0));
-    target.armorMax = Math.max(1, Math.round(Number.isFinite(reportedTargetArmorMax) ? reportedTargetArmorMax : target.armorMax ?? target.state?.armorMax ?? 100));
-    target.lastDamageAt = Date.now();
-    target.lastDamageSourceSocketId = socket.id;
-    target.lastRawDamage = amount;
-    target.lastHpDamage = hpDamage;
-    target.lastArmorDamage = armorDamage;
-    target.lastShieldDamage = shieldDamage;
-    target.state = {
-      ...(target.state || {}),
-      hp: target.hp,
-      health: target.hp,
-      maxHp: target.maxHp,
-      shieldHp: target.shieldHp,
-      shieldMax: target.shieldMax,
-      armorHp: target.armorHp,
-      armorMax: target.armorMax
-    };
-
-    io.to(targetSocketId).emit("matchDamageTaken", {
-      amount,
-      rawDamage: amount,
-      hpDamage,
-      armorDamage,
-      shieldDamage,
-      damageType,
-      sourceSocketId: socket.id,
-      sourceName: source.name,
-      targetHp: target.hp,
-      targetHealth: target.hp,
-      targetMaxHp: target.maxHp,
-      targetShieldHp: target.shieldHp,
-      targetShieldMax: target.shieldMax,
-      targetArmorHp: target.armorHp,
-      targetArmorMax: target.armorMax
-    });
-
-    io.to(source.matchId).emit("matchDamageFx", {
-      targetSocketId,
-      amount: hpDamage > 0 ? hpDamage : armorDamage > 0 ? armorDamage : shieldDamage > 0 ? shieldDamage : amount,
-      rawDamage: amount,
-      hpDamage,
-      armorDamage,
-      shieldDamage,
-      targetHp: target.hp,
-      targetHealth: target.hp,
-      targetMaxHp: target.maxHp,
-      targetShieldHp: target.shieldHp,
-      targetShieldMax: target.shieldMax,
-      targetArmorHp: target.armorHp,
-      targetArmorMax: target.armorMax,
-      x: target.x,
-      y: target.y,
-      damageType
-    });
-
-    if (target.hp <= 0) {
-      target.alive = false;
-
-      io.to(source.matchId).emit("matchPlayerEliminated", {
-        victimSocketId: targetSocketId,
-        killerSocketId: socket.id,
-        victimName: target.name,
-        killerName: source.name,
-        damageType
-      });
-
-      checkMatchWinner(match);
-    }
   });
 
 socket.on("matchLocalDeath", data => {
@@ -2917,54 +4532,33 @@ socket.on("matchLocalDeath", data => {
     broadcastSpectatorCounts();
   });
 
-  socket.on("matchResultReport", data => {
-    const result = applyLeaderboardMatchReport(socket.id, data);
-    if (!result.ok) return;
-
-    socket.emit("profileAssigned", publicPlayer(getPlayer(socket.id)));
-    broadcastOnlineList();
-    broadcastLeaderboards();
+  socket.on("matchResultReport", () => {
+    socket.emit("matchResultRejected", {
+      reason: "Client-reported results are disabled. Public stats and ranked rewards require server-authoritative match simulation."
+    });
   });
 
   socket.on("disconnect", () => {
     const p = getPlayer(socket.id);
 
-       if (p) {
+    if (p) {
       if (p.voiceReady) {
         emitVoicePeerLeft(socket.id, "disconnected");
         p.voiceReady = false;
       }
 
-      if (p.playerId) idToSocket.delete(p.playerId);
+      if (p.playerId && idToSocket.get(p.playerId) === socket.id) idToSocket.delete(p.playerId);
 
-      if (p.partyId) leaveParty(socket.id);
+      const match = p.matchId ? matches.get(p.matchId) : null;
 
-      if (p.matchId) {
-        const matchId = p.matchId;
-        const match = matches.get(matchId);
+      if (match) {
+        const entry = match.players.get(socket.id);
 
-        if (match) {
-          const entry = match.players.get(socket.id);
-          const phase = entry?.state?.gameState || "";
-
-          if (phase === "QUEUE_LOBBY") {
-            cancelMatchBackToPartyLobby(match, `${p.name} disconnected during queue.`);
-          } else {
-            if (entry) {
-              entry.alive = false;
-              entry.hp = 0;
-              entry.disconnected = true;
-              entry.disconnectedAt = Date.now();
-            }
-
-            socket.to(matchId).emit("matchPlayerLeft", {
-              socketId: socket.id,
-              playerId: p.playerId,
-              name: p.name,
-              reason: "disconnected"
-            });
-          }
+        if (entry) {
+          holdMatchPlayerForReconnect(match, entry, p);
         }
+      } else if (p.partyId) {
+        leaveParty(socket.id);
       }
     }
 
