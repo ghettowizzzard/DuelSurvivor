@@ -16678,23 +16678,25 @@ const bots = [];
             }
         }
 
-        const PIRATE_SHIP_CONFIG = {
-            spawnChance: 0.85,
-            maxShips: 1,
-            sightRange: 1280,
-            protectRange: 185,
-            fireCooldownMin: 4.8,
-            fireCooldownMax: 7.4,
-            volleyMin: 2,
-            volleyMax: 4,
-            cannonDamageMin: 15,
-            cannonDamageMax: 40,
-            cannonSplashRadius: 46,
-            cannonTravelMin: 0.92,
-            cannonTravelMax: 1.28,
-            pathDurationMin: 31,
-            pathDurationMax: 42
-        };
+const PIRATE_SHIP_CONFIG = {
+    spawnChance: 0.96,
+    maxShips: 2,
+    sightRange: 1500,
+    protectRange: 310,
+    fireCooldownMin: 3.4,
+    fireCooldownMax: 5.6,
+    volleyMin: 2,
+    volleyMax: 4,
+    cannonDamageMin: 15,
+    cannonDamageMax: 40,
+    cannonSplashRadius: 46,
+    cannonTravelMin: 0.92,
+    cannonTravelMax: 1.28,
+    pathDurationMin: 14,
+    pathDurationMax: 18,
+    patrolDelayMin: 2,
+    patrolDelayMax: 20
+};
 
         function resetPirateShips() {
             pirateShips.length = 0;
@@ -16721,55 +16723,78 @@ const bots = [];
             };
         }
 
-        function maybeSpawnPirateShipForTreasure(crate, point = null, index = 0) {
-            if (!crate || pirateShips.length >= PIRATE_SHIP_CONFIG.maxShips) return null;
-            if (Math.random() > PIRATE_SHIP_CONFIG.spawnChance) return null;
+function preparePirateShipPass(ship, center = null) {
+    if (!ship) return;
 
-            const center = point || getBeachTreasureCenter(crate);
-            const mapCx = worldWidth * 0.5;
-            const mapCy = worldHeight * 0.5;
-            const outDist = Math.max(1, Math.hypot(center.x - mapCx, center.y - mapCy));
-            const outX = (center.x - mapCx) / outDist;
-            const outY = (center.y - mapCy) / outDist;
-            const sideFlip = Math.random() < 0.5 ? -1 : 1;
-            const tanX = -outY * sideFlip;
-            const tanY = outX * sideFlip;
+    const crate = ship.treasureCrate;
+    const target = center || (crate ? getBeachTreasureCenter(crate) : null);
+    if (!target) return;
 
-            const pass = 1060 + Math.random() * 260;
-            const startX = center.x + outX * 560 - tanX * pass;
-            const startY = center.y + outY * 560 - tanY * pass;
-            const controlX = center.x + outX * 260 + tanX * (Math.random() - 0.5) * 140;
-            const controlY = center.y + outY * 260 + tanY * (Math.random() - 0.5) * 140;
-            const endX = center.x + outX * 820 + tanX * pass;
-            const endY = center.y + outY * 820 + tanY * pass;
+    const mapCx = worldWidth * 0.5;
+    const mapCy = worldHeight * 0.5;
+    const outDist = Math.max(1, Math.hypot(target.x - mapCx, target.y - mapCy));
+    const outX = (target.x - mapCx) / outDist;
+    const outY = (target.y - mapCy) / outDist;
 
-            const ship = {
-                id: `pirate_ship_${Date.now()}_${index}_${Math.random()}`,
-                objectType: "pirateShip",
-                name: "Pirate Ship",
-                floor: "surface",
-                treasureCrate: crate,
-                x: startX,
-                y: startY,
-                startX,
-                startY,
-                controlX,
-                controlY,
-                endX,
-                endY,
-                angle: Math.atan2(controlY - startY, controlX - startX),
-                pathT: 0,
-                duration: PIRATE_SHIP_CONFIG.pathDurationMin + Math.random() * (PIRATE_SHIP_CONFIG.pathDurationMax - PIRATE_SHIP_CONFIG.pathDurationMin),
-                fireCooldown: 2.8 + Math.random() * 2.8,
-                length: 190 + Math.random() * 28,
-                width: 62 + Math.random() * 8,
-                bobSeed: Math.random() * 1000,
-                lastTarget: null
-            };
+    ship.lastSideFlip = ship.lastSideFlip
+        ? -ship.lastSideFlip
+        : (Math.random() < 0.5 ? -1 : 1);
 
-            pirateShips.push(ship);
-            return ship;
-        }
+    const tanX = -outY * ship.lastSideFlip;
+    const tanY = outX * ship.lastSideFlip;
+    const pass = 920 + Math.random() * 240;
+
+    ship.startX = target.x + outX * 540 - tanX * pass;
+    ship.startY = target.y + outY * 540 - tanY * pass;
+    ship.controlX = target.x + outX * 180 + tanX * (Math.random() - 0.5) * 120;
+    ship.controlY = target.y + outY * 180 + tanY * (Math.random() - 0.5) * 120;
+    ship.endX = target.x + outX * 640 + tanX * pass;
+    ship.endY = target.y + outY * 640 + tanY * pass;
+
+    ship.x = ship.startX;
+    ship.y = ship.startY;
+    ship.angle = Math.atan2(ship.controlY - ship.startY, ship.controlX - ship.startX);
+    ship.pathT = 0;
+    ship.duration = PIRATE_SHIP_CONFIG.pathDurationMin +
+        Math.random() * (PIRATE_SHIP_CONFIG.pathDurationMax - PIRATE_SHIP_CONFIG.pathDurationMin);
+    ship.fireCooldown = 0.8 + Math.random() * 1.2;
+    ship.active = true;
+    ship.nextPassAt = 0;
+    ship.patrolNumber = (ship.patrolNumber || 0) + 1;
+}
+
+function maybeSpawnPirateShipForTreasure(crate, point = null, index = 0) {
+    if (!crate || pirateShips.length >= PIRATE_SHIP_CONFIG.maxShips) return null;
+    if (Math.random() > PIRATE_SHIP_CONFIG.spawnChance) return null;
+
+    const center = point || getBeachTreasureCenter(crate);
+
+    const ship = {
+        id: `pirate_ship_${Date.now()}_${index}_${Math.random()}`,
+        objectType: "pirateShip",
+        name: "Pirate Ship",
+        floor: "surface",
+        treasureCrate: crate,
+        x: center.x,
+        y: center.y,
+        angle: 0,
+        pathT: 0,
+        duration: 0,
+        fireCooldown: 0,
+        length: 190 + Math.random() * 28,
+        width: 62 + Math.random() * 8,
+        bobSeed: Math.random() * 1000,
+        lastTarget: null,
+        lastSideFlip: 0,
+        patrolNumber: 0,
+        active: false,
+        nextPassAt: 0
+    };
+
+    preparePirateShipPass(ship, center);
+    pirateShips.push(ship);
+    return ship;
+}
 
         function actorCanBePirateShipTarget(actor) {
             if (!actor || !isTargetAlive(actor) || actor.isDowned || actor.isEliminated) return false;
@@ -16778,43 +16803,42 @@ const bots = [];
             return true;
         }
 
-        function findPirateShipTreasureThreat(ship, time = performance.now()) {
-            const crate = ship?.treasureCrate;
-            if (!crate || crate.destroyed || !isTargetAlive(crate)) return null;
+function findPirateShipTreasureThreat(ship, time = performance.now()) {
+    const crate = ship?.treasureCrate;
+    if (!crate || crate.destroyed || !isTargetAlive(crate)) return null;
 
-            const cfg = PIRATE_SHIP_CONFIG;
-            const center = getBeachTreasureCenter(crate);
-            const recentlyContested = time - (crate.lastDamageTime || -Infinity) < 5200 || (crate.playerContestedUntil || 0) > time;
-            if (!recentlyContested) return null;
+    const cfg = PIRATE_SHIP_CONFIG;
+    const center = getBeachTreasureCenter(crate);
 
-            const botCandidates = typeof spatialQueryObjectsAround === "function"
-                ? spatialQueryObjectsAround("bots", center.x, center.y, cfg.protectRange + 90, "surface")
-                : bots;
+    const botCandidates = typeof spatialQueryObjectsAround === "function"
+        ? spatialQueryObjectsAround("bots", center.x, center.y, cfg.protectRange + 90, "surface")
+        : bots;
 
-            const remotes = mpState?.remotePlayers ? Array.from(mpState.remotePlayers.values()) : [];
-            const actors = [player, ...botCandidates, ...remotes];
+    const remotes = mpState?.remotePlayers ? Array.from(mpState.remotePlayers.values()) : [];
+    const actors = [player, ...botCandidates, ...remotes];
 
-            let best = null;
-            let bestScore = -Infinity;
+    let best = null;
+    let bestScore = -Infinity;
 
-            for (const actor of actors) {
-                if (!actorCanBePirateShipTarget(actor)) continue;
+    for (const actor of actors) {
+        if (!actorCanBePirateShipTarget(actor)) continue;
 
-                const treasureDist = Math.hypot(actor.x - center.x, actor.y - center.y);
-                if (treasureDist > cfg.protectRange + (actor.radius || 16)) continue;
+        const treasureDist = Math.hypot(actor.x - center.x, actor.y - center.y);
+        if (treasureDist > cfg.protectRange + (actor.radius || 16)) continue;
 
-                const shipDist = Math.hypot(actor.x - ship.x, actor.y - ship.y);
-                if (shipDist > cfg.sightRange) continue;
+        const shipDist = Math.hypot(actor.x - ship.x, actor.y - ship.y);
+        if (shipDist > cfg.sightRange) continue;
 
-                const score = 500 - treasureDist * 1.8 - shipDist * 0.18 + (actor === player ? 28 : 0);
-                if (score > bestScore) {
-                    best = actor;
-                    bestScore = score;
-                }
-            }
+        const score = 700 - treasureDist * 2.1 - shipDist * 0.14 + (actor === player ? 28 : 0);
 
-            return best;
+        if (score > bestScore) {
+            best = actor;
+            bestScore = score;
         }
+    }
+
+    return best;
+}
 
         function firePirateShipVolley(ship, target, time = performance.now()) {
             if (!ship || !target) return;
@@ -16935,55 +16959,72 @@ const bots = [];
             }
         }
 
-        function updatePirateShipSystem(dt, time = performance.now()) {
-            if (currentGameState !== GAME_STATES.MATCH || currentFloor !== "surface") {
-                resetPirateShips();
-                return;
-            }
+function updatePirateShipSystem(dt, time = performance.now()) {
+    if (currentGameState !== GAME_STATES.MATCH || currentFloor !== "surface") {
+        resetPirateShips();
+        return;
+    }
 
-            updatePirateCannonballs(dt, time);
+    updatePirateCannonballs(dt, time);
 
-            const cfg = PIRATE_SHIP_CONFIG;
-            for (let i = pirateShips.length - 1; i >= 0; i--) {
-                const ship = pirateShips[i];
-                const crateAlive = ship.treasureCrate && !ship.treasureCrate.destroyed && isTargetAlive(ship.treasureCrate);
-                ship.pathT += dt / Math.max(1, ship.duration) * (crateAlive ? 1 : 1.45);
+    const cfg = PIRATE_SHIP_CONFIG;
 
-                const pos = samplePirateShipPath(ship, clamp01(ship.pathT));
-                const tan = samplePirateShipTangent(ship, clamp01(ship.pathT));
-                ship.x = pos.x;
-                ship.y = pos.y;
-                ship.angle = smoothTurnToAngle(ship.angle, Math.atan2(tan.y, tan.x), 0.08);
+    for (let i = pirateShips.length - 1; i >= 0; i--) {
+        const ship = pirateShips[i];
+        const crateAlive = ship.treasureCrate &&
+            !ship.treasureCrate.destroyed &&
+            isTargetAlive(ship.treasureCrate);
 
-                if (ship.fireCooldown > 0) ship.fireCooldown -= dt;
+        if (!crateAlive) {
+            pirateShips.splice(i, 1);
+            continue;
+        }
 
-                const target = crateAlive && ship.pathT > 0.12 && ship.pathT < 0.82
-                    ? findPirateShipTreasureThreat(ship, time)
-                    : null;
-
-                if (target && ship.fireCooldown <= 0) {
-                    firePirateShipVolley(ship, target, time);
-                    ship.fireCooldown = cfg.fireCooldownMin + Math.random() * (cfg.fireCooldownMax - cfg.fireCooldownMin);
-                }
-
-                if (
-                    ship.pathT >= 1 ||
-                    ship.x < -1400 ||
-                    ship.y < -1400 ||
-                    ship.x > worldWidth + 1400 ||
-                    ship.y > worldHeight + 1400
-                ) {
-                    pirateShips.splice(i, 1);
-                }
-            }
-
-            if (pirateCannonballs.length > 24) {
-                pirateCannonballs.splice(0, pirateCannonballs.length - 24);
+        if (!ship.active) {
+            if (time >= (ship.nextPassAt || 0)) {
+                preparePirateShipPass(ship);
+            } else {
+                continue;
             }
         }
 
-        function drawPirateShip(ship, time = performance.now()) {
-            if (!ship || currentFloor !== "surface") return;
+        ship.pathT += dt / Math.max(1, ship.duration);
+
+        const pos = samplePirateShipPath(ship, clamp01(ship.pathT));
+        const tan = samplePirateShipTangent(ship, clamp01(ship.pathT));
+        ship.x = pos.x;
+        ship.y = pos.y;
+        ship.angle = smoothTurnToAngle(ship.angle, Math.atan2(tan.y, tan.x), 0.08);
+
+        if (ship.fireCooldown > 0) ship.fireCooldown -= dt;
+
+        const target = ship.pathT > 0.04 && ship.pathT < 0.96
+            ? findPirateShipTreasureThreat(ship, time)
+            : null;
+
+        if (target && ship.fireCooldown <= 0) {
+            firePirateShipVolley(ship, target, time);
+            ship.fireCooldown = cfg.fireCooldownMin +
+                Math.random() * (cfg.fireCooldownMax - cfg.fireCooldownMin);
+        }
+
+        if (ship.pathT >= 1) {
+            ship.active = false;
+            ship.pathT = 1;
+            ship.nextPassAt = time + (
+                cfg.patrolDelayMin +
+                Math.random() * (cfg.patrolDelayMax - cfg.patrolDelayMin)
+            ) * 1000;
+        }
+    }
+
+    if (pirateCannonballs.length > 24) {
+        pirateCannonballs.splice(0, pirateCannonballs.length - 24);
+    }
+}
+
+function drawPirateShip(ship, time = performance.now()) {
+    if (!ship || !ship.active || currentFloor !== "surface") return;
             if (!perfPointVisible(ship.x, ship.y, ship.length + 260)) return;
 
             const bob = Math.sin(time * 0.0028 + ship.bobSeed) * 2.6;
