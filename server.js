@@ -59,6 +59,7 @@ const GAME_ALLOWED_ORIGINS = new Set([
   // itch.io HTML5 game iframe origins.
   "https://html.itch.zone",
   "https://html-classic.itch.zone",
+  "https://i-am-wizard.itch.io",
 
   // Game Jolt main host origins.
   "https://gamejolt.com",
@@ -132,27 +133,27 @@ const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://duelio.lol/</loc>
-    <lastmod>2026-06-17</lastmod>
+    <lastmod>2026-06-20</lastmod>
   </url>
   <url>
     <loc>https://duelio.lol/play</loc>
-    <lastmod>2026-06-17</lastmod>
+    <lastmod>2026-06-20</lastmod>
   </url>
   <url>
     <loc>https://duelio.lol/play.html</loc>
-    <lastmod>2026-06-17</lastmod>
+    <lastmod>2026-06-20</lastmod>
   </url>
   <url>
     <loc>https://duelio.lol/how-to-play/</loc>
-    <lastmod>2026-06-17</lastmod>
+    <lastmod>2026-06-20</lastmod>
   </url>
   <url>
     <loc>https://duelio.lol/cards-and-creatures/</loc>
-    <lastmod>2026-06-17</lastmod>
+    <lastmod>2026-06-20</lastmod>
   </url>
   <url>
     <loc>https://duelio.lol/updates/</loc>
-    <lastmod>2026-06-17</lastmod>
+    <lastmod>2026-06-20</lastmod>
   </url>
 </urlset>`;
 
@@ -340,10 +341,19 @@ const parties = new Map();
 const matches = new Map();
 const leaderboardProfiles = new Map();
 
+// Ranked Duo waits here until a second real two-player party is ready.
+const rankedDuoPartyQueue = [];
+const rankedDuoQueueTimers = new Map();
+
 const PLAYER_SESSION_SECRET = String(process.env.PLAYER_SESSION_SECRET || "").trim();
 const PLAYER_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 180;
 const PLAYER_ID_BYTES = 18;
-const MATCH_STATE_MIN_MS = 35;
+
+// Player transform/state packets are intentionally capped at 15 Hz.
+// Socket.IO is reliable, so a full snapshot on match join plus compact deltas
+// gives smoother traffic without continuously rebroadcasting full state blobs.
+const MATCH_STATE_UPDATE_HZ = 15;
+const MATCH_STATE_MIN_MS = Math.round(1000 / MATCH_STATE_UPDATE_HZ);
 const MATCH_MAX_MOVE_PER_SECOND = 420;
 const MATCH_MOVE_GRACE_DISTANCE = 190;
 const MATCH_WORLD_WIDTH = 7600;
@@ -403,7 +413,9 @@ const MATCH_ACTION_EMOTE_IDS = new Set([
   "bp_reaper_laugh",
   "bp_mana_bloom",
   "bp_dragon_fire",
-  "share_ufo_alien"
+  "share_ufo_alien",
+  "ranked_rift_medal_2",
+  "ranked_sovereign_medal_1"
 ]);
 
 const RANKED_STATE_FILENAME = "ranked-season-state.json";
@@ -535,9 +547,1221 @@ const MATCH_BOT_HIGH_MIN = 69;
 const MATCH_BOT_HIGH_MAX = 80;
 const MATCH_BOT_MAX = 85;
 const MATCH_BOT_RARE_MAX_CHANCE = 0.10;
+
+// Ranked uses fewer NPCs so real-player eliminations decide more matches.
+const RANKED_BOT_MIN = 24;
+const RANKED_BOT_COMMON_MAX = 56;
+const RANKED_BOT_HIGH_MIN = 57;
+const RANKED_BOT_HIGH_MAX = 65;
+const RANKED_BOT_MAX = 73;
+const RANKED_BOT_RARE_MAX_CHANCE = 0.08;
+
+const RANKED_PVP_ELIMINATION_POINTS = 20;
+const RANKED_MATCH_WIN_POINTS = 40;
+const RANKED_MATCH_LOSS_POINTS = -8;
+const RANKED_LAST_DAMAGE_CREDIT_MS = 15000;
+
 const ONLINE_QUEUE_MS = 15000;
 const WORLD_SNAPSHOT_MIN_MS = 160;
 const MATCH_RECONNECT_GRACE_MS = 45000;
+const ACCOUNT_SCHEMA_VERSION = 1;
+const ACCOUNT_LEGACY_MIGRATION_ENABLED =
+  String(process.env.ACCOUNT_LEGACY_MIGRATION_ENABLED || "true").toLowerCase() !== "false";
+
+const ACCOUNT_LEGACY_GOLD_CAP = 250000;
+const ACCOUNT_LEGACY_GEMS_CAP = 5000;
+const ACCOUNT_MAX_CARD_COPIES = 99;
+const ACCOUNT_LEGACY_MAX_CARD_COPIES = 12;
+const ACCOUNT_MAX_TICKETS_PER_PACK = 99;
+const ACCOUNT_MAX_EVENT_TICKETS = 999;
+const ACCOUNT_LOADOUT_WEIGHT_BASE = 50;
+const ACCOUNT_LOADOUT_WEIGHT_MAX = 105;
+const ACCOUNT_LOADOUT_WEIGHT_STEP = 5;
+const ACCOUNT_LOADOUT_WEIGHT_UPGRADE_BASE_GEMS = 50;
+const ACCOUNT_LOADOUT_WEIGHT_UPGRADE_STEP_GEMS = 50;
+
+const ACCOUNT_STARTER_CARD_IDS = Object.freeze([
+  "ember_pup",
+  "iron_ram",
+  "frost_serpent",
+  "spark_wasp",
+  "thorn_boar",
+  "healing_veil",
+  "cleanse_rune",
+  "revenge_thorn",
+  "static_trap"
+]);
+
+const ACCOUNT_SHARE_REWARD = Object.freeze({
+  gold: 5000,
+  gems: 500,
+  cardIds: ["starvisitor_ufo"],
+  emoteIds: ["share_ufo_alien"]
+});
+
+const ACCOUNT_PACK_CATALOG = Object.freeze({
+  starter_rift: {
+    costType: "gold",
+    cost: 500,
+    odds: { Common: 65, Uncommon: 25, Rare: 10 },
+    categoryBias: "",
+    minStage: 1
+  },
+  element_burst: {
+    costType: "gold",
+    cost: 1200,
+    odds: { Common: 40, Uncommon: 35, Rare: 20, Epic: 5 },
+    categoryBias: "",
+    minStage: 1
+  },
+  mythic_rift: {
+    costType: "gems",
+    cost: 80,
+    odds: {
+      Uncommon: 30,
+      Rare: 35,
+      Epic: 25,
+      Legendary: 8,
+      Mythic: 2,
+      "Hollow Rare": 0.6,
+      "Super Ultra Rare": 0.15
+    },
+    categoryBias: "",
+    minStage: 1
+  },
+  evolution_surge: {
+    costType: "gold",
+    cost: 1800,
+    odds: { Common: 35, Uncommon: 35, Rare: 22, Epic: 7, Legendary: 1 },
+    categoryBias: "evolution",
+    minStage: 2
+  },
+  trap_magic: {
+    costType: "gold",
+    cost: 900,
+    odds: { Common: 45, Uncommon: 35, Rare: 17, Epic: 3 },
+    categoryBias: "utility",
+    minStage: 1
+  }
+});
+
+const ACCOUNT_TITLE_STORE = Object.freeze({
+  crate_cracker: { gold: 900 },
+  storm_runner: { gold: 1400 },
+  beach_raider: { gold: 1500 },
+  airdrop_hunter: { gold: 2400 },
+  shark_bait: { gold: 2600 },
+  gold_drifter: { gold: 3000 },
+  trap_artist: { gems: 75 },
+  card_slinger: { gems: 90 },
+  rift_walker: { gems: 110 },
+  final_circle: { gems: 150 },
+  pack_ripper: { gems: 175 },
+  prism_hunter: { gems: 190 }
+});
+
+const ACCOUNT_FRAME_STORE = Object.freeze({
+  shop_neon_frame: { gold: 6500 },
+  shop_prism_frame: { gems: 150 },
+  shop_infernal_frame: { gems: 220 }
+});
+
+const ACCOUNT_CUSTOMIZATION_STORE = Object.freeze({
+  hair_amber_bob: { slot: "hair", gold: 1400 },
+  hat_beach_bandana: { slot: "hat", gold: 1200 },
+  glasses_round: { slot: "glasses", gold: 900 },
+  face_bandage: { slot: "face", gold: 750 },
+  face_moustache: { slot: "face", gems: 45 }
+});
+
+const ACCOUNT_TITLE_IDS = new Set([
+  "rookie_survivor",
+  ...Object.keys(ACCOUNT_TITLE_STORE),
+  "bp_survivalist",
+  "bp_mageborne",
+  "bp_riftbound",
+  "bp_stormforged",
+  "bp_mana_crowned",
+  "ranked_bronze",
+  "ranked_silver",
+  "ranked_gold",
+  "ranked_platinum",
+  "ranked_diamond",
+  "ranked_master",
+  "ranked_top_50",
+  "season_champion",
+  "quest_relentless"
+]);
+
+const ACCOUNT_FRAME_IDS = new Set([
+  "default_frame",
+  ...Object.keys(ACCOUNT_FRAME_STORE),
+  "ranked_bronze_frame",
+  "ranked_silver_frame",
+  "ranked_gold_frame",
+  "ranked_platinum_frame",
+  "ranked_diamond_frame",
+  "ranked_master_frame",
+  "ranked_top50_frame",
+  "ranked_champion_frame"
+]);
+
+const ACCOUNT_CUSTOMIZATION_BY_ID = Object.freeze({
+  hair_amber_bob: "hair",
+  hair_cyan_spikes: "hair",
+  hat_wizard_cap: "hat",
+  hat_beach_bandana: "hat",
+  glasses_round: "glasses",
+  glasses_star: "glasses",
+  face_blush: "face",
+  face_bandage: "face",
+  face_moustache: "face"
+});
+
+const ACCOUNT_EMOTE_IDS = new Set([
+  "heart",
+  "heart_eyes",
+  "smile_devil",
+  "angry",
+  "puke",
+  "laugh",
+  "nerd",
+  "cry",
+  "skull",
+  "fire",
+  "gg",
+  "sparkle",
+  "bp_magic_crown",
+  "bp_crystal_heart",
+  "bp_reaper_laugh",
+  "bp_mana_bloom",
+  "bp_dragon_fire",
+  "share_ufo_alien",
+  "ranked_rift_medal_2",
+  "ranked_sovereign_medal_1"
+]);
+
+const ACCOUNT_SEASONAL_EVENTS = Object.freeze({
+  season_01_foundation: {
+    enabled: false,
+    startsAt: "2026-06-01T00:00:00-07:00",
+    endsAt: "2026-07-20T23:59:59-07:00",
+    rewards: {
+      foundation_cache: { gold: 900, gems: 20, eventTickets: 1 }
+    },
+    shopItems: {
+      foundation_event_ticket: {
+        costType: "gold",
+        cost: 750,
+        limit: 6,
+        reward: { eventTickets: 1 }
+      },
+      foundation_cash_cache: {
+        costType: "gems",
+        cost: 25,
+        limit: 3,
+        reward: { gold: 1400 }
+      }
+    }
+  }
+});
+
+const ACCOUNT_ACTION_RULES = Object.freeze({
+  migrateLegacy: { cooldownMs: 0, windowMs: 60000, maxInWindow: 1 },
+  buyPack: { cooldownMs: 350, windowMs: 10000, maxInWindow: 12 },
+  buyTitle: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
+  buyFrame: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
+  buyCustomization: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
+  equipTitle: { cooldownMs: 150, windowMs: 10000, maxInWindow: 20 },
+  equipFrame: { cooldownMs: 150, windowMs: 10000, maxInWindow: 20 },
+  equipCustomization: { cooldownMs: 150, windowMs: 10000, maxInWindow: 30 },
+  unequipCustomization: { cooldownMs: 150, windowMs: 10000, maxInWindow: 30 },
+  claimSeasonalReward: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
+  buySeasonalItem: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
+  claimShareBonus: { cooldownMs: 250, windowMs: 60000, maxInWindow: 2 },
+  upgradeLoadoutWeight: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 }
+});
+
+function accountReadStaticArrayBody(source, constantName) {
+  const marker = `const ${constantName} =`;
+  const markerIndex = source.indexOf(marker);
+  if (markerIndex < 0) throw new Error(`Missing ${constantName} in public/play.html.`);
+
+  const openIndex = source.indexOf("[", markerIndex);
+  if (openIndex < 0) throw new Error(`Missing array start for ${constantName}.`);
+
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
+
+  for (let index = openIndex; index < source.length; index++) {
+    const character = source[index];
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = "";
+      continue;
+    }
+
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      continue;
+    }
+
+    if (character === "[") depth += 1;
+    if (character === "]") {
+      depth -= 1;
+      if (depth === 0) return source.slice(openIndex + 1, index);
+    }
+  }
+
+  throw new Error(`Unclosed ${constantName} array.`);
+}
+
+function accountSplitTopLevelObjects(arrayBody) {
+  const objects = [];
+  let depth = 0;
+  let startIndex = -1;
+  let quote = "";
+  let escaped = false;
+
+  for (let index = 0; index < arrayBody.length; index++) {
+    const character = arrayBody[index];
+
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = "";
+      continue;
+    }
+
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      continue;
+    }
+
+    if (character === "{") {
+      if (depth === 0) startIndex = index;
+      depth += 1;
+      continue;
+    }
+
+    if (character === "}") {
+      depth -= 1;
+      if (depth === 0 && startIndex >= 0) {
+        objects.push(arrayBody.slice(startIndex, index + 1));
+        startIndex = -1;
+      }
+    }
+  }
+
+  return objects;
+}
+
+function accountReadStringProperty(objectText, propertyName, fallback = "") {
+  const escaped = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = objectText.match(new RegExp(`\\b${escaped}\\s*:\\s*["']([^"']*)["']`));
+  return match ? match[1] : fallback;
+}
+
+function accountReadNumberProperty(objectText, propertyName, fallback = 0) {
+  const escaped = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = objectText.match(new RegExp(`\\b${escaped}\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`));
+  const value = Number(match?.[1]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function accountReadBooleanProperty(objectText, propertyName) {
+  const escaped = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\s*:\\s*true\\b`).test(objectText);
+}
+
+function loadAccountCardCatalog() {
+  try {
+    const source = fs.readFileSync(path.join(publicDir, "play.html"), "utf8");
+    const entries = accountSplitTopLevelObjects(
+      accountReadStaticArrayBody(source, "CARD_POOL")
+    );
+
+    const catalog = new Map();
+
+    for (const text of entries) {
+      const id = accountReadStringProperty(text, "id");
+      const rarity = accountReadStringProperty(text, "rarity");
+      const category = accountReadStringProperty(text, "category");
+
+      if (!id || !rarity || !category) continue;
+
+      catalog.set(id, {
+        id,
+        rarity,
+        category,
+        family: accountReadStringProperty(text, "family"),
+        evolutionStage: Math.max(1, accountReadNumberProperty(text, "evolutionStage", 1)),
+        battlePassExclusive: accountReadBooleanProperty(text, "battlePassExclusive"),
+        boosterExcluded: accountReadBooleanProperty(text, "boosterExcluded")
+      });
+    }
+
+    if (!catalog.size) throw new Error("No card definitions were parsed.");
+    console.log(`[account] loaded ${catalog.size} server-authoritative card definitions.`);
+    return catalog;
+  } catch (err) {
+    console.error(`[account] card catalog unavailable; server pack opening is disabled: ${err.message}`);
+    return new Map();
+  }
+}
+
+const ACCOUNT_CARD_CATALOG = loadAccountCardCatalog();
+
+function accountPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function accountSafeId(value, maxLength = 96) {
+  const id = typeof value === "string" ? value.trim() : "";
+  if (!id || id.length > maxLength) return "";
+  return /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id) ? id : "";
+}
+
+function accountSafeMap(rawValue, allowed, maxValue = 1) {
+  const result = {};
+  if (!accountPlainObject(rawValue)) return result;
+
+  for (const [rawId, rawCount] of Object.entries(rawValue)) {
+    const id = accountSafeId(rawId);
+    if (!id || !allowed.has(id)) continue;
+
+    const amount = safeStatInt(rawCount, 0, maxValue);
+    if (amount > 0) result[id] = amount;
+  }
+
+  return result;
+}
+
+function accountSafeOwnedMap(rawValue, options = {}) {
+  const result = {};
+  const maxCopies = options.legacy
+    ? ACCOUNT_LEGACY_MAX_CARD_COPIES
+    : ACCOUNT_MAX_CARD_COPIES;
+
+  if (!accountPlainObject(rawValue)) return result;
+
+  for (const [rawId, rawCount] of Object.entries(rawValue)) {
+    const id = accountSafeId(rawId);
+    if (!id || !ACCOUNT_CARD_CATALOG.has(id)) continue;
+
+    const amount = safeStatInt(rawCount, 0, maxCopies);
+    if (amount > 0) result[id] = amount;
+  }
+
+  return result;
+}
+
+function accountSafeCustomizationMap(rawValue) {
+  const result = {};
+  if (!accountPlainObject(rawValue)) return result;
+
+  for (const [rawSlot, rawId] of Object.entries(rawValue)) {
+    const slot = accountSafeId(rawSlot, 24);
+    const id = accountSafeId(rawId);
+    if (!slot || !id || ACCOUNT_CUSTOMIZATION_BY_ID[id] !== slot) continue;
+    result[slot] = id;
+  }
+
+  return result;
+}
+
+function accountDefaultInventory() {
+  const ownedCards = {};
+  for (const cardId of ACCOUNT_STARTER_CARD_IDS) {
+    if (ACCOUNT_CARD_CATALOG.has(cardId)) ownedCards[cardId] = 1;
+  }
+
+  return {
+    version: ACCOUNT_SCHEMA_VERSION,
+    migratedAt: 0,
+    ownedCards,
+    boosterTickets: {},
+    eventTickets: 0,
+    ownedTitles: { rookie_survivor: true },
+    equippedTitleId: "rookie_survivor",
+    ownedFrames: { default_frame: true },
+    equippedFrameId: "default_frame",
+    ownedCustomizations: {},
+    equippedCustomizations: {},
+    ownedEmotes: {},
+    loadoutWeightBonus: 0,
+    seasonal: {
+      claimedRewards: {},
+      shopPurchases: {}
+    },
+    shareRewardClaimed: false,
+    shareRewardClaimedAt: 0,
+    shareRewardSource: "",
+    shareRewardCardIds: [],
+    shareRewardEmoteIds: []
+  };
+}
+
+function accountNormalizeInventory(rawValue, options = {}) {
+  const source = accountPlainObject(rawValue) ? rawValue : {};
+  const inventory = accountDefaultInventory();
+  const legacy = !!options.legacy;
+
+  inventory.migratedAt = Math.max(0, Number(source.migratedAt || 0));
+
+  inventory.ownedCards = {
+    ...inventory.ownedCards,
+    ...accountSafeOwnedMap(source.ownedCards || source.owned, { legacy })
+  };
+
+  inventory.boosterTickets = accountSafeMap(
+    source.boosterTickets,
+    new Set(Object.keys(ACCOUNT_PACK_CATALOG)),
+    ACCOUNT_MAX_TICKETS_PER_PACK
+  );
+
+  inventory.eventTickets = safeStatInt(
+    source.eventTickets,
+    0,
+    ACCOUNT_MAX_EVENT_TICKETS
+  );
+
+  inventory.ownedTitles = accountSafeMap(
+    source.ownedTitles,
+    ACCOUNT_TITLE_IDS,
+    1
+  );
+  inventory.ownedTitles.rookie_survivor = 1;
+
+  const requestedTitle = accountSafeId(source.equippedTitleId, 64);
+  inventory.equippedTitleId =
+    requestedTitle && inventory.ownedTitles[requestedTitle]
+      ? requestedTitle
+      : "rookie_survivor";
+
+  inventory.ownedFrames = accountSafeMap(
+    source.ownedFrames,
+    ACCOUNT_FRAME_IDS,
+    1
+  );
+  inventory.ownedFrames.default_frame = 1;
+
+  const requestedFrame = accountSafeId(source.equippedFrameId, 64);
+  inventory.equippedFrameId =
+    requestedFrame && inventory.ownedFrames[requestedFrame]
+      ? requestedFrame
+      : "default_frame";
+
+  inventory.ownedCustomizations = accountSafeMap(
+    source.ownedCustomizations,
+    new Set(Object.keys(ACCOUNT_CUSTOMIZATION_BY_ID)),
+    1
+  );
+
+  const requestedCustomizations = accountSafeCustomizationMap(
+    source.equippedCustomizations
+  );
+
+  for (const [slot, id] of Object.entries(requestedCustomizations)) {
+    if (inventory.ownedCustomizations[id]) {
+      inventory.equippedCustomizations[slot] = id;
+    }
+  }
+
+  inventory.ownedEmotes = accountSafeMap(
+    source.ownedEmotes || source.unlockedEmotes,
+    ACCOUNT_EMOTE_IDS,
+    1
+  );
+
+  const sharedEmotes = Array.isArray(source.shareRewardEmoteIds)
+    ? source.shareRewardEmoteIds
+    : [];
+
+  for (const rawId of sharedEmotes) {
+    const id = accountSafeId(rawId);
+    if (id && ACCOUNT_EMOTE_IDS.has(id)) inventory.ownedEmotes[id] = 1;
+  }
+
+  inventory.loadoutWeightBonus = Math.min(
+    ACCOUNT_LOADOUT_WEIGHT_MAX - ACCOUNT_LOADOUT_WEIGHT_BASE,
+    Math.max(
+      0,
+      Math.floor(
+        safeStatInt(source.loadoutWeightBonus, 0, 1000) /
+        ACCOUNT_LOADOUT_WEIGHT_STEP
+      ) * ACCOUNT_LOADOUT_WEIGHT_STEP
+    )
+  );
+
+  const seasonal = accountPlainObject(source.seasonal)
+    ? source.seasonal
+    : accountPlainObject(source.seasonalEventState)
+      ? source.seasonalEventState
+      : {};
+
+  for (const [eventId, event] of Object.entries(ACCOUNT_SEASONAL_EVENTS)) {
+    const claimedSource = accountPlainObject(seasonal.claimedRewards?.[eventId])
+      ? seasonal.claimedRewards[eventId]
+      : {};
+
+    const purchaseSource = accountPlainObject(seasonal.shopPurchases?.[eventId])
+      ? seasonal.shopPurchases[eventId]
+      : {};
+
+    const claimed = {};
+    const purchases = {};
+
+    for (const rewardId of Object.keys(event.rewards)) {
+      if (claimedSource[rewardId]) claimed[rewardId] = true;
+    }
+
+    for (const [itemId, item] of Object.entries(event.shopItems)) {
+      const count = safeStatInt(purchaseSource[itemId], 0, item.limit || 99);
+      if (count > 0) purchases[itemId] = count;
+    }
+
+    if (Object.keys(claimed).length) inventory.seasonal.claimedRewards[eventId] = claimed;
+    if (Object.keys(purchases).length) inventory.seasonal.shopPurchases[eventId] = purchases;
+  }
+
+  inventory.shareRewardClaimed = !!source.shareRewardClaimed;
+  inventory.shareRewardClaimedAt = Math.max(0, Number(source.shareRewardClaimedAt || 0));
+  inventory.shareRewardSource = String(source.shareRewardSource || "").slice(0, 32);
+
+  const shareCardIds = Array.isArray(source.shareRewardCardIds)
+    ? source.shareRewardCardIds
+    : [];
+
+  const shareEmoteIds = Array.isArray(source.shareRewardEmoteIds)
+    ? source.shareRewardEmoteIds
+    : [];
+
+  inventory.shareRewardCardIds = shareCardIds
+    .map(id => accountSafeId(id))
+    .filter(id => id && ACCOUNT_CARD_CATALOG.has(id))
+    .slice(0, 16);
+
+  inventory.shareRewardEmoteIds = shareEmoteIds
+    .map(id => accountSafeId(id))
+    .filter(id => id && ACCOUNT_EMOTE_IDS.has(id))
+    .slice(0, 16);
+
+  if (inventory.shareRewardClaimed) {
+    for (const cardId of ACCOUNT_SHARE_REWARD.cardIds) {
+      if (ACCOUNT_CARD_CATALOG.has(cardId)) {
+        inventory.ownedCards[cardId] = Math.max(1, inventory.ownedCards[cardId] || 0);
+        if (!inventory.shareRewardCardIds.includes(cardId)) {
+          inventory.shareRewardCardIds.push(cardId);
+        }
+      }
+    }
+
+    for (const emoteId of ACCOUNT_SHARE_REWARD.emoteIds) {
+      inventory.ownedEmotes[emoteId] = 1;
+      if (!inventory.shareRewardEmoteIds.includes(emoteId)) {
+        inventory.shareRewardEmoteIds.push(emoteId);
+      }
+    }
+  }
+
+  return inventory;
+}
+
+function accountEnsureInventory(entry) {
+  if (!entry) return accountDefaultInventory();
+  entry.account = accountNormalizeInventory(entry.account);
+  return entry.account;
+}
+
+function accountSnapshot(entry) {
+  const account = accountEnsureInventory(entry);
+
+  return {
+    version: ACCOUNT_SCHEMA_VERSION,
+    migrationRequired: ACCOUNT_LEGACY_MIGRATION_ENABLED && !account.migratedAt,
+    migratedAt: account.migratedAt || 0,
+    gold: safeStatInt(entry.gold, 1000, 999999999),
+    gems: safeStatInt(entry.gems, 0, 999999999),
+    owned: { ...account.ownedCards },
+    boosterTickets: { ...account.boosterTickets },
+    eventTickets: account.eventTickets,
+    ownedTitles: { ...account.ownedTitles },
+    equippedTitleId: account.equippedTitleId,
+    ownedFrames: { ...account.ownedFrames },
+    equippedFrameId: account.equippedFrameId,
+    ownedCustomizations: { ...account.ownedCustomizations },
+    equippedCustomizations: { ...account.equippedCustomizations },
+    ownedEmotes: { ...account.ownedEmotes },
+    loadoutWeightBonus: account.loadoutWeightBonus,
+    seasonal: {
+      claimedRewards: JSON.parse(JSON.stringify(account.seasonal.claimedRewards)),
+      shopPurchases: JSON.parse(JSON.stringify(account.seasonal.shopPurchases))
+    },
+    shareRewardClaimed: account.shareRewardClaimed,
+    shareRewardClaimedAt: account.shareRewardClaimedAt,
+    shareRewardSource: account.shareRewardSource,
+    shareRewardCardIds: [...account.shareRewardCardIds],
+    shareRewardEmoteIds: [...account.shareRewardEmoteIds]
+  };
+}
+
+function accountSyncPlayerCurrency(entry, player) {
+  if (!entry || !player) return;
+  player.gold = safeStatInt(entry.gold, 1000, 999999999);
+  player.gems = safeStatInt(entry.gems, 0, 999999999);
+}
+
+function accountAllowAction(entry, actionType, now = Date.now()) {
+  const rule = ACCOUNT_ACTION_RULES[actionType];
+  if (!entry || !rule) return false;
+
+  if (!accountPlainObject(entry.accountActionRate)) {
+    entry.accountActionRate = Object.create(null);
+  }
+
+  const bucket = entry.accountActionRate[actionType] || {
+    lastAt: 0,
+    windowStartedAt: now,
+    count: 0
+  };
+
+  if (now - Number(bucket.lastAt || 0) < rule.cooldownMs) return false;
+
+  if (now - Number(bucket.windowStartedAt || 0) >= rule.windowMs) {
+    bucket.windowStartedAt = now;
+    bucket.count = 0;
+  }
+
+  if (Number(bucket.count || 0) >= rule.maxInWindow) return false;
+
+  bucket.lastAt = now;
+  bucket.count = Number(bucket.count || 0) + 1;
+  entry.accountActionRate[actionType] = bucket;
+  return true;
+}
+
+function accountSpend(entry, cost = {}) {
+  const gold = safeStatInt(cost.gold, 0, 999999999);
+  const gems = safeStatInt(cost.gems, 0, 999999999);
+
+  if (Number(entry.gold || 0) < gold || Number(entry.gems || 0) < gems) {
+    return false;
+  }
+
+  entry.gold = Number(entry.gold || 0) - gold;
+  entry.gems = Number(entry.gems || 0) - gems;
+  return true;
+}
+
+function accountAddCard(entry, cardId, amount = 1) {
+  const account = accountEnsureInventory(entry);
+  const id = accountSafeId(cardId);
+  if (!id || !ACCOUNT_CARD_CATALOG.has(id)) return false;
+
+  account.ownedCards[id] = Math.min(
+    ACCOUNT_MAX_CARD_COPIES,
+    Number(account.ownedCards[id] || 0) + safeStatInt(amount, 0, ACCOUNT_MAX_CARD_COPIES)
+  );
+
+  return true;
+}
+
+function accountAwardProfileXp(entry, amount = 0) {
+  if (!entry) {
+    return {
+      xp: 0,
+      oldLevel: 1,
+      newLevel: 1,
+      levelsGained: 0
+    };
+  }
+
+  const xp = safeStatInt(amount, 0, 999999999);
+  entry.level = Math.max(1, Math.min(PROFILE_MAX_LEVEL, safeStatInt(entry.level, 1, PROFILE_MAX_LEVEL)));
+  entry.profileXp = entry.level >= PROFILE_MAX_LEVEL
+    ? 0
+    : safeStatInt(entry.profileXp, 0, 999999999);
+
+  const oldLevel = entry.level;
+
+  if (!xp || entry.level >= PROFILE_MAX_LEVEL) {
+    return {
+      xp: 0,
+      oldLevel,
+      newLevel: entry.level,
+      levelsGained: 0
+    };
+  }
+
+  entry.profileXp += xp;
+
+  while (entry.level < PROFILE_MAX_LEVEL) {
+    const requiredXp = profileXpForNextLevel(entry.level);
+
+    if (!requiredXp || entry.profileXp < requiredXp) break;
+
+    entry.profileXp -= requiredXp;
+    entry.level++;
+  }
+
+  if (entry.level >= PROFILE_MAX_LEVEL) entry.profileXp = 0;
+
+  return {
+    xp,
+    oldLevel,
+    newLevel: entry.level,
+    levelsGained: entry.level - oldLevel
+  };
+}
+
+function accountGrantReward(entry, reward = {}) {
+  const account = accountEnsureInventory(entry);
+  const gold = safeStatInt(reward.gold ?? reward.cash, 0, 999999999);
+  const gems = safeStatInt(reward.gems, 0, 999999999);
+
+  entry.gold = safeStatInt(Number(entry.gold || 0) + gold, 0, 999999999);
+  entry.gems = safeStatInt(Number(entry.gems || 0) + gems, 0, 999999999);
+
+  const profileXp = accountAwardProfileXp(entry, reward.profileXp ?? reward.xp);
+
+  if (reward.eventTickets) {
+    account.eventTickets = Math.min(
+      ACCOUNT_MAX_EVENT_TICKETS,
+      Number(account.eventTickets || 0) + safeStatInt(reward.eventTickets, 0, ACCOUNT_MAX_EVENT_TICKETS)
+    );
+  }
+
+  if (accountPlainObject(reward.boosterTickets)) {
+    for (const [rawPackId, rawAmount] of Object.entries(reward.boosterTickets)) {
+      const packId = accountSafeId(rawPackId);
+
+      if (!packId || !ACCOUNT_PACK_CATALOG[packId]) continue;
+
+      const amount = safeStatInt(rawAmount, 0, ACCOUNT_MAX_TICKETS_PER_PACK);
+
+      if (amount <= 0) continue;
+
+      account.boosterTickets[packId] = Math.min(
+        ACCOUNT_MAX_TICKETS_PER_PACK,
+        Number(account.boosterTickets[packId] || 0) + amount
+      );
+    }
+  }
+
+  const cardIds = [
+    ...(Array.isArray(reward.cardIds) ? reward.cardIds : []),
+    reward.cardId
+  ];
+
+  for (const rawCardId of cardIds) {
+    const cardId = accountSafeId(rawCardId);
+    if (cardId) accountAddCard(entry, cardId, 1);
+  }
+
+  if (reward.titleId && ACCOUNT_TITLE_IDS.has(reward.titleId)) {
+    account.ownedTitles[reward.titleId] = 1;
+  }
+
+  if (reward.frameId && ACCOUNT_FRAME_IDS.has(reward.frameId)) {
+    account.ownedFrames[reward.frameId] = 1;
+  }
+
+  if (reward.customizationId && ACCOUNT_CUSTOMIZATION_BY_ID[reward.customizationId]) {
+    account.ownedCustomizations[reward.customizationId] = 1;
+  }
+
+  const emoteIds = [
+    ...(Array.isArray(reward.emoteIds) ? reward.emoteIds : []),
+    reward.emoteId
+  ];
+
+  for (const rawEmoteId of emoteIds) {
+    const emoteId = accountSafeId(rawEmoteId);
+
+    if (emoteId && ACCOUNT_EMOTE_IDS.has(emoteId)) {
+      account.ownedEmotes[emoteId] = 1;
+    }
+  }
+
+  entry.updatedAt = Date.now();
+  return profileXp;
+}
+
+function accountGetActiveSeasonalEvent(now = Date.now()) {
+  for (const [eventId, event] of Object.entries(ACCOUNT_SEASONAL_EVENTS)) {
+    const startAt = Date.parse(event.startsAt);
+    const endAt = Date.parse(event.endsAt);
+
+    if (
+      event.enabled !== false &&
+      Number.isFinite(startAt) &&
+      Number.isFinite(endAt) &&
+      now >= startAt &&
+      now <= endAt
+    ) {
+      return { id: eventId, ...event };
+    }
+  }
+
+  return null;
+}
+
+function accountServerRandomFloat() {
+  return crypto.randomBytes(6).readUIntBE(0, 6) / 0x1000000000000;
+}
+
+function accountPickRarity(odds = {}) {
+  const entries = Object.entries(odds)
+    .map(([rarity, chance]) => ({ rarity, chance: Number(chance) || 0 }))
+    .filter(entry => entry.chance > 0);
+
+  const total = entries.reduce((sum, entry) => sum + entry.chance, 0);
+  if (total <= 0) return "";
+
+  let roll = accountServerRandomFloat() * total;
+  for (const entry of entries) {
+    roll -= entry.chance;
+    if (roll <= 0) return entry.rarity;
+  }
+
+  return entries[entries.length - 1]?.rarity || "";
+}
+
+function accountCardCanAppearInPack(card, pack) {
+  if (!card || !pack?.odds?.[card.rarity]) return false;
+  if (
+    card.battlePassExclusive ||
+    card.boosterExcluded ||
+    ACCOUNT_SHARE_REWARD.cardIds.includes(card.id)
+  ) {
+    return false;
+  }
+
+  if (pack.categoryBias === "utility" && card.category !== "magic" && card.category !== "trap") {
+    return false;
+  }
+
+  if (pack.categoryBias === "evolution" && card.category !== "monster") {
+    return false;
+  }
+
+  return card.category !== "monster" ||
+    Number(card.evolutionStage || 1) >= Number(pack.minStage || 1);
+}
+
+function accountRollPackCard(pack) {
+  const allCards = [...ACCOUNT_CARD_CATALOG.values()];
+  if (!allCards.length) return null;
+
+  const rarity = accountPickRarity(pack.odds);
+  let candidates = allCards.filter(card =>
+    card.rarity === rarity &&
+    accountCardCanAppearInPack(card, pack)
+  );
+
+  if (!candidates.length) {
+    candidates = allCards.filter(card => accountCardCanAppearInPack(card, pack));
+  }
+
+  if (!candidates.length) return null;
+  return candidates[crypto.randomInt(candidates.length)];
+}
+
+function accountLegacyMigration(entry, rawLegacy) {
+  if (!ACCOUNT_LEGACY_MIGRATION_ENABLED) {
+    return { ok: false, error: "Legacy browser-save migration is closed." };
+  }
+
+  const account = accountEnsureInventory(entry);
+  if (account.migratedAt) {
+    return { ok: false, error: "This account has already completed its one-time migration." };
+  }
+
+  const legacy = accountPlainObject(rawLegacy) ? rawLegacy : {};
+  const collection = accountPlainObject(legacy.collection) ? legacy.collection : legacy;
+
+  entry.account = accountNormalizeInventory({
+    ...collection,
+    seasonal: legacy.seasonal || legacy.seasonalEventState || collection.seasonal,
+    migratedAt: Date.now()
+  }, { legacy: true });
+
+  // This is a one-time compatibility bridge for existing browser saves.
+  // Currency is capped because a browser save cannot prove historical validity.
+  entry.gold = Math.max(
+    safeStatInt(entry.gold, 1000, 999999999),
+    safeStatInt(collection.gold, 1000, ACCOUNT_LEGACY_GOLD_CAP)
+  );
+
+  entry.gems = Math.max(
+    safeStatInt(entry.gems, 0, 999999999),
+    safeStatInt(collection.gems, 0, ACCOUNT_LEGACY_GEMS_CAP)
+  );
+
+  return { ok: true };
+}
+
+function accountHandleAction(entry, actionType, data = {}) {
+  const account = accountEnsureInventory(entry);
+
+  if (actionType === "migrateLegacy") {
+    return accountLegacyMigration(entry, data.legacy);
+  }
+
+if (actionType === "buyPack") {
+  const packId = accountSafeId(data.packId);
+  const pack = ACCOUNT_PACK_CATALOG[packId];
+
+  if (!pack) return { ok: false, error: "Unknown booster pack." };
+  if (!ACCOUNT_CARD_CATALOG.size) {
+    return {
+      ok: false,
+      error: "Server card catalog is unavailable. Pack opening is temporarily disabled."
+    };
+  }
+
+  // Roll first so a bad future pack configuration cannot consume
+  // currency or a ticket without awarding cards.
+  const cards = [];
+
+  for (let index = 0; index < 3; index++) {
+    const card = accountRollPackCard(pack);
+
+    if (!card) {
+      return {
+        ok: false,
+        error: "No eligible cards are configured for this pack."
+      };
+    }
+
+    cards.push(card.id);
+  }
+
+  const tickets = Number(account.boosterTickets[packId] || 0);
+  const usedTicket = tickets > 0;
+
+  if (usedTicket) {
+    account.boosterTickets[packId] = tickets - 1;
+  } else if (!accountSpend(entry, { [pack.costType]: pack.cost })) {
+    return {
+      ok: false,
+      error: `Not enough ${pack.costType.toUpperCase()}.`
+    };
+  }
+
+  for (const cardId of cards) {
+    accountAddCard(entry, cardId, 1);
+  }
+
+  return { ok: true, packId, usedTicket, cards };
+}
+
+  if (actionType === "buyTitle") {
+    const titleId = accountSafeId(data.titleId);
+    const cost = ACCOUNT_TITLE_STORE[titleId];
+    if (!cost) return { ok: false, error: "That title is not sold by the server shop." };
+
+    if (!account.ownedTitles[titleId] && !accountSpend(entry, cost)) {
+      return { ok: false, error: "Not enough currency for that title." };
+    }
+
+    account.ownedTitles[titleId] = 1;
+    account.equippedTitleId = titleId;
+    return { ok: true, titleId };
+  }
+
+  if (actionType === "buyFrame") {
+    const frameId = accountSafeId(data.frameId);
+    const cost = ACCOUNT_FRAME_STORE[frameId];
+    if (!cost) return { ok: false, error: "That frame is not sold by the server shop." };
+
+    if (!account.ownedFrames[frameId] && !accountSpend(entry, cost)) {
+      return { ok: false, error: "Not enough currency for that frame." };
+    }
+
+    account.ownedFrames[frameId] = 1;
+    account.equippedFrameId = frameId;
+    return { ok: true, frameId };
+  }
+
+  if (actionType === "buyCustomization") {
+    const customizationId = accountSafeId(data.customizationId);
+    const cost = ACCOUNT_CUSTOMIZATION_STORE[customizationId];
+    if (!cost) return { ok: false, error: "That customization is not sold by the server shop." };
+
+    if (!account.ownedCustomizations[customizationId] && !accountSpend(entry, cost)) {
+      return { ok: false, error: "Not enough currency for that customization." };
+    }
+
+    account.ownedCustomizations[customizationId] = 1;
+    account.equippedCustomizations[cost.slot] = customizationId;
+    return { ok: true, customizationId };
+  }
+
+  if (actionType === "equipTitle") {
+    const titleId = accountSafeId(data.titleId);
+    if (!titleId || !account.ownedTitles[titleId]) {
+      return { ok: false, error: "That title is locked." };
+    }
+
+    account.equippedTitleId = titleId;
+    return { ok: true, titleId };
+  }
+
+  if (actionType === "equipFrame") {
+    const frameId = accountSafeId(data.frameId);
+    if (!frameId || !account.ownedFrames[frameId]) {
+      return { ok: false, error: "That frame is locked." };
+    }
+
+    account.equippedFrameId = frameId;
+    return { ok: true, frameId };
+  }
+
+  if (actionType === "equipCustomization") {
+    const customizationId = accountSafeId(data.customizationId);
+    const slot = ACCOUNT_CUSTOMIZATION_BY_ID[customizationId];
+
+    if (!slot || !account.ownedCustomizations[customizationId]) {
+      return { ok: false, error: "That customization is locked." };
+    }
+
+    account.equippedCustomizations[slot] = customizationId;
+    return { ok: true, customizationId };
+  }
+
+  if (actionType === "unequipCustomization") {
+    const slot = accountSafeId(data.slot, 24);
+    if (!["hair", "hat", "glasses", "face"].includes(slot)) {
+      return { ok: false, error: "Unknown customization slot." };
+    }
+
+    delete account.equippedCustomizations[slot];
+    return { ok: true, slot };
+  }
+
+  if (actionType === "upgradeLoadoutWeight") {
+    const current = ACCOUNT_LOADOUT_WEIGHT_BASE + Number(account.loadoutWeightBonus || 0);
+    if (current >= ACCOUNT_LOADOUT_WEIGHT_MAX) {
+      return { ok: false, error: "Loadout weight is already at maximum." };
+    }
+
+    const purchased = Math.floor(Number(account.loadoutWeightBonus || 0) / ACCOUNT_LOADOUT_WEIGHT_STEP);
+    const cost = ACCOUNT_LOADOUT_WEIGHT_UPGRADE_BASE_GEMS +
+      purchased * ACCOUNT_LOADOUT_WEIGHT_UPGRADE_STEP_GEMS;
+
+    if (!accountSpend(entry, { gems: cost })) {
+      return { ok: false, error: `Need ${cost.toLocaleString()} Gems for this upgrade.` };
+    }
+
+    account.loadoutWeightBonus = Math.min(
+      ACCOUNT_LOADOUT_WEIGHT_MAX - ACCOUNT_LOADOUT_WEIGHT_BASE,
+      Number(account.loadoutWeightBonus || 0) + ACCOUNT_LOADOUT_WEIGHT_STEP
+    );
+
+    return { ok: true, cost, loadoutWeightBonus: account.loadoutWeightBonus };
+  }
+
+  if (actionType === "claimSeasonalReward") {
+    const active = accountGetActiveSeasonalEvent();
+    const eventId = accountSafeId(data.eventId);
+    const rewardId = accountSafeId(data.rewardId);
+
+    if (!active || active.id !== eventId) {
+      return { ok: false, error: "That seasonal event is not active." };
+    }
+
+    const reward = active.rewards[rewardId];
+    if (!reward) return { ok: false, error: "Seasonal reward not found." };
+
+    account.seasonal.claimedRewards[eventId] =
+      account.seasonal.claimedRewards[eventId] || {};
+
+    if (account.seasonal.claimedRewards[eventId][rewardId]) {
+      return { ok: false, error: "Seasonal reward already claimed." };
+    }
+
+    account.seasonal.claimedRewards[eventId][rewardId] = true;
+    accountGrantReward(entry, reward);
+    return { ok: true, eventId, rewardId };
+  }
+
+  if (actionType === "buySeasonalItem") {
+    const active = accountGetActiveSeasonalEvent();
+    const eventId = accountSafeId(data.eventId);
+    const itemId = accountSafeId(data.itemId);
+
+    if (!active || active.id !== eventId) {
+      return { ok: false, error: "That seasonal event is not active." };
+    }
+
+    const item = active.shopItems[itemId];
+    if (!item) return { ok: false, error: "Seasonal shop item not found." };
+
+    account.seasonal.shopPurchases[eventId] =
+      account.seasonal.shopPurchases[eventId] || {};
+
+    const count = Number(account.seasonal.shopPurchases[eventId][itemId] || 0);
+    if (item.limit && count >= item.limit) {
+      return { ok: false, error: "Seasonal item purchase limit reached." };
+    }
+
+    if (!accountSpend(entry, { [item.costType]: item.cost })) {
+      return { ok: false, error: `Not enough ${String(item.costType || "currency").toUpperCase()}.` };
+    }
+
+    account.seasonal.shopPurchases[eventId][itemId] = count + 1;
+    accountGrantReward(entry, item.reward);
+    return { ok: true, eventId, itemId };
+  }
+
+  if (actionType === "claimShareBonus") {
+    if (account.shareRewardClaimed) {
+      return { ok: false, error: "This account already claimed its one-time community share bonus." };
+    }
+
+    // Browsers cannot verify that an external social post was published.
+    // This prevents repeat/localStorage claims, but remains an honor-system claim.
+    account.shareRewardClaimed = true;
+    account.shareRewardClaimedAt = Date.now();
+    account.shareRewardSource = String(data.source || "share").slice(0, 32);
+
+    for (const cardId of ACCOUNT_SHARE_REWARD.cardIds) {
+      accountAddCard(entry, cardId, 1);
+      if (!account.shareRewardCardIds.includes(cardId)) {
+        account.shareRewardCardIds.push(cardId);
+      }
+    }
+
+    for (const emoteId of ACCOUNT_SHARE_REWARD.emoteIds) {
+      account.ownedEmotes[emoteId] = 1;
+      if (!account.shareRewardEmoteIds.includes(emoteId)) {
+        account.shareRewardEmoteIds.push(emoteId);
+      }
+    }
+
+    entry.gold = safeStatInt(
+      Number(entry.gold || 0) + ACCOUNT_SHARE_REWARD.gold,
+      0,
+      999999999
+    );
+
+    entry.gems = safeStatInt(
+      Number(entry.gems || 0) + ACCOUNT_SHARE_REWARD.gems,
+      0,
+      999999999
+    );
+
+    return { ok: true, honorSystem: true };
+  }
+
+  return { ok: false, error: "Unknown account action." };
+}
+
 const PROFILE_MAX_LEVEL = 100;
 
 function profileXpForNextLevel(level = 1) {
@@ -617,9 +1841,14 @@ function verifyPlayerSessionToken(token) {
 }
 
 function privatePlayerProfile(p) {
+  const entry = p?.playerId ? leaderboardProfiles.get(p.playerId) : null;
+
   return {
     ...publicPlayer(p),
-    sessionToken: p?.sessionToken || ""
+    sessionToken: p?.sessionToken || "",
+    ranked: entry?.ranked || null,
+    rankedPoints: Math.max(0, Number(entry?.rankedPoints || 1000)),
+    account: entry ? accountSnapshot(entry) : null
   };
 }
 
@@ -645,6 +1874,91 @@ function getMatchBounds(match, gameState = "MATCH") {
 
 function sanitizeMatchCoordinate(value, fallback, limit) {
   return clampFiniteNumber(value, fallback, 0, limit);
+}
+
+const MATCH_STATE_NETWORK_FIELDS = Object.freeze([
+  "name",
+  "teamId",
+  "gameState",
+  "x",
+  "y",
+  "angle",
+  "radius",
+  "hp",
+  "maxHp",
+  "shieldHp",
+  "shieldMax",
+  "armorHp",
+  "armorMax",
+  "alive",
+  "isDowned",
+  "downedTimer",
+  "color",
+  "titleId",
+  "frameId",
+  "customizations",
+  "floor",
+  "scopeLevel",
+  "visionRadius",
+  "selectedMelee",
+  "meleeWeapon"
+]);
+
+function matchStateValuesEqual(left, right) {
+  if (left === right) return true;
+
+  if (typeof left === "number" && typeof right === "number") {
+    return Math.abs(left - right) < 0.001;
+  }
+
+  if (
+    left &&
+    right &&
+    typeof left === "object" &&
+    typeof right === "object"
+  ) {
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch (err) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function makeMatchStateDeltaPayload(match, entry, state, now = Date.now()) {
+  if (!match || !entry || !state) return null;
+
+  const previous = entry.lastBroadcastState || null;
+  const full = !previous || previous.gameState !== state.gameState;
+  const delta = {};
+
+  for (const field of MATCH_STATE_NETWORK_FIELDS) {
+    if (full || !matchStateValuesEqual(state[field], previous[field])) {
+      delta[field] = state[field];
+    }
+  }
+
+  if (!Object.keys(delta).length) return null;
+
+  entry.stateSequence = Number(entry.stateSequence || 0) + 1;
+  entry.lastBroadcastState = {
+    ...state,
+    customizations: { ...(state.customizations || {}) },
+    meleeWeapon: state.meleeWeapon ? { ...state.meleeWeapon } : null
+  };
+
+  return {
+    v: 2,
+    matchId: match.matchId,
+    socketId: state.socketId,
+    playerId: state.playerId,
+    seq: entry.stateSequence,
+    full,
+    serverNow: now,
+    state: delta
+  };
 }
 
 function isPlainObject(value) {
@@ -869,7 +2183,9 @@ function getMatchBotTarget(match, humanCount = getMatchHumanCount(match)) {
     return Math.max(0, Math.min(maxBotsForSlots, Math.round(configured)));
   }
 
-  return Math.min(MATCH_BOT_MIN, maxBotsForSlots);
+  return match?.ranked
+    ? Math.min(RANKED_BOT_MIN, maxBotsForSlots)
+    : Math.min(MATCH_BOT_MIN, maxBotsForSlots);
 }
 
 function isEligibleWorldAuthority(match, socketId) {
@@ -1470,13 +2786,91 @@ function applyRankedReportToEntry(entry, rankedReport) {
     "BRONZE";
 }
 
+function recordRankedPlayerElimination(match, sourceEntry, targetEntry) {
+  if (!match?.ranked || !sourceEntry || !targetEntry) return;
+  if (sourceEntry.socketId === targetEntry.socketId) return;
+  if ((sourceEntry.teamId || sourceEntry.socketId) === (targetEntry.teamId || targetEntry.socketId)) return;
+  if (targetEntry.rankedEliminationCredited) return;
+
+  targetEntry.rankedEliminationCredited = true;
+  sourceEntry.rankedPvpKills = Number(sourceEntry.rankedPvpKills || 0) + 1;
+  targetEntry.rankedPvpDeaths = Number(targetEntry.rankedPvpDeaths || 0) + 1;
+}
+
+function applyServerRankedMatchResult(entry, mode, won) {
+  const cleanMode = mode === "duo" ? "duo" : "solo";
+  const season = getRankedSeasonInfo();
+
+  if (!entry.ranked || typeof entry.ranked !== "object") {
+    entry.ranked = {
+      solo: defaultServerRankedBucket(),
+      duo: defaultServerRankedBucket()
+    };
+  }
+
+  const existing = entry.ranked[cleanMode] || defaultServerRankedBucket();
+
+  if (existing.seasonId && existing.seasonId !== season.id) {
+    entry.ranked[cleanMode] = {
+      ...defaultServerRankedBucket(),
+      seasonId: season.id,
+      seasonName: season.label
+    };
+  }
+
+  const bucket = entry.ranked[cleanMode];
+  const before = Math.max(0, Math.round(Number(bucket.rating || 1000)));
+  const pvpKills = Math.max(0, Math.round(Number(entry.rankedPvpKills || 0)));
+  const pvpDeaths = Math.max(0, Math.round(Number(entry.rankedPvpDeaths || 0)));
+  const delta = (won ? RANKED_MATCH_WIN_POINTS : RANKED_MATCH_LOSS_POINTS) +
+    pvpKills * RANKED_PVP_ELIMINATION_POINTS;
+  const after = Math.max(0, before + delta);
+
+  bucket.seasonId = season.id;
+  bucket.seasonName = season.label;
+  bucket.rating = after;
+  bucket.seasonalRating = after;
+  bucket.wins = Number(bucket.wins || 0) + (won ? 1 : 0);
+  bucket.losses = Number(bucket.losses || 0) + (won ? 0 : 1);
+  bucket.kills = Number(bucket.kills || 0) + pvpKills;
+  bucket.deaths = Number(bucket.deaths || 0) + pvpDeaths;
+  bucket.matches = Number(bucket.matches || 0) + 1;
+  bucket.bestPlacement = won
+    ? Math.min(Number(bucket.bestPlacement || 999), 1)
+    : (bucket.bestPlacement || null);
+  bucket.updatedAt = Date.now();
+
+  entry.rankedPoints = Math.max(
+    Number(entry.ranked.solo?.rating || 1000),
+    Number(entry.ranked.duo?.rating || 1000)
+  );
+  entry.rank = entry.rankedPoints >= 2600 ? "MYTHIC" :
+    entry.rankedPoints >= 2200 ? "DIAMOND" :
+    entry.rankedPoints >= 1800 ? "PLATINUM" :
+    entry.rankedPoints >= 1450 ? "GOLD" :
+    entry.rankedPoints >= 1150 ? "SILVER" :
+    "BRONZE";
+
+  return {
+    active: true,
+    mode: cleanMode,
+    before,
+    after,
+    delta: after - before,
+    pvpKills,
+    pvpDeaths,
+    npcRankPoints: 0,
+    won: !!won
+  };
+}
+
 function publicRankedLeaderboardEntry(entry, mode, index = 0) {
   const bucket = entry.ranked?.[mode] || defaultServerRankedBucket();
 
   return {
     position: index + 1,
     playerId: entry.playerId,
-    name: entry.name,
+    name: sanitizePlayerName(entry.name, "Survivor"),
     rank: entry.rank || "SURVIVOR",
     level: Math.max(1, Math.min(PROFILE_MAX_LEVEL, Number(entry.level || 1))),
     mode,
@@ -1512,6 +2906,50 @@ function sortedRankedLeaderboardRows(mode = "solo") {
   return rows.slice(0, 50).map((row, index) => ({ ...row, position: index + 1 }));
 }
 
+const PLAYER_NAME_MIN_LENGTH = 3;
+const PLAYER_NAME_MAX_LENGTH = 24;
+const PLAYER_NAME_ALLOWED_RE = /^[A-Za-z0-9 _-]+$/;
+
+function normalizePlayerName(value = "") {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function validatePlayerName(value = "") {
+  const name = normalizePlayerName(value);
+
+  if (name.length < PLAYER_NAME_MIN_LENGTH) {
+    return { ok: false, name: "", error: "Name must be at least 3 characters." };
+  }
+
+  if (name.length > PLAYER_NAME_MAX_LENGTH) {
+    return { ok: false, name: "", error: "Name must be 24 characters or fewer." };
+  }
+
+  if (!PLAYER_NAME_ALLOWED_RE.test(name) || !/[A-Za-z0-9]/.test(name)) {
+    return {
+      ok: false,
+      name: "",
+      error: "Use letters, numbers, spaces, underscores, or hyphens only."
+    };
+  }
+
+  return { ok: true, name, error: "" };
+}
+
+function sanitizePlayerName(value = "", fallback = "Survivor") {
+  const checked = validatePlayerName(value);
+  if (checked.ok) return checked.name;
+
+  const backup = normalizePlayerName(fallback);
+
+  return (
+    backup.length >= PLAYER_NAME_MIN_LENGTH &&
+    backup.length <= PLAYER_NAME_MAX_LENGTH &&
+    PLAYER_NAME_ALLOWED_RE.test(backup) &&
+    /[A-Za-z0-9]/.test(backup)
+  ) ? backup : "Survivor";
+}
+
 function safeStatInt(value, fallback = 0, max = 999999) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -1519,7 +2957,7 @@ function safeStatInt(value, fallback = 0, max = 999999) {
 }
 
 function normalizeLeaderboardName(name = "") {
-  return String(name || "").trim().replace(/\s+/g, " ").toLowerCase();
+  return normalizePlayerName(name).toLowerCase();
 }
 
 function isCanonicalLeaderboardName(name = "") {
@@ -1611,8 +3049,10 @@ function mergeLeaderboardEntries(target, source = {}) {
 }
 
 function serializeLeaderboardEntry(entry = {}) {
+  const { accountActionRate, ...persistedEntry } = entry;
+
   return {
-    ...entry,
+    ...persistedEntry,
     reportKeys: [...(entry.reportKeys instanceof Set ? entry.reportKeys : new Set())]
   };
 }
@@ -1637,6 +3077,7 @@ function hydrateLeaderboardEntry(raw = {}) {
 
   entry.gold = safeStatInt(entry.gold, 1000, 999999999);
   entry.gems = safeStatInt(entry.gems, 0, 999999999);
+  accountEnsureInventory(entry);
 
   const existingById = leaderboardProfiles.get(entry.playerId);
   if (existingById) {
@@ -2033,11 +3474,97 @@ function sortedRankedLeaderboardRowsForSeason(mode = "solo", seasonId = getRanke
 }
 
 function rankedRewardForPosition(position = 999, mode = "solo") {
-  if (position === 1) return { gold: 25000, gems: 1200, title: `${mode.toUpperCase()} SEASON CHAMPION` };
-  if (position <= 3) return { gold: 18000, gems: 800, title: `${mode.toUpperCase()} TOP 3` };
-  if (position <= 10) return { gold: 12000, gems: 450, title: `${mode.toUpperCase()} TOP 10` };
-  if (position <= 25) return { gold: 7000, gems: 220, title: `${mode.toUpperCase()} TOP 25` };
-  return { gold: 2500, gems: 75, title: `${mode.toUpperCase()} TOP 50` };
+  const modeLabel = String(mode || "ranked").toUpperCase();
+  const premiumPackTickets = {
+    element_burst: 1,
+    evolution_surge: 1,
+    mythic_rift: 1
+  };
+
+  if (position === 1) {
+    return {
+      gold: 50000,
+      gems: 2500,
+      profileXp: 10000,
+      boosterTickets: premiumPackTickets,
+      emoteId: "ranked_sovereign_medal_1",
+      cardId: "asterion_rift_crown_wyrm",
+      title: `${modeLabel} SEASON CHAMPION`
+    };
+  }
+
+  if (position === 2) {
+    return {
+      gold: 35000,
+      gems: 1600,
+      profileXp: 7500,
+      boosterTickets: premiumPackTickets,
+      emoteId: "ranked_rift_medal_2",
+      title: `${modeLabel} SEASON RUNNER-UP`
+    };
+  }
+
+  if (position === 3) {
+    return {
+      gold: 27000,
+      gems: 1100,
+      profileXp: 6500,
+      boosterTickets: premiumPackTickets,
+      title: `${modeLabel} TOP 3`
+    };
+  }
+
+  if (position <= 5) {
+    return {
+      gold: 20000,
+      gems: 750,
+      profileXp: 5000,
+      title: `${modeLabel} TOP 5`
+    };
+  }
+
+  if (position <= 10) {
+    return {
+      gold: 14000,
+      gems: 400,
+      profileXp: 3800,
+      title: `${modeLabel} TOP 10`
+    };
+  }
+
+  if (position <= 20) {
+    return {
+      gold: 9000,
+      gems: 200,
+      profileXp: 2800,
+      title: `${modeLabel} TOP 20`
+    };
+  }
+
+  if (position <= 30) {
+    return {
+      gold: 6000,
+      gems: 100,
+      profileXp: 2000,
+      title: `${modeLabel} TOP 30`
+    };
+  }
+
+  if (position <= 40) {
+    return {
+      gold: 3000,
+      gems: 40,
+      profileXp: 1400,
+      title: `${modeLabel} TOP 40`
+    };
+  }
+
+  return {
+    gold: 0,
+    gems: 0,
+    profileXp: 750,
+    title: `${modeLabel} TOP 50 XP REWARD`
+  };
 }
 
 function rankedQueueReward(playerId, reward) {
@@ -2151,7 +3678,7 @@ function requireRankedAdmin(req, res) {
 
 function getOrCreateLeaderboardEntry(profile = {}) {
   const playerId = String(profile.playerId || "").trim() || createSecurePlayerId();
-  const requestedName = String(profile.name || "Survivor").trim().slice(0, 24) || "Survivor";
+  const requestedName = sanitizePlayerName(profile.name, "Survivor");
 
   let entry = leaderboardProfiles.get(playerId);
 
@@ -2177,6 +3704,7 @@ function getOrCreateLeaderboardEntry(profile = {}) {
       color: String(profile.color || "#38bdf8").slice(0, 24),
       icon: String(profile.icon || "DS").slice(0, 12),
       reportKeys: new Set(),
+      account: accountDefaultInventory(),
       firstSeenAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -2196,7 +3724,7 @@ function getOrCreateLeaderboardEntry(profile = {}) {
   if (!entry.ranked.solo) entry.ranked.solo = defaultServerRankedBucket();
   if (!entry.ranked.duo) entry.ranked.duo = defaultServerRankedBucket();
 
-  entry.name = requestedName || entry.name || "Survivor";
+  entry.name = sanitizePlayerName(requestedName, entry.name || "Survivor");
   entry.color = String(profile.color || entry.color || "#38bdf8").slice(0, 24);
   entry.icon = String(profile.icon || entry.icon || "DS").slice(0, 12);
   entry.rank = String(entry.rank || "SURVIVOR").slice(0, 32);
@@ -2212,6 +3740,7 @@ function getOrCreateLeaderboardEntry(profile = {}) {
   entry.gold = safeStatInt(entry.gold, 1000, 999999999);
   entry.gems = safeStatInt(entry.gems, 0, 999999999);
   entry.rankedPoints = safeStatInt(entry.rankedPoints, 1000, 999999);
+  accountEnsureInventory(entry);
   entry.updatedAt = Date.now();
 
   return entry;
@@ -2227,7 +3756,7 @@ function publicLeaderboardEntry(entry, index = 0) {
   return {
     position: index + 1,
     playerId: entry.playerId,
-    name: entry.name,
+    name: sanitizePlayerName(entry.name, "Survivor"),
     rank: entry.rank || "SURVIVOR",
     level: Math.max(1, Math.min(PROFILE_MAX_LEVEL, Number(entry.level || 1))),
     profileXp: Math.max(0, Number(entry.profileXp || 0)),
@@ -2380,7 +3909,7 @@ function emitVoicePeerLeft(socketId, reason = "left") {
     io.to(peerId).emit("voicePeerLeft", {
       socketId,
       playerId: p.playerId,
-      name: p.name,
+      name: sanitizePlayerName(p.name, "Survivor"),
       reason
     });
   }
@@ -2422,6 +3951,7 @@ function leaveParty(socketId) {
 
   const partyId = p.partyId;
   const party = parties.get(partyId);
+  removeRankedDuoPartyFromQueue(partyId);
   p.partyId = null;
 
   if (!party) return;
@@ -2474,6 +4004,249 @@ function kickPlayerFromParty(leaderId, targetSocketId) {
   broadcastOnlineList();
 
   return { ok: true };
+}
+
+function removeRankedDuoPartyFromQueue(partyId, reason = "") {
+  const index = rankedDuoPartyQueue.findIndex(entry => entry.partyId === partyId);
+  if (index >= 0) rankedDuoPartyQueue.splice(index, 1);
+
+  const timer = rankedDuoQueueTimers.get(partyId);
+  if (timer) clearTimeout(timer);
+  rankedDuoQueueTimers.delete(partyId);
+
+  const party = parties.get(partyId);
+  if (party && party.status === "ranked_queue") {
+    party.status = "lobby";
+    party.rankedIntent = false;
+    party.modeIntent = "duo";
+
+    for (const socketId of party.members) {
+      party.ready[socketId] = false;
+      if (reason) {
+        io.to(socketId).emit("rankedQueueStatus", {
+          mode: "duo",
+          queued: false,
+          reason
+        });
+      }
+    }
+
+    emitPartyUpdate(partyId);
+  }
+}
+
+function cancelRankedMatchBeforeDeploy(match, reason) {
+  if (!match || !match.ranked || match.resultsFinalized) return;
+
+  for (const entry of match.players.values()) {
+    const p = getPlayer(entry.socketId);
+    if (p) {
+      p.inMatch = false;
+      p.matchId = null;
+    }
+
+    const socket = io.sockets.sockets.get(entry.socketId);
+    if (socket) socket.leave(match.matchId);
+
+    io.to(entry.socketId).emit("rankedQueueStatus", {
+      mode: match.rankedMode || match.mode || "solo",
+      queued: false,
+      reason
+    });
+
+    io.to(entry.socketId).emit("matchQueueCancelled", {
+      matchId: match.matchId,
+      reason
+    });
+  }
+
+  matches.delete(match.matchId);
+  broadcastOnlineList();
+}
+
+function armRankedMinimumHumanGuard(match) {
+  if (!match?.ranked || match.rankedMinimumHumanGuard) return;
+
+  match.rankedMinimumHumanGuard = setTimeout(() => {
+    if (!matches.has(match.matchId) || match.resultsFinalized) return;
+
+    if (getMatchHumanCount(match) < 2) {
+      cancelRankedMatchBeforeDeploy(
+        match,
+        "Ranked needs at least two real players. No rating changed."
+      );
+    }
+  }, Math.max(1000, Number(match.deployAt || Date.now()) - Date.now() - 150));
+
+  match.rankedMinimumHumanGuard.unref?.();
+}
+
+function createRankedDuoMatch(firstParty, secondParty) {
+  const matchId = makeMatchId();
+  const seed = makeSeed();
+  const now = Date.now();
+  const partyGroups = [firstParty, secondParty];
+  const match = {
+    matchId,
+    seed,
+    mode: "duo",
+    partyId: firstParty.partyId,
+    partyIds: partyGroups.map(party => party.partyId),
+    teamSize: 2,
+    totalSlots: MATCH_TOTAL_SLOTS,
+    queueStartAt: now,
+    deployAt: now + ONLINE_QUEUE_MS,
+    worldAuthoritySocketId: firstParty.leaderId || firstParty.members[0] || null,
+    worldSnapshot: null,
+    lastWorldSnapshotAt: 0,
+    ranked: true,
+    rankedMode: "duo",
+    players: new Map()
+  };
+
+  for (const party of partyGroups) {
+    for (const socketId of party.members) {
+      const p = getPlayer(socketId);
+      if (!p) continue;
+
+      p.inMatch = true;
+      p.matchId = matchId;
+
+      match.players.set(socketId, {
+        socketId,
+        playerId: p.playerId,
+        name: p.name,
+        teamId: party.partyId,
+        partyId: party.partyId,
+        alive: true,
+        hp: 100,
+        x: 0,
+        y: 0,
+        angle: 0,
+        rankedPvpKills: 0,
+        rankedPvpDeaths: 0
+      });
+
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) socket.join(matchId);
+    }
+  }
+
+  const humanCount = getMatchHumanCount(match);
+  const botTarget = rollRankedMatchBotTarget(humanCount);
+  match.botTarget = botTarget;
+  match.populationTarget = Math.min(MATCH_TOTAL_SLOTS, humanCount + botTarget);
+
+  matches.set(matchId, match);
+
+  for (const party of partyGroups) {
+    party.matchId = matchId;
+    party.seed = seed;
+    party.status = "matching";
+    party.modeIntent = "duo";
+    party.rankedIntent = true;
+    party.teamSize = 2;
+
+    const teammates = party.members
+      .map(socketId => getPlayer(socketId))
+      .filter(Boolean)
+      .map(publicPlayer);
+
+    for (const socketId of party.members) {
+      io.to(socketId).emit("partyMatchStart", {
+        matchId,
+        seed,
+        partyId: party.partyId,
+        teamId: party.partyId,
+        mode: "duo",
+        teamSize: 2,
+        botFillSlots: 0,
+        totalSlots: MATCH_TOTAL_SLOTS,
+        botCount: botTarget,
+        populationTarget: match.populationTarget,
+        queueMs: ONLINE_QUEUE_MS,
+        serverNow: now,
+        deployAt: match.deployAt,
+        worldAuthoritySocketId: match.worldAuthoritySocketId,
+        ranked: true,
+        teammates
+      });
+    }
+
+    emitPartyUpdate(party.partyId);
+  }
+
+  armRankedMinimumHumanGuard(match);
+  broadcastMatchSync(match);
+  broadcastOnlineList();
+}
+
+function enqueueRankedDuoParty(party) {
+  if (!party || party.members.length !== 2) return false;
+  if (rankedDuoPartyQueue.some(entry => entry.partyId === party.partyId)) return true;
+
+  party.status = "ranked_queue";
+  party.modeIntent = "duo";
+  party.rankedIntent = true;
+  party.teamSize = 2;
+
+  rankedDuoPartyQueue.push({
+    partyId: party.partyId,
+    queuedAt: Date.now()
+  });
+
+  for (const socketId of party.members) {
+    io.to(socketId).emit("rankedQueueStatus", {
+      mode: "duo",
+      queued: true,
+      queuedParties: rankedDuoPartyQueue.length,
+      reason: "Searching for another ready Duo party."
+    });
+  }
+
+  emitPartyUpdate(party.partyId);
+
+  const timeout = setTimeout(() => {
+    if (!rankedDuoPartyQueue.some(entry => entry.partyId === party.partyId)) return;
+
+    removeRankedDuoPartyFromQueue(
+      party.partyId,
+      "Ranked Duo queue timed out. No rating changed."
+    );
+  }, 120000);
+
+  timeout.unref?.();
+  rankedDuoQueueTimers.set(party.partyId, timeout);
+
+  while (rankedDuoPartyQueue.length >= 2) {
+    const first = rankedDuoPartyQueue.shift();
+    const second = rankedDuoPartyQueue.shift();
+    const firstParty = parties.get(first?.partyId);
+    const secondParty = parties.get(second?.partyId);
+
+    const firstTimer = rankedDuoQueueTimers.get(first?.partyId);
+    const secondTimer = rankedDuoQueueTimers.get(second?.partyId);
+    if (firstTimer) clearTimeout(firstTimer);
+    if (secondTimer) clearTimeout(secondTimer);
+    rankedDuoQueueTimers.delete(first?.partyId);
+    rankedDuoQueueTimers.delete(second?.partyId);
+
+    if (
+      !firstParty ||
+      !secondParty ||
+      firstParty.members.length !== 2 ||
+      secondParty.members.length !== 2 ||
+      firstParty.status !== "ranked_queue" ||
+      secondParty.status !== "ranked_queue"
+    ) {
+      continue;
+    }
+
+    createRankedDuoMatch(firstParty, secondParty);
+    break;
+  }
+
+  return true;
 }
 
 function makeParty(leaderId) {
@@ -2585,6 +4358,7 @@ function createMatchFromParty(party, mode = "duo") {
     worldSnapshot: null,
     lastWorldSnapshotAt: 0,
     ranked: !!party.rankedIntent,
+    rankedMode: party.rankedIntent ? cleanMode : null,
     players: new Map()
   };
 
@@ -2600,11 +4374,14 @@ function createMatchFromParty(party, mode = "duo") {
       playerId: p.playerId,
       name: p.name,
       teamId: party.partyId,
+      partyId: party.partyId,
       alive: true,
       hp: 100,
       x: 0,
       y: 0,
-      angle: 0
+      angle: 0,
+      rankedPvpKills: 0,
+      rankedPvpDeaths: 0
     });
 
     const socket = io.sockets.sockets.get(socketId);
@@ -2625,7 +4402,9 @@ function createMatchFromParty(party, mode = "duo") {
     .map(publicPlayer);
 
   const humanCount = Math.max(1, teammates.length);
-  const botTarget = rollMatchBotTarget(humanCount);
+  const botTarget = match.ranked
+    ? rollRankedMatchBotTarget(humanCount)
+    : rollMatchBotTarget(humanCount);
   match.botTarget = botTarget;
   match.populationTarget = Math.min(MATCH_TOTAL_SLOTS, humanCount + botTarget);
 
@@ -2636,6 +4415,7 @@ function createMatchFromParty(party, mode = "duo") {
       matchId,
       seed,
       partyId: party.partyId,
+      teamId: party.partyId,
       mode: cleanMode,
       teamSize,
       botFillSlots,
@@ -2662,6 +4442,7 @@ function createDuoMatchFromParty(party) {
 }
 
 function cleanQuickMatchMode(mode = "duo") {
+  if (mode === "solo") return "solo";
   return mode === "team" ? "team" : "duo";
 }
 
@@ -2672,22 +4453,22 @@ function publicMatchTeammates(match) {
     .map(publicPlayer);
 }
 
-function findJoinablePublicMatch(mode = "duo") {
+function findJoinablePublicMatch(mode = "duo", ranked = false) {
   const cleanMode = cleanQuickMatchMode(mode);
-  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
+  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 1;
   const now = Date.now();
 
   return [...matches.values()]
     .filter(match => {
       if (!match || !match.publicQueue) return false;
       if (match.mode !== cleanMode) return false;
-      if (match.ranked) return false;
+      if (!!match.ranked !== !!ranked) return false;
 
       // Keep a small safety window so nobody joins right as deployment fires.
       if (now >= (match.deployAt || 0) - 2500) return false;
 
-      // Public quick-match is random-teammate based: Duo max 2 humans, Squad max 4 humans.
-      if (getMatchHumanCount(match) >= teamSize) return false;
+      if (getMatchHumanCount(match) >= teamSize && !ranked) return false;
+      if (ranked && getMatchHumanCount(match) >= MATCH_HUMAN_RESERVED_SLOTS) return false;
 
       return true;
     })
@@ -2700,9 +4481,9 @@ function findJoinablePublicMatch(mode = "duo") {
     })[0] || null;
 }
 
-function createPublicQuickMatch(mode = "duo") {
+function createPublicQuickMatch(mode = "duo", ranked = false) {
   const cleanMode = cleanQuickMatchMode(mode);
-  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
+  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 1;
   const matchId = makeMatchId();
   const seed = makeSeed();
   const now = Date.now();
@@ -2720,7 +4501,8 @@ function createPublicQuickMatch(mode = "duo") {
     worldAuthoritySocketId: null,
     worldSnapshot: null,
     lastWorldSnapshotAt: 0,
-    ranked: false,
+    ranked: !!ranked,
+    rankedMode: ranked ? cleanMode : null,
     players: new Map()
   };
 
@@ -2752,22 +4534,30 @@ function emitPublicMatchTeamUpdate(match) {
   }
 }
 
-function joinPublicQuickMatch(socket, mode = "duo") {
+function joinPublicQuickMatch(socket, mode = "duo", options = {}) {
   const p = getPlayer(socket.id);
   if (!p) return { ok: false, error: "Not registered." };
   if (p.inMatch) return { ok: false, error: "You are already in a match." };
 
+  const ranked = !!options.ranked;
+  const cleanMode = cleanQuickMatchMode(mode);
+
+  // Ranked Solo is the only no-party ranked queue. Ranked Duo uses two
+  // ready parties so both sides are real two-player teams.
+  if (ranked && cleanMode !== "solo") {
+    return { ok: false, error: "Ranked Duo requires a ready party of two players." };
+  }
+
   // Parties should continue using the normal party-ready matchmaking path.
   if (p.partyId) return { ok: false, error: "Leave your party or use party ready check." };
 
-  const cleanMode = cleanQuickMatchMode(mode);
-  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 2;
+  const teamSize = TEAM_SIZE_BY_MODE[cleanMode] || 1;
 
-  let match = findJoinablePublicMatch(cleanMode);
+  let match = findJoinablePublicMatch(cleanMode, ranked);
   const joinedExisting = !!match;
 
   if (!match) {
-    match = createPublicQuickMatch(cleanMode);
+    match = createPublicQuickMatch(cleanMode, ranked);
   }
 
   if (!match.worldAuthoritySocketId || !io.sockets.sockets.has(match.worldAuthoritySocketId)) {
@@ -2777,35 +4567,42 @@ function joinPublicQuickMatch(socket, mode = "duo") {
   p.inMatch = true;
   p.matchId = match.matchId;
 
-  // Public quick-match randoms are teammates in Duo/Squad.
   match.players.set(socket.id, {
     socketId: socket.id,
     playerId: p.playerId,
     name: p.name,
-    teamId: "player_team",
+    teamId: ranked ? socket.id : "player_team",
     alive: true,
     hp: 100,
     x: 0,
     y: 0,
-    angle: 0
+    angle: 0,
+    rankedPvpKills: 0,
+    rankedPvpDeaths: 0
   });
 
   socket.join(match.matchId);
 
   const humanCount = getMatchHumanCount(match);
-  const botTarget = getMatchBotTarget(match, humanCount);
+  const botTarget = ranked
+    ? rollRankedMatchBotTarget(humanCount)
+    : getMatchBotTarget(match, humanCount);
+
   match.botTarget = botTarget;
   match.populationTarget = Math.min(MATCH_TOTAL_SLOTS, humanCount + botTarget);
 
-  const teammates = publicMatchTeammates(match);
+  const teammates = ranked
+    ? [publicPlayer(p)]
+    : publicMatchTeammates(match);
 
   socket.emit("partyMatchStart", {
     matchId: match.matchId,
     seed: match.seed,
     partyId: null,
+    teamId: ranked ? socket.id : "player_team",
     mode: cleanMode,
     teamSize,
-    botFillSlots: Math.max(0, teamSize - teammates.length),
+    botFillSlots: ranked ? 0 : Math.max(0, teamSize - teammates.length),
     totalSlots: MATCH_TOTAL_SLOTS,
     botCount: botTarget,
     populationTarget: match.populationTarget,
@@ -2813,12 +4610,17 @@ function joinPublicQuickMatch(socket, mode = "duo") {
     serverNow: Date.now(),
     deployAt: match.deployAt,
     worldAuthoritySocketId: match.worldAuthoritySocketId,
-    ranked: false,
+    ranked,
     teammates,
     joinedExisting
   });
 
-  emitPublicMatchTeamUpdate(match);
+  if (ranked) {
+    armRankedMinimumHumanGuard(match);
+  } else {
+    emitPublicMatchTeamUpdate(match);
+  }
+
   broadcastMatchSync(match);
   broadcastOnlineList();
 
@@ -2888,6 +4690,14 @@ function finalizeServerMatchResults(match, winners) {
     profileEntry.deaths += won ? 0 : 1;
     profileEntry.updatedAt = Date.now();
 
+    if (match.ranked && getMatchHumanCount(match) >= 2) {
+      entry.rankedResult = applyServerRankedMatchResult(
+        profileEntry,
+        match.rankedMode || match.mode,
+        won
+      );
+    }
+
     const liveProfile = getPlayer(entry.socketId);
 
     if (liveProfile) {
@@ -2927,7 +4737,8 @@ function checkMatchWinner(match) {
     io.to(entry.socketId).emit("matchWinner", {
       matchId: match.matchId,
       won,
-      winners
+      winners,
+      ranked: entry.rankedResult || null
     });
 
     const profile = getPlayer(entry.socketId);
@@ -3128,7 +4939,7 @@ io.on("connection", socket => {
 
     const profileEntry = getOrCreateLeaderboardEntry({
       playerId,
-      name: String(data?.name || "Survivor").trim().slice(0, 24),
+      name: sanitizePlayerName(data?.name, "Survivor"),
       color: data?.color,
       icon: data?.icon
     });
@@ -3163,28 +4974,95 @@ io.on("connection", socket => {
     broadcastLeaderboards();
   });
 
-  socket.on("renamePlayer", (data, cb) => {
+socket.on("renamePlayer", (data, cb) => {
+  const p = getPlayer(socket.id);
+  if (!p) return cb?.({ ok: false, error: "Not registered." });
+
+  const checkedName = validatePlayerName(data?.name);
+  if (!checkedName.ok) {
+    return cb?.({ ok: false, error: checkedName.error });
+  }
+
+  const nextName = checkedName.name;
+  const nextNameKey = normalizeLeaderboardName(nextName);
+
+  const duplicate = [...players.values()].some(other =>
+    other.socketId !== socket.id &&
+    normalizeLeaderboardName(other.name) === nextNameKey
+  );
+
+  if (duplicate) {
+    return cb?.({ ok: false, error: "That name is already online." });
+  }
+
+  const profileEntry = getOrCreateLeaderboardEntry({
+    playerId: p.playerId,
+    name: nextName,
+    color: p.color,
+    icon: p.icon
+  });
+
+  profileEntry.name = nextName;
+  profileEntry.updatedAt = Date.now();
+  p.name = nextName;
+
+  const match = p.matchId ? matches.get(p.matchId) : null;
+  const matchEntry = match?.players.get(socket.id);
+  if (matchEntry) matchEntry.name = nextName;
+
+  rankedScheduleSave();
+  cb?.({ ok: true, player: publicPlayer(p) });
+
+  if (p.partyId) emitPartyUpdate(p.partyId);
+  if (match) broadcastMatchSync(match, "player_renamed");
+  broadcastOnlineList();
+  broadcastLeaderboards();
+});
+
+  socket.on("accountAction", (data = {}, cb) => {
     const p = getPlayer(socket.id);
-    if (!p) return cb?.({ ok: false, error: "Not registered." });
-
-    const nextName = String(data?.name || "").trim().slice(0, 24);
-    if (nextName.length < 3) {
-      return cb?.({ ok: false, error: "Name must be at least 3 characters." });
+    if (!p?.playerId) {
+      return cb?.({ ok: false, error: "Player profile not ready." });
     }
 
-    const duplicate = [...players.values()].some(other =>
-      other.socketId !== socket.id &&
-      other.name.toLowerCase() === nextName.toLowerCase()
-    );
-
-    if (duplicate) {
-      return cb?.({ ok: false, error: "That name is already online." });
+    // Stores, inventory changes and migrations are main-menu actions. They
+    // cannot be issued during a live match to alter active gameplay state.
+    if (p.matchId || p.inMatch) {
+      return cb?.({ ok: false, error: "Account changes are unavailable during a match." });
     }
 
-    p.name = nextName;
-    cb?.({ ok: true, player: publicPlayer(p) });
+    const entry = getOrCreateLeaderboardEntry({
+      playerId: p.playerId,
+      name: p.name,
+      color: p.color,
+      icon: p.icon
+    });
 
-    if (p.partyId) emitPartyUpdate(p.partyId);
+    const actionType = accountSafeId(data?.type, 48);
+    if (!ACCOUNT_ACTION_RULES[actionType]) {
+      return cb?.({ ok: false, error: "Unknown account action." });
+    }
+
+    if (!accountAllowAction(entry, actionType)) {
+      return cb?.({ ok: false, error: "Please wait a moment before trying that again." });
+    }
+
+    const result = accountHandleAction(entry, actionType, data);
+    if (!result.ok) return cb?.(result);
+
+    entry.updatedAt = Date.now();
+    accountSyncPlayerCurrency(entry, p);
+    rankedScheduleSave();
+
+    const account = accountSnapshot(entry);
+    socket.emit("accountSync", account);
+
+    cb?.({
+      ...result,
+      profile: privatePlayerProfile(p),
+      account
+    });
+
     broadcastOnlineList();
   });
 
@@ -3236,7 +5114,9 @@ io.on("connection", socket => {
 
     socket.on("quickMatch", (data, cb) => {
     const mode = cleanQuickMatchMode(data?.mode || "duo");
-    const result = joinPublicQuickMatch(socket, mode);
+    const result = joinPublicQuickMatch(socket, mode, {
+      ranked: !!data?.ranked
+    });
 
     if (!result.ok) {
       cb?.({
@@ -3373,7 +5253,11 @@ io.on("connection", socket => {
       party.members.every(id => party.ready[id]);
 
     if (party.status === "readying" && allReady) {
-      createMatchFromParty(party, party.modeIntent || "duo");
+      if (party.rankedIntent && party.modeIntent === "duo") {
+        enqueueRankedDuoParty(party);
+      } else {
+        createMatchFromParty(party, party.modeIntent || "duo");
+      }
     }
   });
 
@@ -3451,11 +5335,11 @@ io.on("connection", socket => {
 
     p.inMatch = true;
     p.matchId = match.matchId;
-    p.partyId = match.partyId || null;
+    p.partyId = entry.partyId || match.partyId || null;
 
     socket.join(match.matchId);
 
-    const party = match.partyId ? parties.get(match.partyId) : null;
+    const party = p.partyId ? parties.get(p.partyId) : null;
 
     if (party) {
       const memberIndex = party.members.indexOf(oldSocketId);
@@ -3538,19 +5422,29 @@ io.on("connection", socket => {
     if (!p || !data?.matchId) return;
 
     const match = matches.get(data.matchId);
-    if (!match) return;
+    const entry = match?.players.get(socket.id);
+
+    if (!match || !entry || entry.leftMatch || entry.disconnected) return;
 
     socket.join(data.matchId);
     p.inMatch = true;
     p.matchId = data.matchId;
+    entry.lastBroadcastState = null;
 
     socket.emit("matchSync", makeMatchSyncPayload(match));
     if (match.worldSnapshot) socket.emit("matchWorldSnapshot", match.worldSnapshot);
   });
 
- socket.on("matchState", rawState => {
+ socket.on("matchState", incomingState => {
+    const rawState = (
+      isPlainObject(incomingState) &&
+      isPlainObject(incomingState.state)
+    )
+      ? incomingState.state
+      : incomingState;
+
     const p = getPlayer(socket.id);
-    if (!p || !p.matchId || !rawState || typeof rawState !== "object" || Array.isArray(rawState)) return;
+    if (!p || !p.matchId || !isPlainObject(rawState)) return;
 
     const match = matches.get(p.matchId);
     const entry = match?.players.get(socket.id);
@@ -3625,11 +5519,15 @@ io.on("connection", socket => {
       if (id) customizations[slot] = id;
     }
 
+    const rawWeaponCandidate = Object.prototype.hasOwnProperty.call(rawState, "meleeWeapon")
+      ? rawState.meleeWeapon
+      : entry.state?.meleeWeapon;
+
     const rawWeapon =
-      rawState.meleeWeapon &&
-      typeof rawState.meleeWeapon === "object" &&
-      !Array.isArray(rawState.meleeWeapon)
-        ? rawState.meleeWeapon
+      rawWeaponCandidate &&
+      typeof rawWeaponCandidate === "object" &&
+      !Array.isArray(rawWeaponCandidate)
+        ? rawWeaponCandidate
         : null;
 
     const meleeWeapon = rawWeapon
@@ -3648,6 +5546,14 @@ io.on("connection", socket => {
         }
       : null;
 
+    const profileEntry = leaderboardProfiles.get(p.playerId) || getOrCreateLeaderboardEntry({
+      playerId: p.playerId,
+      name: p.name,
+      color: p.color,
+      icon: p.icon
+    });
+    const authoritativeAccount = accountEnsureInventory(profileEntry);
+
     const state = {
       socketId: socket.id,
       playerId: p.playerId,
@@ -3663,7 +5569,7 @@ io.on("connection", socket => {
         -Math.PI * 4,
         Math.PI * 4
       ),
-      radius: clampFiniteNumber(rawState.radius, 16, 8, 48),
+      radius: clampFiniteNumber(rawState.radius, entry.state?.radius ?? 16, 8, 48),
 
       hp: clampFiniteNumber(
         rawState.hp ?? rawState.health,
@@ -3689,20 +5595,20 @@ io.on("connection", socket => {
       ),
       armorMax,
 
-      alive: entry.alive !== false && rawState.alive !== false,
-      isDowned: entry.alive !== false && !!rawState.isDowned,
-      downedTimer: clampFiniteNumber(rawState.downedTimer, 0, 0, 120),
+      alive: entry.alive !== false && (rawState.alive ?? entry.state?.alive ?? true) !== false,
+      isDowned: entry.alive !== false && !!(rawState.isDowned ?? entry.state?.isDowned),
+      downedTimer: clampFiniteNumber(rawState.downedTimer, entry.state?.downedTimer ?? 0, 0, 120),
 
       color: String(p.color || "#38bdf8").slice(0, 24),
-      titleId: String(rawState.titleId || "").slice(0, 64),
-      frameId: String(rawState.frameId || "").slice(0, 64),
-      customizations,
+      titleId: authoritativeAccount.equippedTitleId,
+      frameId: authoritativeAccount.equippedFrameId,
+      customizations: { ...authoritativeAccount.equippedCustomizations },
 
-      floor: String(rawState.floor || "surface").slice(0, 64),
-      scopeLevel: String(rawState.scopeLevel || "x1").slice(0, 8),
-      visionRadius: clampFiniteNumber(rawState.visionRadius, 320, 120, 2500),
+      floor: String(rawState.floor ?? entry.state?.floor ?? "surface").slice(0, 64),
+      scopeLevel: String(rawState.scopeLevel ?? entry.state?.scopeLevel ?? "x1").slice(0, 8),
+      visionRadius: clampFiniteNumber(rawState.visionRadius, entry.state?.visionRadius ?? 320, 120, 2500),
 
-      selectedMelee: !!rawState.selectedMelee,
+      selectedMelee: !!(rawState.selectedMelee ?? entry.state?.selectedMelee),
       meleeWeapon,
       updatedAt: now
     };
@@ -3722,7 +5628,10 @@ io.on("connection", socket => {
     entry.lastStateAt = now;
     entry.state = state;
 
-    socket.to(match.matchId).emit("matchState", state);
+    const deltaPayload = makeMatchStateDeltaPayload(match, entry, state, now);
+    if (deltaPayload) {
+      socket.to(match.matchId).emit("matchState", deltaPayload);
+    }
   });
 
   socket.on("matchDamage", data => {
@@ -3864,6 +5773,7 @@ target.lastDamageAt = now;
     if (target.hp <= 0) {
       target.alive = false;
       sourceEntry.matchKills = Number(sourceEntry.matchKills || 0) + 1;
+      recordRankedPlayerElimination(match, sourceEntry, target);
 
       io.to(source.matchId).emit("matchPlayerEliminated", {
         victimSocketId: targetSocketId,
@@ -4431,11 +6341,27 @@ socket.on("matchLocalDeath", data => {
     entry.hp = 0;
   }
 
+  const now = Date.now();
+  const killerSocketId =
+    entry &&
+    now - Number(entry.lastDamageAt || 0) <= RANKED_LAST_DAMAGE_CREDIT_MS &&
+    typeof entry.lastDamageSourceSocketId === "string" &&
+    match.players.has(entry.lastDamageSourceSocketId)
+      ? entry.lastDamageSourceSocketId
+      : null;
+
+  const killerEntry = killerSocketId ? match.players.get(killerSocketId) : null;
+  const killerProfile = killerSocketId ? getPlayer(killerSocketId) : null;
+
+  if (entry && killerEntry) {
+    recordRankedPlayerElimination(match, killerEntry, entry);
+  }
+
   socket.to(matchId).emit("matchPlayerEliminated", {
     victimSocketId: socket.id,
-    killerSocketId: data?.killerSocketId || null,
+    killerSocketId,
     victimName: p.name,
-    killerName: data?.killerName || "Unknown"
+    killerName: killerProfile?.name || "Unknown"
   });
 
   checkMatchWinner(match);
@@ -4474,10 +6400,16 @@ socket.on("matchLocalDeath", data => {
     entry.deaths = 0;
     entry.losses = 0;
     entry.revives = 0;
+    entry.gold = 1000;
+    entry.gems = 0;
+    entry.account = accountDefaultInventory();
+    entry.account.migratedAt = Date.now();
     entry.reportKeys = new Set();
     entry.updatedAt = Date.now();
+    accountSyncPlayerCurrency(entry, p);
+    rankedScheduleSave();
 
-    socket.emit("profileAssigned", publicPlayer(p));
+    socket.emit("profileAssigned", privatePlayerProfile(p));
     broadcastOnlineList();
     broadcastLeaderboards();
   });
@@ -4494,18 +6426,36 @@ socket.on("matchLocalDeath", data => {
     if (reward.claimed) return cb?.({ ok: false, error: "Reward already claimed." });
     if (rankedIsRewardExpired(reward)) return cb?.({ ok: false, error: "Reward expired." });
 
+    const entry = getOrCreateLeaderboardEntry({
+      playerId: p.playerId,
+      name: p.name,
+      color: p.color,
+      icon: p.icon
+    });
+
+    const profileXp = accountGrantReward(entry, reward);
+
     reward.claimed = true;
     reward.paidAt = Date.now();
 
-    p.gold = Number(p.gold || 0) + safeStatInt(reward.gold);
-    p.gems = Number(p.gems || 0) + safeStatInt(reward.gems);
+    accountSyncPlayerCurrency(entry, p);
+    p.level = entry.level;
+    p.profileXp = entry.profileXp;
 
     rankedRewardInbox.set(p.playerId, rewards);
     rankedScheduleSave();
 
-    const publicProfile = publicPlayer(p);
-    socket.emit("profileAssigned", publicProfile);
-    cb?.({ ok: true, reward, profile: publicProfile });
+    const privateProfile = privatePlayerProfile(p);
+    socket.emit("profileAssigned", privateProfile);
+    cb?.({
+      ok: true,
+      reward: {
+        ...reward,
+        profileXp: profileXp.xp
+      },
+      profile: privateProfile,
+      account: accountSnapshot(entry)
+    });
 
     broadcastOnlineList();
   });
@@ -4542,6 +6492,10 @@ socket.on("matchLocalDeath", data => {
     const p = getPlayer(socket.id);
 
     if (p) {
+      if (p.partyId) {
+        removeRankedDuoPartyFromQueue(p.partyId, "A ranked party member disconnected.");
+      }
+
       if (p.voiceReady) {
         emitVoicePeerLeft(socket.id, "disconnected");
         p.voiceReady = false;
