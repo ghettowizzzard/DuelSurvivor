@@ -666,6 +666,47 @@
             box-shadow: 0 0 34px rgba(14, 165, 233, 0.16), 0 24px 80px rgba(0, 0, 0, 0.34);
         }
 
+        .wizard-studio-mark {
+            position: absolute;
+            top: clamp(14px, 1.8vw, 22px);
+            right: clamp(14px, 1.8vw, 22px);
+            z-index: 5;
+            width: clamp(58px, 6vw, 92px);
+            aspect-ratio: 1 / 1;
+            display: grid;
+            place-items: center;
+            padding: 8px;
+            border: 1px solid rgba(103, 232, 249, 0.42);
+            border-radius: 20px;
+            background:
+                radial-gradient(circle at 30% 20%, rgba(255,255,255,0.14), transparent 34%),
+                radial-gradient(circle at 70% 80%, rgba(250,204,21,0.10), transparent 38%),
+                rgba(2, 6, 23, 0.70);
+            box-shadow:
+                0 0 22px rgba(14, 165, 233, 0.20),
+                0 12px 28px rgba(0,0,0,0.34),
+                inset 0 0 14px rgba(255,255,255,0.035);
+            pointer-events: none;
+        }
+
+        .wizard-studio-mark img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            filter:
+                drop-shadow(0 0 8px rgba(103,232,249,0.22))
+                drop-shadow(0 7px 10px rgba(0,0,0,0.36));
+        }
+
+        @media (max-width: 980px) {
+            .wizard-studio-mark {
+                position: static;
+                width: 68px;
+                margin: 14px auto -2px;
+            }
+        }
+
         .seo-info-inner {
             border-radius: 23px;
             padding: clamp(20px, 3vw, 34px);
@@ -1365,6 +1406,13 @@
         </section>
 
         <section class="seo-info-panel" aria-labelledby="duelio-about-title">
+            <div class="wizard-studio-mark">
+                <img
+                    src="./assets/Wizard_Transparent.png"
+                    alt="Wizard studio logo"
+                    loading="lazy">
+            </div>
+
             <div class="seo-info-inner">
                 <p class="seo-kicker">Browser TCG Battle Royale</p>
 
