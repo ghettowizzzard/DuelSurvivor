@@ -26576,11 +26576,10 @@ if (statusEl) {
             };
         }
 
-        const BEACH_TREASURE_SPAWN_CONFIG = {
-            noneChance: 0.22,
-            secondCrateChance: 0.18,
-            maxAttempts: 1800
-        };
+const BEACH_TREASURE_SPAWN_CONFIG = {
+    secondCrateChance: 0.35,
+    maxAttempts: 1800
+};
 
         function getBeachTreasureRect(x, y, size = 104) {
             return { x: x - size / 2, y: y - size * 0.38, w: size, h: size * 0.76 };
@@ -26682,32 +26681,37 @@ if (statusEl) {
             return crate;
         }
 
-        function spawnBeachTreasureCrates() {
-            const roll = Math.random();
-            const targetCount = roll < BEACH_TREASURE_SPAWN_CONFIG.noneChance
-                ? 0
-                : roll < 1 - BEACH_TREASURE_SPAWN_CONFIG.secondCrateChance
-                    ? 1
-                    : 2;
+function spawnBeachTreasureCrates() {
+    const targetCount = Math.random() < BEACH_TREASURE_SPAWN_CONFIG.secondCrateChance
+        ? 2
+        : 1;
 
-            const placed = [];
-            for (let i = 0; i < targetCount; i++) {
-                const point = findBeachTreasurePoint(placed);
-                if (!point) break;
+    const placed = [];
 
-                const treasureCrate = createBeachTreasureCrate(point.x, point.y);
-                crates.push(treasureCrate);
-                placed.push(point);
-                maybeSpawnPirateShipForTreasure(treasureCrate, point, i);
-            }
+    for (let i = 0; i < targetCount; i++) {
+        const point = findBeachTreasurePoint(placed);
+        if (!point) break;
 
-            if (placed.length) {
-                console.info(`Beach treasure spawned ${placed.length}/${targetCount}`, placed);
-                spatialMarkAllDirty("beach_treasure_spawned");
-            } else if (targetCount > 0) {
-                console.warn("Beach treasure wanted to spawn, but no valid beach placement was found.");
-            }
+        const treasureCrate = createBeachTreasureCrate(point.x, point.y);
+
+        // The treasure is added first. Pirate ship code cannot block it.
+        crates.push(treasureCrate);
+        placed.push(point);
+
+        try {
+            maybeSpawnPirateShipForTreasure(treasureCrate, point, i);
+        } catch (error) {
+            console.warn("Pirate ship failed to spawn for beach treasure:", error);
         }
+    }
+
+    if (placed.length) {
+        console.info(`Beach treasure spawned ${placed.length}/${targetCount}`, placed);
+        spatialMarkAllDirty("beach_treasure_spawned");
+    } else {
+        console.warn("Beach treasure could not find a valid beach location.");
+    }
+}
 
         function getLocalPlayerKnownCardIdsForBotBias() {
             const ids = new Set();
@@ -31648,31 +31652,46 @@ function updateActorParachuteMotion(actor, dt, time) {
     const state = actor?.dropState;
     if (!state?.airborne) return;
 
-    const t = dsClamp((time - state.startAt) / Math.max(1, state.landAt - state.startAt), 0, 1);
+    const t = dsClamp(
+        (time - state.startAt) / Math.max(1, state.landAt - state.startAt),
+        0,
+        1
+    );
+
     const height = Math.max(0, 1 - t);
 
     if (actor === player && t < 0.84) {
         const move = getUnifiedMoveVector();
         const steerControl = 0.55 + clamp01((height - 0.08) / 0.92) * 0.45;
 
-        state.targetX = clamp(
+        const nextTargetX = clamp(
             state.targetX + move.dx * DROP_PLANE_CONFIG.steerSpeed * steerControl * dt,
             220,
             worldWidth - 220
         );
 
-        state.targetY = clamp(
+        const nextTargetY = clamp(
             state.targetY + move.dy * DROP_PLANE_CONFIG.steerSpeed * steerControl * dt,
             220,
             worldHeight - 220
         );
-    }
 
-    if (!state.safeResolved && t > 0.80) {
-        const safe = resolveDropLandingPoint(actor, state.targetX, state.targetY);
-        state.targetX = safe.x;
-        state.targetY = safe.y;
-        state.safeResolved = true;
+        const safeToLandThere = isSpawnPointSafe(nextTargetX, nextTargetY, {
+            actor,
+            floor: "surface",
+            radius: actor.radius || 16,
+            minEdge: 0.14,
+            avoidWater: true,
+            avoidRiver: true,
+            volcanoPadding: 220,
+            avoidSolid: true,
+            avoidHouses: true
+        });
+
+        if (safeToLandThere) {
+            state.targetX = nextTargetX;
+            state.targetY = nextTargetY;
+        }
     }
 
     const ease = 1 - Math.pow(1 - t, 1.42);
@@ -31684,8 +31703,6 @@ function updateActorParachuteMotion(actor, dt, time) {
     actor.takesDamage = false;
 
     if (actor === player) {
-        // Critical fix: camera now follows the live airborne player position,
-        // not the old plane position from before the jump.
         syncDropPlaneCamera(actor.x, actor.y);
         applyDropCameraViewForPlayer(false);
     }
@@ -31693,29 +31710,37 @@ function updateActorParachuteMotion(actor, dt, time) {
     if (t >= 1) finishActorParachuteDrop(actor);
 }
 
-        function finishActorParachuteDrop(actor) {
-            const state = actor?.dropState;
-            if (!state) return;
+function finishActorParachuteDrop(actor) {
+    const state = actor?.dropState;
+    if (!state) return;
 
-            const landing = resolveDropLandingPoint(actor, state.targetX || actor.x, state.targetY || actor.y);
-            actor.x = landing.x;
-            actor.y = landing.y;
-            actor.floor = "surface";
-            actor.dropHeight = 0;
-            actor.takesDamage = actor.alive !== false && !actor.isEliminated;
-            actor.aiObjective = "loot";
-            actor.dropState = null;
+    // Keep the exact position the player reached during the parachute animation.
+    // The target was already checked while steering, so do not run another
+    // safe-point search here and teleport the player at the last second.
+    actor.x = Number.isFinite(actor.x) ? actor.x : state.targetX;
+    actor.y = Number.isFinite(actor.y) ? actor.y : state.targetY;
 
-            if (actor === player) {
-                currentFloor = "surface";
-                player.scopeLevel = "x1";
-                player.visionRadius = 320;
-                player.targetZoom = 1.0;
-                player.hasScoutLens = false;
-                setDropScopeHud("x1");
-                triggerNotification("LANDED - loot up and rotate into the safe zone.");
-            }
-        }
+    actor.floor = "surface";
+    actor.dropHeight = 0;
+    actor.takesDamage = actor.alive !== false && !actor.isEliminated;
+    actor.aiObjective = "loot";
+
+    if (actor === player) {
+        syncDropPlaneCamera(actor.x, actor.y, true);
+    }
+
+    actor.dropState = null;
+
+    if (actor === player) {
+        currentFloor = "surface";
+        player.scopeLevel = "x1";
+        player.visionRadius = 320;
+        player.targetZoom = 1.0;
+        player.hasScoutLens = false;
+        setDropScopeHud("x1");
+        triggerNotification("LANDED - loot up and rotate into the safe zone.");
+    }
+}
 
         function updateDropPlaneSystem(dt, time) {
             if (currentGameState !== GAME_STATES.MATCH || !dropPlaneState.active || !dropPlaneState.route) return;
