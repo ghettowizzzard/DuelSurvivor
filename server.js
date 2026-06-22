@@ -562,7 +562,7 @@ const RANKED_MATCH_LOSS_POINTS = -8;
 const RANKED_LAST_DAMAGE_CREDIT_MS = 15000;
 
 const ONLINE_QUEUE_MS = 15000;
-const WORLD_SNAPSHOT_MIN_MS = 160;
+const WORLD_SNAPSHOT_MIN_MS = 180;
 const MATCH_RECONNECT_GRACE_MS = 45000;
 const ACCOUNT_SCHEMA_VERSION = 1;
 const ACCOUNT_LEGACY_MIGRATION_ENABLED =
@@ -1911,17 +1911,24 @@ function matchStateValuesEqual(left, right) {
     return Math.abs(left - right) < 0.001;
   }
 
+  // These replicated state objects are flat DTOs:
+  // customizations and meleeWeapon.
   if (
     left &&
     right &&
     typeof left === "object" &&
     typeof right === "object"
   ) {
-    try {
-      return JSON.stringify(left) === JSON.stringify(right);
-    } catch (err) {
-      return false;
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+
+    if (leftKeys.length !== rightKeys.length) return false;
+
+    for (const key of leftKeys) {
+      if (left[key] !== right[key]) return false;
     }
+
+    return true;
   }
 
   return false;
@@ -2294,56 +2301,328 @@ function broadcastMatchSync(match, authorityReason = "sync") {
   return payload;
 }
 
-function sanitizeWorldSnapshot(snapshot) {
+function sanitizeWorldCustomizations(raw) {
+  if (!isPlainObject(raw)) return {};
+
+  const clean = {};
+
+  for (const [slot, id] of Object.entries(raw).slice(0, 8)) {
+    const safeSlot = String(slot || "").slice(0, 32);
+    const safeId = String(id || "").slice(0, 64);
+
+    if (safeSlot && safeId) {
+      clean[safeSlot] = safeId;
+    }
+  }
+
+  return clean;
+}
+
+function sanitizeWorldBotFull(bot) {
   return {
+    id: String(bot?.id || ""),
+    name: String(bot?.name || "Bot").slice(0, 32),
+    color: String(bot?.color || "#ef4444").slice(0, 24),
+    customizations: sanitizeWorldCustomizations(bot?.customizations),
+    teamId: bot?.teamId
+      ? String(bot.teamId).slice(0, 48)
+      : null,
+    x: Number(bot?.x || 0),
+    y: Number(bot?.y || 0),
+    angle: Number(bot?.angle || 0),
+    lookAngle: Number(bot?.lookAngle || bot?.angle || 0),
+    hp: Number(bot?.hp ?? 100),
+    maxHp: Number(bot?.maxHp ?? 100),
+    alive: bot?.alive !== false,
+    isEliminated: !!bot?.isEliminated,
+    isDowned: !!bot?.isDowned,
+    floor: String(bot?.floor || "surface").slice(0, 48)
+  };
+}
+
+function sanitizeWorldBotUpdate(bot) {
+  return {
+    id: String(bot?.id || ""),
+    x: Number(bot?.x || 0),
+    y: Number(bot?.y || 0),
+    angle: Number(bot?.angle || 0),
+    lookAngle: Number(bot?.lookAngle || bot?.angle || 0),
+    hp: Number(bot?.hp ?? 100),
+    maxHp: Number(bot?.maxHp ?? 100),
+    alive: bot?.alive !== false,
+    isEliminated: !!bot?.isEliminated,
+    isDowned: !!bot?.isDowned,
+    floor: String(bot?.floor || "surface").slice(0, 48)
+  };
+}
+
+function sanitizeWorldItem(item) {
+  return {
+    id: String(item?.id || ""),
+    x: Number(item?.x || 0),
+    y: Number(item?.y || 0),
+    floor: String(item?.floor || "surface").slice(0, 48),
+    type: String(item?.type || "loot").slice(0, 32),
+    name: String(item?.name || "Loot").slice(0, 64),
+    cardId: item?.cardId
+      ? String(item.cardId).slice(0, 64)
+      : null,
+    cardName: item?.cardName
+      ? String(item.cardName).slice(0, 64)
+      : null,
+    rarity: item?.rarity
+      ? String(item.rarity).slice(0, 32)
+      : null,
+    visualColor: item?.visualColor
+      ? String(item.visualColor).slice(0, 24)
+      : null,
+    iconSymbol: item?.iconSymbol
+      ? String(item.iconSymbol).slice(0, 8)
+      : null,
+    radius: Number(item?.radius || 12),
+    healAmount: Number(item?.healAmount || 0),
+    shieldAmount: Number(item?.shieldAmount || 0),
+    armorAmount: Number(item?.armorAmount || 0),
+    amount: Number(item?.amount || 0),
+    meleeId: item?.meleeId
+      ? String(item.meleeId).slice(0, 64)
+      : null,
+    damage: Number(item?.damage || 0),
+    objectDamage: Number(item?.objectDamage || 0),
+    cooldownMs: Number(item?.cooldownMs || 0)
+  };
+}
+
+function sanitizeWorldCrateFull(crate) {
+  return {
+    id: String(crate?.id || ""),
+    x: Number(crate?.x || 0),
+    y: Number(crate?.y || 0),
+    width: Number(crate?.width || 44),
+    height: Number(crate?.height || 44),
+    floor: String(crate?.floor || "surface").slice(0, 48),
+    rarity: crate?.rarity
+      ? String(crate.rarity).slice(0, 32)
+      : null,
+    crateType: crate?.crateType
+      ? String(crate.crateType).slice(0, 32)
+      : null,
+    hp: Number(crate?.hp || 0),
+    maxHp: Number(crate?.maxHp || crate?.hp || 0),
+    alive: crate?.alive !== false,
+    destroyed: !!crate?.destroyed
+  };
+}
+
+function sanitizeWorldCrateUpdate(crate) {
+  return {
+    id: String(crate?.id || ""),
+    hp: Number(crate?.hp || 0),
+    alive: crate?.alive !== false,
+    destroyed: !!crate?.destroyed
+  };
+}
+
+function sanitizeWorldIdList(raw, limit) {
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .slice(0, limit)
+    .map(id => String(id || "").slice(0, 96))
+    .filter(Boolean);
+}
+
+function sanitizeWorldStorm(storm) {
+  if (!isPlainObject(storm)) return null;
+
+  return {
+    centerX: Number(storm.centerX || 0),
+    centerY: Number(storm.centerY || 0),
+    currentRadius: Number(storm.currentRadius || 0),
+    targetRadius: Number(storm.targetRadius || 0),
+    timer: Number(storm.timer || 0),
+    damagePhase: Number(storm.damagePhase || 0)
+  };
+}
+
+function sanitizeWorldSnapshot(snapshot) {
+  const legacyFullSnapshot =
+    snapshot?.full !== false &&
+    Array.isArray(snapshot?.bots) &&
+    !Array.isArray(snapshot?.botUpdates);
+
+  const full = snapshot?.full === true || legacyFullSnapshot;
+
+  return {
+    full,
     seq: Number(snapshot?.seq || 0),
     state: String(snapshot?.state || "MATCH").slice(0, 32),
     serverNow: Date.now(),
-    bots: Array.isArray(snapshot?.bots) ? snapshot.bots.slice(0, MATCH_TOTAL_SLOTS).map(bot => ({
-      id: String(bot.id || ""),
-      name: String(bot.name || "Bot").slice(0, 32),
-      x: Number(bot.x || 0),
-      y: Number(bot.y || 0),
-      angle: Number(bot.angle || 0),
-      lookAngle: Number(bot.lookAngle || bot.angle || 0),
-      hp: Number(bot.hp ?? 100),
-      maxHp: Number(bot.maxHp ?? 100),
-      alive: bot.alive !== false,
-      isEliminated: !!bot.isEliminated,
-      isDowned: !!bot.isDowned,
-      floor: String(bot.floor || "surface").slice(0, 48),
-      color: String(bot.color || "#ef4444").slice(0, 24),
-      teamId: bot.teamId ? String(bot.teamId).slice(0, 48) : null
-    })) : [],
-    items: Array.isArray(snapshot?.items) ? snapshot.items.slice(0, 160).map(item => ({
-      id: String(item.id || ""),
-      x: Number(item.x || 0),
-      y: Number(item.y || 0),
-      floor: String(item.floor || "surface").slice(0, 48),
-      type: String(item.type || "loot").slice(0, 32),
-      name: String(item.name || "Loot").slice(0, 64),
-      cardId: item.cardId ? String(item.cardId).slice(0, 64) : null,
-      cardName: item.cardName ? String(item.cardName).slice(0, 64) : null,
-      rarity: item.rarity ? String(item.rarity).slice(0, 32) : null,
-      visualColor: item.visualColor ? String(item.visualColor).slice(0, 24) : null,
-      iconSymbol: item.iconSymbol ? String(item.iconSymbol).slice(0, 8) : null,
-      radius: Number(item.radius || 12),
-      healAmount: Number(item.healAmount || 0),
-      shieldAmount: Number(item.shieldAmount || 0),
-      armorAmount: Number(item.armorAmount || 0),
-      amount: Number(item.amount || 0),
-      meleeId: item.meleeId ? String(item.meleeId).slice(0, 64) : null,
-      damage: Number(item.damage || 0),
-      objectDamage: Number(item.objectDamage || 0),
-      cooldownMs: Number(item.cooldownMs || 0)
-    })) : [],
-    crates: Array.isArray(snapshot?.crates) ? snapshot.crates.slice(0, 220).map(crate => ({
-      id: String(crate.id || ""),
-      hp: Number(crate.hp || 0),
-      alive: crate.alive !== false,
-      destroyed: !!crate.destroyed
-    })) : [],
-    storm: snapshot?.storm || null
+
+    bots: full
+      ? (
+        Array.isArray(snapshot?.bots)
+          ? snapshot.bots
+              .slice(0, MATCH_TOTAL_SLOTS)
+              .map(sanitizeWorldBotFull)
+          : []
+      )
+      : [],
+
+    botUpserts: Array.isArray(snapshot?.botUpserts)
+      ? snapshot.botUpserts
+          .slice(0, MATCH_TOTAL_SLOTS)
+          .map(sanitizeWorldBotFull)
+      : [],
+
+    botUpdates: Array.isArray(snapshot?.botUpdates)
+      ? snapshot.botUpdates
+          .slice(0, MATCH_TOTAL_SLOTS)
+          .map(sanitizeWorldBotUpdate)
+      : [],
+
+    botRemoves: sanitizeWorldIdList(
+      snapshot?.botRemoves,
+      MATCH_TOTAL_SLOTS
+    ),
+
+    items: full
+      ? (
+        Array.isArray(snapshot?.items)
+          ? snapshot.items
+              .slice(0, 160)
+              .map(sanitizeWorldItem)
+          : []
+      )
+      : [],
+
+    itemUpserts: Array.isArray(snapshot?.itemUpserts)
+      ? snapshot.itemUpserts
+          .slice(0, 160)
+          .map(sanitizeWorldItem)
+      : [],
+
+    itemRemoves: sanitizeWorldIdList(snapshot?.itemRemoves, 160),
+
+    crates: full
+      ? (
+        Array.isArray(snapshot?.crates)
+          ? snapshot.crates
+              .slice(0, 220)
+              .map(sanitizeWorldCrateFull)
+          : []
+      )
+      : [],
+
+    crateUpserts: Array.isArray(snapshot?.crateUpserts)
+      ? snapshot.crateUpserts
+          .slice(0, 220)
+          .map(sanitizeWorldCrateFull)
+      : [],
+
+    crateUpdates: Array.isArray(snapshot?.crateUpdates)
+      ? snapshot.crateUpdates
+          .slice(0, 220)
+          .map(sanitizeWorldCrateUpdate)
+      : [],
+
+    crateRemoves: sanitizeWorldIdList(snapshot?.crateRemoves, 220),
+    storm: sanitizeWorldStorm(snapshot?.storm)
+  };
+}
+
+function mergeWorldSnapshot(previous, incoming, matchId) {
+  if (incoming.full) {
+    return {
+      ...incoming,
+      full: true,
+      matchId
+    };
+  }
+
+  const base = previous?.full
+    ? previous
+    : {
+        full: true,
+        seq: 0,
+        state: incoming.state || "MATCH",
+        serverNow: Date.now(),
+        bots: [],
+        items: [],
+        crates: [],
+        storm: null
+      };
+
+  const botsById = new Map(
+    (base.bots || []).map(bot => [String(bot.id), bot])
+  );
+
+  const itemsById = new Map(
+    (base.items || []).map(item => [String(item.id), item])
+  );
+
+  const cratesById = new Map(
+    (base.crates || []).map(crate => [String(crate.id), crate])
+  );
+
+  for (const bot of incoming.botUpserts || []) {
+    if (bot.id) {
+      botsById.set(String(bot.id), bot);
+    }
+  }
+
+  for (const update of incoming.botUpdates || []) {
+    const id = String(update.id || "");
+    const current = botsById.get(id);
+
+    if (current) {
+      botsById.set(id, { ...current, ...update });
+    }
+  }
+
+  for (const id of incoming.botRemoves || []) {
+    botsById.delete(String(id));
+  }
+
+  for (const item of incoming.itemUpserts || []) {
+    if (item.id) {
+      itemsById.set(String(item.id), item);
+    }
+  }
+
+  for (const id of incoming.itemRemoves || []) {
+    itemsById.delete(String(id));
+  }
+
+  for (const crate of incoming.crateUpserts || []) {
+    if (crate.id) {
+      cratesById.set(String(crate.id), crate);
+    }
+  }
+
+  for (const update of incoming.crateUpdates || []) {
+    const id = String(update.id || "");
+    const current = cratesById.get(id);
+
+    if (current) {
+      cratesById.set(id, { ...current, ...update });
+    }
+  }
+
+  for (const id of incoming.crateRemoves || []) {
+    cratesById.delete(String(id));
+  }
+
+  return {
+    full: true,
+    seq: incoming.seq,
+    state: incoming.state || base.state || "MATCH",
+    serverNow: incoming.serverNow || Date.now(),
+    bots: [...botsById.values()],
+    items: [...itemsById.values()],
+    crates: [...cratesById.values()],
+    storm: incoming.storm || base.storm || null,
+    matchId
   };
 }
 
@@ -4176,8 +4455,11 @@ function createRankedDuoMatch(firstParty, secondParty) {
     emitPartyUpdate(party.partyId);
   }
 
-  armRankedMinimumHumanGuard(match);
-  broadcastMatchSync(match);
+  if (!cleanupEmptyMatch(match, "reconnect_timeout")) {
+    broadcastMatchSync(match);
+    checkMatchWinner(match);
+  }
+
   broadcastOnlineList();
 }
 
@@ -4751,6 +5033,36 @@ function checkMatchWinner(match) {
 
   matches.delete(match.matchId);
   broadcastOnlineList();
+}
+
+function cleanupEmptyMatch(match, reason = "empty") {
+  if (!match || !matches.has(match.matchId)) return false;
+
+  // Keep a match alive while a disconnected player can still reconnect.
+  // Dead players may spectate, so only explicit/expired leavers allow cleanup.
+  const hasRetainedHuman = [...match.players.values()].some(entry =>
+    entry &&
+    !entry.leftMatch &&
+    !entry.reconnectExpired
+  );
+
+  if (hasRetainedHuman) return false;
+
+  for (const entry of match.players.values()) {
+    if (entry?.reconnectTimer) clearTimeout(entry.reconnectTimer);
+  }
+
+  if (match.rankedMinimumHumanGuard) {
+    clearTimeout(match.rankedMinimumHumanGuard);
+    match.rankedMinimumHumanGuard = null;
+  }
+
+  match.worldSnapshot = null;
+  match.players.clear();
+  matches.delete(match.matchId);
+
+  console.log(`[match] cleaned empty match ${match.matchId} (${reason})`);
+  return true;
 }
 
 function makeReconnectPlayerPayload(entry) {
@@ -5505,19 +5817,7 @@ socket.on("renamePlayer", (data, cb) => {
       1000
     );
 
-    const rawCustomizations =
-      rawState.customizations &&
-      typeof rawState.customizations === "object" &&
-      !Array.isArray(rawState.customizations)
-        ? rawState.customizations
-        : {};
 
-    const customizations = {};
-
-    for (const slot of ["hair", "hat", "glasses", "face"]) {
-      const id = String(rawCustomizations[slot] || "").trim().slice(0, 64);
-      if (id) customizations[slot] = id;
-    }
 
     const rawWeaponCandidate = Object.prototype.hasOwnProperty.call(rawState, "meleeWeapon")
       ? rawState.meleeWeapon
@@ -5539,20 +5839,35 @@ socket.on("renamePlayer", (data, cb) => {
           objectDamage: clampFiniteNumber(rawWeapon.objectDamage, 0, 0, MATCH_MAX_DAMAGE_PACKET),
           range: clampFiniteNumber(rawWeapon.range, 0, 0, 1800),
           cooldownMs: clampFiniteNumber(rawWeapon.cooldownMs, 0, 0, 30000),
-          swingDuration: clampFiniteNumber(rawWeapon.swingDuration, 0, 0, 10),
+          swingDuration: clampFiniteNumber(rawWeapon.swingDuration, 130, 60, 1000),
           color: String(rawWeapon.color || "").slice(0, 24),
           iconSymbol: String(rawWeapon.iconSymbol || "").slice(0, 16),
           shape: String(rawWeapon.shape || "").slice(0, 32)
         }
       : null;
 
-    const profileEntry = leaderboardProfiles.get(p.playerId) || getOrCreateLeaderboardEntry({
-      playerId: p.playerId,
-      name: p.name,
-      color: p.color,
-      icon: p.icon
-    });
-    const authoritativeAccount = accountEnsureInventory(profileEntry);
+    // Account changes are blocked while p.inMatch is true, so this cosmetic
+    // snapshot can safely stay cached for this match entry.
+    let networkCosmetics = entry.networkCosmetics;
+
+    if (!networkCosmetics) {
+      const profileEntry = leaderboardProfiles.get(p.playerId) || getOrCreateLeaderboardEntry({
+        playerId: p.playerId,
+        name: p.name,
+        color: p.color,
+        icon: p.icon
+      });
+
+      const authoritativeAccount = accountEnsureInventory(profileEntry);
+
+      networkCosmetics = entry.networkCosmetics = Object.freeze({
+        titleId: authoritativeAccount.equippedTitleId,
+        frameId: authoritativeAccount.equippedFrameId,
+        customizations: Object.freeze({
+          ...authoritativeAccount.equippedCustomizations
+        })
+      });
+    }
 
     const state = {
       socketId: socket.id,
@@ -5600,9 +5915,9 @@ socket.on("renamePlayer", (data, cb) => {
       downedTimer: clampFiniteNumber(rawState.downedTimer, entry.state?.downedTimer ?? 0, 0, 120),
 
       color: String(p.color || "#38bdf8").slice(0, 24),
-      titleId: authoritativeAccount.equippedTitleId,
-      frameId: authoritativeAccount.equippedFrameId,
-      customizations: { ...authoritativeAccount.equippedCustomizations },
+      titleId: networkCosmetics.titleId,
+      frameId: networkCosmetics.frameId,
+      customizations: networkCosmetics.customizations,
 
       floor: String(rawState.floor ?? entry.state?.floor ?? "surface").slice(0, 64),
       scopeLevel: String(rawState.scopeLevel ?? entry.state?.scopeLevel ?? "x1").slice(0, 8),
@@ -6276,20 +6591,45 @@ target.lastDamageAt = now;
     const match = matches.get(p.matchId);
     if (!match) return;
 
-    const authority = reconcileWorldAuthority(match, "snapshot_recovery").worldAuthoritySocketId;
+    const authority = reconcileWorldAuthority(
+      match,
+      "snapshot_recovery"
+    ).worldAuthoritySocketId;
+
     if (authority !== socket.id) return;
     if (!isEligibleWorldAuthority(match, socket.id)) return;
 
     const now = Date.now();
-    if (now - (match.lastWorldSnapshotAt || 0) < WORLD_SNAPSHOT_MIN_MS) return;
+
+    if (
+      now - (match.lastWorldSnapshotAt || 0) <
+      WORLD_SNAPSHOT_MIN_MS
+    ) {
+      return;
+    }
+
+    const incoming = sanitizeWorldSnapshot(snapshot);
+
+    // Deltas require a previously accepted full baseline.
+    if (!incoming.full && !match.worldSnapshot?.full) {
+      return;
+    }
 
     match.lastWorldSnapshotAt = now;
-    match.worldSnapshot = {
-      ...sanitizeWorldSnapshot(snapshot),
-      matchId: match.matchId
-    };
 
-    socket.to(p.matchId).emit("matchWorldSnapshot", match.worldSnapshot);
+    match.worldSnapshot = mergeWorldSnapshot(
+      match.worldSnapshot,
+      incoming,
+      match.matchId
+    );
+
+    // Existing players receive only the compact delta.
+    // Reconnecting/joining players receive match.worldSnapshot,
+    // which remains a complete merged baseline.
+    socket.to(p.matchId).emit("matchWorldSnapshot", {
+      ...incoming,
+      matchId: match.matchId
+    });
   });
 
 socket.on("matchLocalDeath", data => {
@@ -6329,6 +6669,8 @@ socket.on("matchLocalDeath", data => {
       name: p.name,
       reason: "left_match"
     });
+
+    cleanupEmptyMatch(match, "left_match");
 
     broadcastOnlineList();
     if (p.partyId) emitPartyUpdate(p.partyId);
