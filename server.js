@@ -61,9 +61,12 @@ const GAME_ALLOWED_ORIGINS = new Set([
   "https://html-classic.itch.zone",
   "https://i-am-wizard.itch.io",
 
-  // Game Jolt main host origins.
+  // Game Jolt can serve HTML5 games from .com or tokenized .net hosts.
+  // The ?token= value is only a page query parameter; CORS uses the Origin.
   "https://gamejolt.com",
   "https://www.gamejolt.com",
+  "https://gamejolt.net",
+  "https://www.gamejolt.net",
 
   // Optional extra verified origins set in Render.
   ...splitAllowedOrigins(process.env.GAME_ALLOWED_ORIGINS),
@@ -71,6 +74,18 @@ const GAME_ALLOWED_ORIGINS = new Set([
   // Allows your direct Render URL only when Render provides it.
   normalizeBrowserOrigin(process.env.RENDER_EXTERNAL_URL)
 ].filter(Boolean));
+
+function isGameJoltHost(host) {
+  const normalized = String(host || "").toLowerCase();
+
+  return [
+    "gamejolt.com",
+    "gamejolt.net"
+  ].some(domain =>
+    normalized === domain ||
+    normalized.endsWith(`.${domain}`)
+  );
+}
 
 function isAllowedBrowserOrigin(rawOrigin) {
   const origin = normalizeBrowserOrigin(rawOrigin);
@@ -92,8 +107,10 @@ function isAllowedBrowserOrigin(rawOrigin) {
       );
     }
 
-    // Allows Game Jolt-owned HTTPS subdomains, but not unrelated domains.
-    return host.endsWith(".gamejolt.com");
+    // Allows only genuine Game Jolt HTTPS subdomains:
+    // gamejolt.com, gamejolt.net, and their real subdomains.
+    // It does not allow lookalikes such as gamejolt.net.evil-site.com.
+    return isGameJoltHost(host);
   } catch (err) {
     return false;
   }
