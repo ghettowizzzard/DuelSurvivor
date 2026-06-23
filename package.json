@@ -3,9 +3,11 @@
   "version": "2.0.0",
   "description": "Socket.IO multiplayer server for Duel Survivor",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
+"scripts": {
+  "verify": "node --check server.js",
+  "build": "npm run verify",
+  "start": "node server.js"
+},
   "engines": {
     "node": ">=20"
   },
