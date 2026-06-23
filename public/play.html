@@ -7505,6 +7505,34 @@ stopMenuAnimation();
             openProfileResetModal("done");
         }
 
+        function mpFormatPlayerIdForDisplay(playerId, visibleCharacters = 4) {
+            const rawId = String(playerId || "").trim();
+
+            if (!rawId) return "----";
+
+            // Keep the full stored ID intact. Only remove the technical ds_
+            // prefix from the player-facing label.
+            const publicId = rawId.replace(/^ds[_-]?/i, "");
+            const safeLength = Math.max(
+                1,
+                Math.floor(Number(visibleCharacters) || 4)
+            );
+
+            if (publicId.length <= safeLength) {
+                return publicId;
+            }
+
+            return `${publicId.slice(0, safeLength)}...`;
+        }
+
+        function mpDisplayPlayerName(name, playerId, fallback = "Survivor") {
+            const cleanName = String(name || "").trim();
+
+            return cleanName ||
+                mpFormatPlayerIdForDisplay(playerId) ||
+                fallback;
+        }
+
         function mpUpdateProfileHeader() {
             const profile = mpNormalizeProfileProgress(mpState.profile || mpLoadProfile());
             const nameEl = document.querySelector(".hidden.md\\:block .text-sm.font-bold.text-slate-100");
@@ -7512,7 +7540,7 @@ stopMenuAnimation();
 
             const rankEl = document.querySelector(".hidden.md\\:block .text-\\[10px\\].text-cyan-400");
             if (rankEl) {
-                rankEl.textContent = `ID: ${profile?.playerId || "Survivor"} / ${profile?.rank || "SURVIVOR"}`;
+                rankEl.textContent = `ID: ${mpFormatPlayerIdForDisplay(profile?.playerId)} / ${profile?.rank || "SURVIVOR"}`;
             }
 
             const badge = document.getElementById("profile-level-badge");
@@ -7646,7 +7674,7 @@ const isOnline = !!onlineFriend;
                     <div class="p-2 rounded-lg bg-slate-900/80 border border-slate-700 flex items-center justify-between gap-2">
                         <div class="min-w-0">
 <div class="font-bold text-slate-100 truncate">${mpSafeText(f.name || "Unknown")}</div>
-<div class="text-[10px] font-orbitron ${isOnline ? "text-emerald-400" : "text-slate-500"}">${mpSafeText(f.playerId || "")} · ${isOnline ? "ONLINE" : "OFFLINE"}</div>
+<div class="text-[10px] font-orbitron ${isOnline ? "text-emerald-400" : "text-slate-500"}">${mpSafeText(mpFormatPlayerIdForDisplay(f.playerId))} · ${isOnline ? "ONLINE" : "OFFLINE"}</div>
                         </div>
                         <div class="flex gap-1">
                             <button class="mp-mini-btn" ${isOnline ? "" : "disabled"} onclick="mpInviteFriend('${f.playerId}')">INVITE</button>
@@ -7660,7 +7688,7 @@ const isOnline = !!onlineFriend;
                 <div class="p-2 rounded-lg bg-yellow-950/40 border border-yellow-600 flex items-center justify-between gap-2">
                     <div>
 <div class="font-bold text-yellow-100">${mpSafeText(r.fromPlayer?.name || "Unknown")}</div>
-<div class="text-[10px] font-orbitron text-yellow-400">${mpSafeText(r.fromPlayer?.playerId || "")}</div>
+<div class="text-[10px] font-orbitron text-yellow-400">${mpSafeText(mpFormatPlayerIdForDisplay(r.fromPlayer?.playerId))}</div>
                     </div>
                     <div class="flex gap-1">
                         <button class="mp-mini-btn" onclick="mpAnswerFriendRequest(${index}, true)">ACCEPT</button>
@@ -7673,7 +7701,7 @@ const isOnline = !!onlineFriend;
                 <div class="p-2 rounded-lg bg-purple-950/40 border border-purple-700 flex items-center justify-between gap-2">
                     <div>
 <div class="font-bold text-purple-100">${mpSafeText(p.name || "Unknown")}</div>
-<div class="text-[10px] font-orbitron text-purple-400">${mpSafeText(p.playerId || "")} · Lv.${Number(p.level || 1)}</div>
+<div class="text-[10px] font-orbitron text-purple-400">${mpSafeText(mpFormatPlayerIdForDisplay(p.playerId))} · Lv.${Number(p.level || 1)}</div>
                     </div>
                     <button class="mp-mini-btn" onclick="mpSendFriendRequest('${p.playerId}')">ADD</button>
                 </div>
@@ -7685,7 +7713,7 @@ const isOnline = !!onlineFriend;
                 <div class="p-4 border-b border-cyan-900 flex justify-between items-start gap-3">
                     <div>
                         <div class="font-orbitron font-black text-cyan-300 tracking-widest">FRIENDS</div>
-                        <div class="text-[10px] text-slate-500 font-orbitron">YOUR ID: <span class="text-cyan-300">${mpSafeText(mpState.profile?.playerId || "Survivor")}</span></div>
+                        <div class="text-[10px] text-slate-500 font-orbitron">YOUR ID: <span class="text-cyan-300">${mpSafeText(mpFormatPlayerIdForDisplay(mpState.profile?.playerId))}</span></div>
                         <div class="text-[10px] text-slate-500 font-orbitron">
     STATUS:
     <span class="${mpState.connected ? "text-emerald-400" : mpState.connecting ? "text-yellow-400" : "text-red-400"}">
@@ -54350,7 +54378,7 @@ function resizeMinimapCanvas() {
             const hp = Math.max(0, Math.ceil(target.hp ?? target.health ?? 0));
             const maxHp = Math.max(1, Math.ceil(target.maxHp || target.maxHealth || 100));
 
-            if (nameEl) nameEl.textContent = target.name || target.playerId || "Survivor";
+            if (nameEl) nameEl.textContent = mpDisplayPlayerName(target.name, target.playerId);
             if (subEl) subEl.textContent = `${teamLabel} ${typeLabel} · ${hp}/${maxHp} HP`;
         }
 
@@ -55795,12 +55823,19 @@ function resizeMinimapCanvas() {
             playerCollection.eventTickets = Math.max(0, Number(playerCollection.eventTickets || 0));
         }
 
-        function getLocalRewardDayKey(date = new Date()) {
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, "0");
-            const d = String(date.getDate()).padStart(2, "0");
-            return `${y}-${m}-${d}`;
-        }
+function getLocalRewardDayKey(date = new Date()) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Vancouver",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).formatToParts(date);
+
+    const getPart = type =>
+        parts.find(part => part.type === type)?.value || "";
+
+    return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+}
 
         function getDailyRewardTrackDay() {
             normalizeDailyRewardState();
@@ -56838,8 +56873,8 @@ function claimDailyReward() {
                 <div class="grid grid-cols-[3.2rem_1.35fr_.75fr_.6fr_.6fr_.6fr_.75fr] gap-2 items-center rounded-lg border ${index < 3 ? "border-amber-300/60 bg-amber-300/10 shadow-[0_0_22px_rgba(250,204,21,.10)]" : "border-slate-800 bg-slate-950/70"} px-3 py-2 text-xs">
                     <div class="font-orbitron font-black ${index < 3 ? "text-amber-300" : "text-slate-400"}">#${row.position || index + 1}</div>
                     <div class="min-w-0">
-                        <div class="font-orbitron font-black text-white truncate">${safe(row.name || row.playerId || "Survivor")}</div>
-                        <div class="text-[9px] text-slate-500 truncate">${safe(row.playerId || "")}</div>
+                        <div class="font-orbitron font-black text-white truncate">${safe(mpDisplayPlayerName(row.name, row.playerId))}</div>
+<div class="text-[9px] text-slate-500 truncate">${safe(mpFormatPlayerIdForDisplay(row.playerId))}</div>
                     </div>
                     <div class="font-orbitron font-black text-amber-300">${stat(row.rating || 1000)}</div>
                     <div class="font-orbitron font-black text-emerald-300">${stat(row.wins)}</div>
@@ -56879,7 +56914,7 @@ function claimDailyReward() {
                 const duoTop = (archive.rankedDuo || []).slice(0, 3);
                 const podium = rows => rows.length ? rows.map(row => `
                     <div class="flex justify-between rounded border border-white/10 bg-black/35 px-3 py-2 text-xs">
-                        <span class="font-orbitron font-black text-amber-200">#${row.position} ${safe(row.name || row.playerId)}</span>
+                        <span class="font-orbitron font-black text-amber-200">#${row.position} ${safe(mpDisplayPlayerName(row.name, row.playerId))}</span>
                         <span class="font-orbitron font-black text-cyan-200">${stat(row.rating)}</span>
                     </div>
                 `).join("") : `<div class="text-xs text-slate-500">No finalists.</div>`;
