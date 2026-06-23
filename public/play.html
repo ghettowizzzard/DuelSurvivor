@@ -6615,6 +6615,47 @@ stopMenuAnimation();
                 mpApplyServerAccount(account);
             });
 
+            mpSocket.on("matchAccountReward", data => {
+                if (!data || typeof data !== "object") return;
+
+                if (data.account) {
+                    mpApplyServerAccount(data.account);
+                }
+
+                if (data.reward) {
+                    matchReportStats.serverRewards = {
+                        gold: Math.max(
+                            0,
+                            Math.round(Number(data.reward.gold || 0))
+                        ),
+                        gems: Math.max(
+                            0,
+                            Math.round(Number(data.reward.gems || 0))
+                        ),
+                        xp: Math.max(
+                            0,
+                            Math.round(
+                                Number(
+                                    data.reward.profileXp ||
+                                    data.reward.xp ||
+                                    0
+                                )
+                            )
+                        )
+                    };
+                }
+            });
+
+            mpSocket.on("profileSessionInvalid", data => {
+                mpState.connectionError =
+                    data?.message ||
+                    "Saved profile session could not be verified.";
+
+                mpNotify(
+                    "Saved account session was rejected. A new profile was not created."
+                );
+            });
+
             mpSocket.on("securityError", message => {
                 mpNotify(message || "Server account security is not configured.");
             });
@@ -12549,6 +12590,7 @@ const bots = [];
             rankedDelta: 0,
             rankedMode: null,
             rewards: { gold: 0, gems: 0, xp: 0 },
+            serverRewards: null,
             teamResult: "In Progress",
             matchStartedAt: 0
         };
@@ -31653,6 +31695,32 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             };
         }
 
+        function mpApplyServerDailyState(serverDaily) {
+            if (!serverDaily || typeof serverDaily !== "object") return;
+
+            dailyRewardState.lastClaimDayKey = String(
+                serverDaily.lastClaimDayKey || ""
+            );
+
+            dailyRewardState.trackIndex = Math.max(
+                0,
+                Math.round(Number(serverDaily.trackIndex || 0))
+            ) % DAILY_REWARD_TRACK.length;
+
+            dailyRewardState.totalClaims = Math.max(
+                0,
+                Math.round(Number(serverDaily.totalClaims || 0))
+            );
+
+            dailyRewardState.claimHistory = Array.isArray(
+                serverDaily.claimHistory
+            )
+                ? mpCloneJsonValue(serverDaily.claimHistory, []).slice(-14)
+                : [];
+
+            normalizeDailyRewardState();
+        }
+
         function mpApplyServerAccount(account) {
             if (!account || typeof account !== "object") return false;
 
@@ -31686,6 +31754,8 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
                 account.seasonal?.shopPurchases,
                 {}
             );
+
+            mpApplyServerDailyState(account.daily);
 
             battlePassState.unlockedEmotes = {
                 ...(battlePassState.unlockedEmotes || {}),
@@ -31724,14 +31794,14 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             mpSocket.emit("accountAction", { type, ...payload }, response => {
                 mpAccountActionBusy = false;
 
-                if (response?.account) {
-                    mpApplyServerAccount(response.account);
-                }
-
                 if (!response?.ok) {
                     triggerNotification(response?.error || "Account update failed.");
                     onComplete?.(response || { ok: false });
                     return;
+                }
+
+                if (response.account) {
+                    mpApplyServerAccount(response.account);
                 }
 
                 onComplete?.(response);
@@ -49783,6 +49853,7 @@ for (let i = 0; i < nearbyCrates.length; i++) {
             matchReportStats.rankedAfter = matchReportStats.rankedBefore;
             matchReportStats.rankedDelta = 0;
             matchReportStats.rewards = { gold: 0, gems: 0, xp: 0 };
+            matchReportStats.serverRewards = null;
             matchReportStats.teamResult = "In Progress";
             matchReportStats.matchStartedAt = performance.now();
             activeSpectators.length = 0;
@@ -49996,15 +50067,33 @@ for (let i = 0; i < nearbyCrates.length; i++) {
             matchKillsHudCache.teamKills = teamKills;
         }
 
-        function matchReportApplyRewards(won = false, placement = null) {
-            const safePlacement = Number(placement || matchReportStats.placement || matchReportEstimatePlacement(won));
+function matchReportApplyRewards(won = false, placement = null) {
+            const safePlacement = Number(
+                placement ||
+                matchReportStats.placement ||
+                matchReportEstimatePlacement(won)
+            );
 
             questTrackEvent("match_complete", 1, { placement: safePlacement, won });
-            if (won) questTrackEvent("match_win", 1, { placement: safePlacement, won });
-            questTrackEvent("top_placement", 1, { placement: safePlacement, won });
-            const placementBonus = Math.max(0, matchReportStats.totalTeamsAtStart - safePlacement + 1);
 
-            const gold =
+            if (won) {
+                questTrackEvent("match_win", 1, {
+                    placement: safePlacement,
+                    won
+                });
+            }
+
+            questTrackEvent("top_placement", 1, {
+                placement: safePlacement,
+                won
+            });
+
+            const placementBonus = Math.max(
+                0,
+                matchReportStats.totalTeamsAtStart - safePlacement + 1
+            );
+
+            const estimatedGold =
                 75 +
                 (won ? 350 : 0) +
                 placementBonus * 6 +
@@ -50013,13 +50102,13 @@ for (let i = 0; i < nearbyCrates.length; i++) {
                 matchReportStats.revives * 45 +
                 matchReportStats.cardsCollected * 8;
 
-            const gems =
+            const estimatedGems =
                 won ? 6 :
                 safePlacement <= 3 ? 3 :
                 safePlacement <= 10 ? 1 :
                 0;
 
-            const xp =
+            const estimatedXp =
                 120 +
                 (won ? 500 : 0) +
                 placementBonus * 12 +
@@ -50029,39 +50118,43 @@ for (let i = 0; i < nearbyCrates.length; i++) {
                 matchReportStats.revives * 120 +
                 matchReportStats.cardsCollected * 15;
 
-            const rankedDelta = mpIsRankedMatchActive() ? (
-                won ? 45 + matchReportStats.eliminations * 3 :
-                safePlacement <= 3 ? 24 + matchReportStats.eliminations * 2 :
-                safePlacement <= 10 ? 8 + matchReportStats.eliminations :
-                Math.min(0, -12 + matchReportStats.eliminations * 2)
-            ) : 0;
+            const onlineMatch = mpIsOnlineMatch();
 
-            matchReportStats.rewards = {
-                gold: Math.round(gold),
-                gems: Math.round(gems),
-                xp: Math.round(xp)
-            };
-
-            matchReportStats.rankedDelta = Math.round(rankedDelta);
-            matchReportStats.rankedAfter = Math.max(0, matchReportStats.rankedBefore + matchReportStats.rankedDelta);
+            matchReportStats.rewards =
+                onlineMatch && matchReportStats.serverRewards
+                    ? { ...matchReportStats.serverRewards }
+                    : {
+                        gold: Math.round(estimatedGold),
+                        gems: Math.round(estimatedGems),
+                        xp: Math.round(estimatedXp)
+                    };
 
             if (!matchReportStats.rewardsApplied) {
-                playerCollection.gold += matchReportStats.rewards.gold;
-                playerCollection.gems += matchReportStats.rewards.gems;
+                if (!onlineMatch) {
+                    playerCollection.gold += matchReportStats.rewards.gold;
+                    playerCollection.gems += matchReportStats.rewards.gems;
 
-                if (mpState.profile) {
-                    mpAwardProfileXp(matchReportStats.rewards.xp, "Match Report", { deferNotice: true });
-                    awardBattlePassXp(Math.round(matchReportStats.rewards.xp * 0.55), "Match Report", { silent: true });
-
-                    if (mpIsRankedMatchActive()) {
-                        mpApplyRankedMatchResult(won, safePlacement);
-                        matchReportStats.rankedAfter = mpGetRankedBucket(matchReportStats.rankedMode).rating;
+                    if (mpState.profile) {
+                        mpAwardProfileXp(
+                            matchReportStats.rewards.xp,
+                            "Match Report",
+                            { deferNotice: true }
+                        );
                     }
 
-                    mpSaveProfile();
+                    saveCollectionState();
+                } else {
+                    // Currency, tickets, cards, and profile XP were awarded
+                    // by the server through matchAccountReward.
+                    awardBattlePassXp(
+                        Math.round(matchReportStats.rewards.xp * 0.55),
+                        "Match Report",
+                        { silent: true }
+                    );
+
+                    saveCollectionState();
                 }
 
-                saveCollectionState();
                 matchReportStats.rewardsApplied = true;
             }
 
@@ -55840,36 +55933,46 @@ function resizeMinimapCanvas() {
             return summary;
         }
 
-        function claimDailyReward() {
-            normalizeDailyRewardState();
+function claimDailyReward() {
+            if (!mpSocket || !mpState.connected) {
+                triggerNotification(
+                    "Connect to Duel.io before claiming a persistent daily reward."
+                );
+
+                return false;
+            }
 
             if (!isDailyRewardClaimable()) {
-                triggerNotification(`Daily reward already claimed. Next reward in ${getDailyRewardCountdownText()}.`);
+                triggerNotification(
+                    `Daily reward already claimed. Next reward in ${getDailyRewardCountdownText()}.`
+                );
+
                 renderDailyRewardsScreen();
                 return false;
             }
 
-            const reward = getDailyRewardTrackDay();
-            const summary = grantDailyReward(reward);
-            const todayKey = getLocalRewardDayKey();
+            return mpRequestAccountAction(
+                "claimDailyReward",
+                {},
+                response => {
+                    if (!response?.ok) {
+                        renderDailyRewardsScreen();
+                        return;
+                    }
 
-            dailyRewardState.claimHistory.push({
-                dayKey: todayKey,
-                trackDay: reward.day,
-                title: reward.title,
-                summary
-            });
+                    playPickupSound();
 
-            dailyRewardState.claimHistory = dailyRewardState.claimHistory.slice(-14);
-            dailyRewardState.lastClaimDayKey = todayKey;
-            dailyRewardState.trackIndex = (dailyRewardState.trackIndex + 1) % DAILY_REWARD_TRACK.length;
-            dailyRewardState.totalClaims++;
+                    const summary = Array.isArray(response.summary)
+                        ? response.summary
+                        : ["Reward saved to your Duel.io account"];
 
-            saveCollectionState();
-            playPickupSound();
-            triggerNotification(`Daily Reward Claimed: ${summary.join(" + ")}`);
-            renderDailyRewardsScreen();
-            return true;
+                    triggerNotification(
+                        `Daily Reward Claimed: ${summary.join(" + ")}`
+                    );
+
+                    renderDailyRewardsScreen();
+                }
+            );
         }
 
         function updateDailyRewardMenuBadge() {
