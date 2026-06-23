@@ -31184,27 +31184,86 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             }
         }
 
-        function questClaimReward(questId) {
+function questClaimReward(questId) {
             const quest = questFindActiveQuest(questId);
             const def = questFindDefinition(questId);
-            if (!quest || !def || !quest.completed || quest.claimed) return;
 
-            quest.claimed = true;
-            questState.tracked = (questState.tracked || []).filter(id => id !== questId);
-            playerCollection.gold += def.reward.cash || 0;
-            playerCollection.gems += def.reward.gems || 0;
-            if (def.reward.titleId) unlockProfileTitle(def.reward.titleId, { silent: true, skipSave: true, equip: true });
-            mpAwardProfileXp(def.reward.xp || 0, "Quest Reward");
-            awardBattlePassXp(Math.max(120, Math.round((def.reward.xp || 0) * 0.75)), "Quest Reward", { silent: true });
+            if (!quest || !def || !quest.completed || quest.claimed) return false;
 
-            saveCollectionState();
-            saveQuestStateOnly();
-            updateQuestMenuBadge();
-            renderQuestDropdown();
-            refreshQuestTrackerHud();
+            if (!mpSocket || !mpState.connected) {
+                triggerNotification("Connect to Duel.io before claiming persistent quest rewards.");
+                return false;
+            }
 
-            const titleRewardText = def.reward.titleId ? ` +${getProfileTitleDefinition(def.reward.titleId)?.label || "Profile"} Title` : "";
-            triggerNotification(`Quest Reward: +${(def.reward.cash || 0).toLocaleString()} Cash${def.reward.gems ? ` +${def.reward.gems} Gems` : ""}${def.reward.xp ? ` +${def.reward.xp.toLocaleString()} XP` : ""}${titleRewardText}`);
+            const period = questGetPeriod(quest.tier || def.tier || "day");
+
+            const receiptId = [
+                "quest",
+                quest.tier || def.tier || "day",
+                period?.key || "unknown_period",
+                quest.id
+            ]
+                .join("_")
+                .replace(/[^A-Za-z0-9_-]+/g, "_")
+                .slice(0, 180);
+
+            return mpRequestAccountAction(
+                "claimProgressReward",
+                {
+                    receiptId,
+                    reward: {
+                        gold: def.reward.cash || 0,
+                        gems: def.reward.gems || 0,
+                        profileXp: def.reward.xp || 0,
+                        titleId: def.reward.titleId || ""
+                    }
+                },
+                response => {
+                    if (!response?.ok) {
+                        if (response?.duplicate) {
+                            quest.claimed = true;
+                            questState.tracked = (questState.tracked || [])
+                                .filter(id => id !== questId);
+
+                            saveQuestStateOnly();
+                            updateQuestMenuBadge();
+                            renderQuestDropdown();
+                            refreshQuestTrackerHud();
+                        }
+
+                        return;
+                    }
+
+                    quest.claimed = true;
+                    questState.tracked = (questState.tracked || [])
+                        .filter(id => id !== questId);
+
+                    // Currency and profile XP were committed by the server.
+                    awardBattlePassXp(
+                        Math.max(120, Math.round((def.reward.xp || 0) * 0.75)),
+                        "Quest Reward",
+                        { silent: true }
+                    );
+
+                    saveCollectionState();
+                    saveQuestStateOnly();
+                    updateQuestMenuBadge();
+                    renderQuestDropdown();
+                    refreshQuestTrackerHud();
+                    playPickupSound();
+
+                    const titleRewardText = def.reward.titleId
+                        ? ` +${getProfileTitleDefinition(def.reward.titleId)?.label || "Profile"} Title`
+                        : "";
+
+                    triggerNotification(
+                        `Quest Reward: +${(def.reward.cash || 0).toLocaleString()} Cash` +
+                        `${def.reward.gems ? ` +${def.reward.gems} Gems` : ""}` +
+                        `${def.reward.xp ? ` +${def.reward.xp.toLocaleString()} XP` : ""}` +
+                        titleRewardText
+                    );
+                }
+            );
         }
 
         function questToggleTracked(questId) {
@@ -31785,6 +31844,17 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
 
             mpApplyServerDailyState(account.daily);
 
+            const activeBattlePassSeason = typeof battlePassCurrentSeasonInfo === "function"
+                ? battlePassCurrentSeasonInfo()
+                : null;
+
+            if (
+                activeBattlePassSeason?.id &&
+                account.battlePass?.premiumSeasons?.[activeBattlePassSeason.id]
+            ) {
+                battlePassState.premium = true;
+            }
+
             battlePassState.unlockedEmotes = {
                 ...(battlePassState.unlockedEmotes || {}),
                 ...mpCloneJsonValue(account.ownedEmotes, {})
@@ -31836,6 +31906,23 @@ function addCardToBotInventory(bot, cardId, droppedState = null) {
             });
 
             return true;
+        }
+
+        function mpRequestAccountActionAsync(type, payload = {}) {
+            return new Promise(resolve => {
+                const started = mpRequestAccountAction(
+                    type,
+                    payload,
+                    response => resolve(response || { ok: false })
+                );
+
+                if (!started) {
+                    resolve({
+                        ok: false,
+                        error: "Account request could not be started."
+                    });
+                }
+            });
         }
 
         function mpMigrateLegacyAccountIfNeeded(account) {
@@ -56478,7 +56565,7 @@ function claimDailyReward() {
             });
         }
 
-        function claimAllBattlePassRewards(track = "free") {
+async function claimAllBattlePassRewards(track = "free") {
             battlePassEnsureSeason();
 
             const cleanTrack = track === "premium" ? "premium" : "free";
@@ -56488,29 +56575,76 @@ function claimDailyReward() {
                 return false;
             }
 
-            const scrollSnapshot = getBattlePassScrollSnapshot(ensureMenuPanelLayer());
-            const rewards = getBattlePassClaimableRewardsForTrack(cleanTrack);
-
-            if (!rewards.length) {
-                triggerNotification(`${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} has no ready rewards to collect.`);
+            if (!mpSocket || !mpState.connected) {
+                triggerNotification("Connect to Duel.io before claiming persistent Battle Pass rewards.");
                 return false;
             }
 
-            const claimMap = cleanTrack === "premium" ? battlePassState.claimedPremium : battlePassState.claimedFree;
+            const scrollSnapshot = getBattlePassScrollSnapshot(
+                ensureMenuPanelLayer()
+            );
+
+            const rewards = getBattlePassClaimableRewardsForTrack(cleanTrack);
+
+            if (!rewards.length) {
+                triggerNotification(
+                    `${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} has no ready rewards to collect.`
+                );
+                return false;
+            }
+
+            const seasonId = battlePassCurrentSeasonInfo().id;
+
+            const claimMap = cleanTrack === "premium"
+                ? battlePassState.claimedPremium
+                : battlePassState.claimedFree;
+
             const summary = [];
             let claimedCount = 0;
 
-            rewards.forEach(rewardDef => {
-                const reward = cleanTrack === "premium" ? rewardDef.premium : rewardDef.free;
-                if (!reward || claimMap[String(rewardDef.tier)]) return;
+            for (const rewardDef of rewards) {
+                const reward = cleanTrack === "premium"
+                    ? rewardDef.premium
+                    : rewardDef.free;
 
-                summary.push(...grantBattlePassReward(reward));
+                if (!reward || claimMap[String(rewardDef.tier)]) continue;
+
+                const receiptId = [
+                    "battlepass",
+                    seasonId,
+                    cleanTrack,
+                    rewardDef.tier
+                ]
+                    .join("_")
+                    .replace(/[^A-Za-z0-9_-]+/g, "_")
+                    .slice(0, 180);
+
+                const response = await mpRequestAccountActionAsync(
+                    "claimProgressReward",
+                    { receiptId, reward }
+                );
+
+                if (!response?.ok) {
+                    if (response?.duplicate) {
+                        claimMap[String(rewardDef.tier)] = Date.now();
+                    }
+
+                    continue;
+                }
+
                 claimMap[String(rewardDef.tier)] = Date.now();
                 claimedCount++;
-            });
+                summary.push(describeBattlePassReward(reward));
+            }
 
             if (!claimedCount) {
-                triggerNotification(`${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} has no ready rewards to collect.`);
+                saveCollectionState();
+                renderBattlePassScreen({ scrollSnapshot });
+
+                triggerNotification(
+                    `${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} has no new server-confirmed rewards to collect.`
+                );
+
                 return false;
             }
 
@@ -56518,25 +56652,40 @@ function claimDailyReward() {
             playPickupSound();
 
             const preview = summary.slice(0, 4).join(" + ");
-            const extra = summary.length > 4 ? ` + ${summary.length - 4} more` : "";
-            triggerNotification(`${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"}: collected ${claimedCount} reward${claimedCount === 1 ? "" : "s"}${preview ? ` (${preview}${extra})` : ""}.`);
+            const extra = summary.length > 4
+                ? ` + ${summary.length - 4} more`
+                : "";
+
+            triggerNotification(
+                `${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"}: collected ` +
+                `${claimedCount} reward${claimedCount === 1 ? "" : "s"}` +
+                `${preview ? ` (${preview}${extra})` : ""}.`
+            );
+
             renderBattlePassScreen({ scrollSnapshot });
             return true;
         }
 
-        function claimBattlePassReward(track = "free", tier = 1) {
+function claimBattlePassReward(track = "free", tier = 1) {
             battlePassEnsureSeason();
 
             const cleanTrack = track === "premium" ? "premium" : "free";
             const cleanTier = Math.max(1, Math.round(Number(tier || 1)));
-            const rewardDef = BATTLE_PASS_REWARDS.find(entry => entry.tier === cleanTier);
+            const rewardDef = BATTLE_PASS_REWARDS.find(
+                entry => entry.tier === cleanTier
+            );
+
             const info = getBattlePassLevelInfo(cleanTrack);
-            const scrollSnapshot = getBattlePassScrollSnapshot(ensureMenuPanelLayer());
+            const scrollSnapshot = getBattlePassScrollSnapshot(
+                ensureMenuPanelLayer()
+            );
 
             if (!rewardDef) return false;
 
             if (info.level < cleanTier) {
-                triggerNotification(`Reach ${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} level ${cleanTier} to claim this reward.`);
+                triggerNotification(
+                    `Reach ${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} level ${cleanTier} to claim this reward.`
+                );
                 return false;
             }
 
@@ -56545,7 +56694,15 @@ function claimDailyReward() {
                 return false;
             }
 
-            const claimMap = cleanTrack === "premium" ? battlePassState.claimedPremium : battlePassState.claimedFree;
+            if (!mpSocket || !mpState.connected) {
+                triggerNotification("Connect to Duel.io before claiming persistent Battle Pass rewards.");
+                return false;
+            }
+
+            const claimMap = cleanTrack === "premium"
+                ? battlePassState.claimedPremium
+                : battlePassState.claimedFree;
+
             const tierKey = String(cleanTier);
 
             if (claimMap[tierKey]) {
@@ -56553,20 +56710,53 @@ function claimDailyReward() {
                 return false;
             }
 
-            const reward = cleanTrack === "premium" ? rewardDef.premium : rewardDef.free;
+            const reward = cleanTrack === "premium"
+                ? rewardDef.premium
+                : rewardDef.free;
+
             if (!reward) return false;
 
-            const summary = grantBattlePassReward(reward);
-            claimMap[tierKey] = Date.now();
+            const receiptId = [
+                "battlepass",
+                battlePassCurrentSeasonInfo().id,
+                cleanTrack,
+                cleanTier
+            ]
+                .join("_")
+                .replace(/[^A-Za-z0-9_-]+/g, "_")
+                .slice(0, 180);
 
-            saveCollectionState();
-            playPickupSound();
-            triggerNotification(`${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} Tier ${cleanTier}: ${summary.join(" + ")}`);
-            renderBattlePassScreen({ scrollSnapshot });
-            return true;
+            return mpRequestAccountAction(
+                "claimProgressReward",
+                { receiptId, reward },
+                response => {
+                    if (!response?.ok) {
+                        if (response?.duplicate) {
+                            claimMap[tierKey] = Date.now();
+                            saveCollectionState();
+                            renderBattlePassScreen({ scrollSnapshot });
+                        }
+
+                        return;
+                    }
+
+                    claimMap[tierKey] = Date.now();
+
+                    // The server granted and saved every item first.
+                    saveCollectionState();
+                    playPickupSound();
+
+                    triggerNotification(
+                        `${cleanTrack === "premium" ? "Magic Pass" : "Survival Pass"} ` +
+                        `Tier ${cleanTier}: ${describeBattlePassReward(reward)}`
+                    );
+
+                    renderBattlePassScreen({ scrollSnapshot });
+                }
+            );
         }
 
-        function purchaseMagicPass() {
+function purchaseMagicPass() {
             battlePassEnsureSeason();
 
             if (battlePassState.premium) {
@@ -56575,20 +56765,33 @@ function claimDailyReward() {
                 return false;
             }
 
-            if ((playerCollection.gems || 0) < BATTLE_PASS_MAGIC_COST) {
-                triggerNotification(`Need ${BATTLE_PASS_MAGIC_COST.toLocaleString()} Gems to unlock the Magic Pass.`);
-                renderBattlePassScreen();
+            if (!mpSocket || !mpState.connected) {
+                triggerNotification("Connect to Duel.io before unlocking Magic Pass.");
                 return false;
             }
 
-            playerCollection.gems -= BATTLE_PASS_MAGIC_COST;
-            battlePassState.premium = true;
+            const seasonId = battlePassCurrentSeasonInfo().id;
 
-            saveCollectionState();
-            playSelectSound();
-            triggerNotification(`Magic Pass unlocked! Your current Magic Pass level is ${getBattlePassLevelInfo("premium").level}.`);
-            renderBattlePassScreen();
-            return true;
+            return mpRequestAccountAction(
+                "buyBattlePassPremium",
+                { seasonId },
+                response => {
+                    if (!response?.ok) {
+                        renderBattlePassScreen();
+                        return;
+                    }
+
+                    battlePassState.premium = true;
+                    saveCollectionState();
+                    playSelectSound();
+
+                    triggerNotification(
+                        `Magic Pass unlocked! Your current Magic Pass level is ${getBattlePassLevelInfo("premium").level}.`
+                    );
+
+                    renderBattlePassScreen();
+                }
+            );
         }
 
         function renderBattlePassRewardTile(rewardDef, track = "free") {
