@@ -602,7 +602,7 @@ const RANKED_LAST_DAMAGE_CREDIT_MS = 15000;
 const ONLINE_QUEUE_MS = 15000;
 const WORLD_SNAPSHOT_MIN_MS = 180;
 const MATCH_RECONNECT_GRACE_MS = 45000;
-const ACCOUNT_SCHEMA_VERSION = 2;
+const ACCOUNT_SCHEMA_VERSION = 3;
 const ACCOUNT_LEGACY_MIGRATION_ENABLED =
   String(process.env.ACCOUNT_LEGACY_MIGRATION_ENABLED || "true").toLowerCase() !== "false";
 
@@ -612,6 +612,17 @@ const ACCOUNT_MAX_CARD_COPIES = 99;
 const ACCOUNT_LEGACY_MAX_CARD_COPIES = 12;
 const ACCOUNT_MAX_TICKETS_PER_PACK = 99;
 const ACCOUNT_MAX_EVENT_TICKETS = 999;
+
+// Quest and Battle Pass receipts are stored permanently in Upstash.
+// The same reward ID can never add currency twice.
+const ACCOUNT_MAX_REWARD_RECEIPTS = 2048;
+const ACCOUNT_CLIENT_REWARD_MAX_GOLD = 10000;
+const ACCOUNT_CLIENT_REWARD_MAX_GEMS = 250;
+const ACCOUNT_CLIENT_REWARD_MAX_XP = 25000;
+const ACCOUNT_CLIENT_REWARD_MAX_TICKETS_PER_PACK = 8;
+const ACCOUNT_CLIENT_REWARD_MAX_EVENT_TICKETS = 8;
+const ACCOUNT_BATTLE_PASS_MAGIC_COST = 750;
+
 const ACCOUNT_LOADOUT_WEIGHT_BASE = 50;
 const ACCOUNT_LOADOUT_WEIGHT_MAX = 105;
 const ACCOUNT_LOADOUT_WEIGHT_STEP = 5;
@@ -831,6 +842,8 @@ const ACCOUNT_SEASONAL_EVENTS = Object.freeze({
 const ACCOUNT_ACTION_RULES = Object.freeze({
   migrateLegacy: { cooldownMs: 0, windowMs: 60000, maxInWindow: 1 },
   claimDailyReward: { cooldownMs: 500, windowMs: 60000, maxInWindow: 3 },
+  claimProgressReward: { cooldownMs: 200, windowMs: 60000, maxInWindow: 80 },
+  buyBattlePassPremium: { cooldownMs: 300, windowMs: 60000, maxInWindow: 3 },
   buyPack: { cooldownMs: 350, windowMs: 10000, maxInWindow: 12 },
   buyTitle: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
   buyFrame: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
@@ -1054,6 +1067,13 @@ function accountDefaultInventory() {
       totalClaims: 0,
       claimHistory: []
     },
+
+    progressRewardReceipts: {},
+
+    battlePass: {
+      premiumSeasons: {}
+    },
+
     ownedCards,
     boosterTickets: {},
     eventTickets: 0,
@@ -1125,6 +1145,47 @@ function accountNormalizeInventory(rawValue, options = {}) {
       }))
       .filter(row => row.dayKey && row.trackDay > 0)
     : [];
+
+  const receiptSource = accountPlainObject(source.progressRewardReceipts)
+    ? source.progressRewardReceipts
+    : {};
+
+  const receiptRows = Object.entries(receiptSource)
+    .map(([rawId, rawClaimedAt]) => ({
+      id: accountSafeProgressReceiptId(rawId),
+      claimedAt: Math.max(0, Number(rawClaimedAt || 0))
+    }))
+    .filter(row => row.id && Number.isFinite(row.claimedAt) && row.claimedAt > 0)
+    .sort((a, b) => a.claimedAt - b.claimedAt)
+    .slice(-ACCOUNT_MAX_REWARD_RECEIPTS);
+
+  for (const row of receiptRows) {
+    inventory.progressRewardReceipts[row.id] = row.claimedAt;
+  }
+
+  const battlePassSource = accountPlainObject(source.battlePass)
+    ? source.battlePass
+    : {};
+
+  const premiumSeasonSource = accountPlainObject(
+    battlePassSource.premiumSeasons
+  )
+    ? battlePassSource.premiumSeasons
+    : {};
+
+  for (const [rawSeasonId, rawUnlockedAt] of Object.entries(premiumSeasonSource)) {
+    const seasonId = accountSafeId(rawSeasonId, 64);
+    const unlockedAt = Math.max(0, Number(rawUnlockedAt || 0));
+
+    if (
+      seasonId &&
+      /^battlepass_[A-Za-z0-9_-]{1,48}$/.test(seasonId) &&
+      Number.isFinite(unlockedAt) &&
+      unlockedAt > 0
+    ) {
+      inventory.battlePass.premiumSeasons[seasonId] = unlockedAt;
+    }
+  }
 
   inventory.ownedCards = {
     ...inventory.ownedCards,
@@ -1323,6 +1384,11 @@ function accountSnapshot(entry) {
     migrationRequired: ACCOUNT_LEGACY_MIGRATION_ENABLED && !account.migratedAt,
     migratedAt: account.migratedAt || 0,
     daily: JSON.parse(JSON.stringify(account.daily)),
+    battlePass: {
+      premiumSeasons: JSON.parse(
+        JSON.stringify(account.battlePass?.premiumSeasons || {})
+      )
+    },
     gold: safeStatInt(entry.gold, 1000, 999999999),
     gems: safeStatInt(entry.gems, 0, 999999999),
     owned: { ...account.ownedCards },
@@ -1769,6 +1835,181 @@ function accountBuildVerifiedMatchReward(match, matchEntry, won) {
   };
 }
 
+function accountSafeProgressReceiptId(value) {
+  const id = typeof value === "string" ? value.trim() : "";
+
+  if (!id || id.length > 180) return "";
+
+  return /^(?:quest|battlepass)_[A-Za-z0-9_-]{1,160}$/.test(id)
+    ? id
+    : "";
+}
+
+function accountPruneProgressReceipts(account) {
+  if (!accountPlainObject(account?.progressRewardReceipts)) {
+    account.progressRewardReceipts = {};
+    return;
+  }
+
+  const rows = Object.entries(account.progressRewardReceipts)
+    .map(([rawId, rawClaimedAt]) => ({
+      id: accountSafeProgressReceiptId(rawId),
+      claimedAt: Math.max(0, Number(rawClaimedAt || 0))
+    }))
+    .filter(row => row.id && Number.isFinite(row.claimedAt) && row.claimedAt > 0)
+    .sort((a, b) => a.claimedAt - b.claimedAt)
+    .slice(-ACCOUNT_MAX_REWARD_RECEIPTS);
+
+  account.progressRewardReceipts = Object.fromEntries(
+    rows.map(row => [row.id, row.claimedAt])
+  );
+}
+
+function accountSanitizeProgressReward(rawReward) {
+  const source = accountPlainObject(rawReward) ? rawReward : {};
+
+  const reward = {
+    gold: safeStatInt(
+      source.gold ?? source.cash,
+      0,
+      ACCOUNT_CLIENT_REWARD_MAX_GOLD
+    ),
+    gems: safeStatInt(
+      source.gems,
+      0,
+      ACCOUNT_CLIENT_REWARD_MAX_GEMS
+    ),
+    profileXp: safeStatInt(
+      source.profileXp ?? source.xp,
+      0,
+      ACCOUNT_CLIENT_REWARD_MAX_XP
+    ),
+    eventTickets: safeStatInt(
+      source.eventTickets,
+      0,
+      ACCOUNT_CLIENT_REWARD_MAX_EVENT_TICKETS
+    )
+  };
+
+  const rawTickets = accountPlainObject(source.boosterTickets)
+    ? source.boosterTickets
+    : accountPlainObject(source.tickets)
+      ? source.tickets
+      : {};
+
+  reward.boosterTickets = accountSafeMap(
+    rawTickets,
+    new Set(Object.keys(ACCOUNT_PACK_CATALOG)),
+    ACCOUNT_CLIENT_REWARD_MAX_TICKETS_PER_PACK
+  );
+
+  const cardId = accountSafeId(source.cardId);
+  const emoteId = accountSafeId(source.emoteId);
+  const titleId = accountSafeId(source.titleId, 64);
+  const frameId = accountSafeId(source.frameId, 64);
+  const customizationId = accountSafeId(source.customizationId, 64);
+
+  if (cardId && ACCOUNT_CARD_CATALOG.has(cardId)) reward.cardId = cardId;
+  if (emoteId && ACCOUNT_EMOTE_IDS.has(emoteId)) reward.emoteId = emoteId;
+  if (titleId && ACCOUNT_TITLE_IDS.has(titleId)) reward.titleId = titleId;
+  if (frameId && ACCOUNT_FRAME_IDS.has(frameId)) reward.frameId = frameId;
+
+  if (
+    customizationId &&
+    ACCOUNT_CUSTOMIZATION_BY_ID[customizationId]
+  ) {
+    reward.customizationId = customizationId;
+  }
+
+  const hasTickets = Object.values(reward.boosterTickets).some(
+    amount => amount > 0
+  );
+
+  const hasReward =
+    reward.gold > 0 ||
+    reward.gems > 0 ||
+    reward.profileXp > 0 ||
+    reward.eventTickets > 0 ||
+    hasTickets ||
+    !!reward.cardId ||
+    !!reward.emoteId ||
+    !!reward.titleId ||
+    !!reward.frameId ||
+    !!reward.customizationId;
+
+  return hasReward ? reward : null;
+}
+
+function accountClaimProgressReward(entry, data = {}) {
+  const account = accountEnsureInventory(entry);
+  const receiptId = accountSafeProgressReceiptId(data.receiptId);
+
+  if (!receiptId) {
+    return { ok: false, error: "Invalid progress reward receipt." };
+  }
+
+  if (account.progressRewardReceipts[receiptId]) {
+    return {
+      ok: false,
+      duplicate: true,
+      error: "This reward was already claimed."
+    };
+  }
+
+  const reward = accountSanitizeProgressReward(data.reward);
+
+  if (!reward) {
+    return { ok: false, error: "Progress reward has no valid items." };
+  }
+
+  account.progressRewardReceipts[receiptId] = Date.now();
+  accountPruneProgressReceipts(account);
+
+  accountGrantReward(entry, reward);
+  entry.updatedAt = Date.now();
+
+  return {
+    ok: true,
+    receiptId,
+    reward
+  };
+}
+
+function accountBuyBattlePassPremium(entry, data = {}) {
+  const account = accountEnsureInventory(entry);
+  const seasonId = accountSafeId(data.seasonId, 64);
+
+  if (
+    !seasonId ||
+    !/^battlepass_[A-Za-z0-9_-]{1,48}$/.test(seasonId)
+  ) {
+    return { ok: false, error: "Invalid Battle Pass season." };
+  }
+
+  if (account.battlePass.premiumSeasons[seasonId]) {
+    return {
+      ok: false,
+      error: "Magic Pass is already unlocked for this season."
+    };
+  }
+
+  if (!accountSpend(entry, { gems: ACCOUNT_BATTLE_PASS_MAGIC_COST })) {
+    return {
+      ok: false,
+      error: `Need ${ACCOUNT_BATTLE_PASS_MAGIC_COST.toLocaleString()} Gems to unlock Magic Pass.`
+    };
+  }
+
+  account.battlePass.premiumSeasons[seasonId] = Date.now();
+  entry.updatedAt = Date.now();
+
+  return {
+    ok: true,
+    seasonId,
+    cost: ACCOUNT_BATTLE_PASS_MAGIC_COST
+  };
+}
+
 function accountLegacyMigration(entry, rawLegacy) {
   if (!ACCOUNT_LEGACY_MIGRATION_ENABLED) {
     return { ok: false, error: "Legacy browser-save migration is closed." };
@@ -1812,6 +2053,14 @@ function accountHandleAction(entry, actionType, data = {}) {
 
   if (actionType === "claimDailyReward") {
     return accountClaimDailyReward(entry);
+  }
+
+  if (actionType === "claimProgressReward") {
+    return accountClaimProgressReward(entry, data);
+  }
+
+  if (actionType === "buyBattlePassPremium") {
+    return accountBuyBattlePassPremium(entry, data);
   }
 
 if (actionType === "buyPack") {
@@ -5838,11 +6087,14 @@ socket.on("accountAction", async (data = {}, cb) => {
   accountSyncPlayerCurrency(entry, p);
 
   const account = accountSnapshot(entry);
+  const profile = privatePlayerProfile(p);
+
   socket.emit("accountSync", account);
+  socket.emit("profileAssigned", profile);
 
   cb?.({
     ...result,
-    profile: privatePlayerProfile(p),
+    profile,
     account
   });
 
