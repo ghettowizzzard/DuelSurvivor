@@ -5411,56 +5411,6 @@ function finalizeServerMatchResults(match, winners) {
 
   broadcastLeaderboards();
 }
-  if (!match || match.resultsFinalized) return;
-
-  match.resultsFinalized = true;
-
-  const winnerSocketIds = new Set(winners.map(entry => entry.socketId));
-
-  for (const entry of match.players.values()) {
-    if (!entry?.playerId) continue;
-
-    const won = winnerSocketIds.has(entry.socketId);
-    const profileEntry = getOrCreateLeaderboardEntry({
-      playerId: entry.playerId,
-      name: entry.name || "Survivor"
-    });
-
-    const verifiedKills = safeStatInt(entry.matchKills, 0, MATCH_TOTAL_SLOTS);
-
-    profileEntry.kills += verifiedKills;
-    profileEntry.wins += won ? 1 : 0;
-    profileEntry.losses += won ? 0 : 1;
-    profileEntry.deaths += won ? 0 : 1;
-    profileEntry.updatedAt = Date.now();
-
-    if (match.ranked && getMatchHumanCount(match) >= 2) {
-      entry.rankedResult = applyServerRankedMatchResult(
-        profileEntry,
-        match.rankedMode || match.mode,
-        won
-      );
-    }
-
-    const liveProfile = getPlayer(entry.socketId);
-
-    if (liveProfile) {
-      liveProfile.rank = profileEntry.rank;
-      liveProfile.level = profileEntry.level;
-      liveProfile.profileXp = profileEntry.profileXp || 0;
-      liveProfile.wins = profileEntry.wins;
-      liveProfile.kills = profileEntry.kills;
-      liveProfile.deaths = profileEntry.deaths;
-      liveProfile.losses = profileEntry.losses;
-      liveProfile.revives = profileEntry.revives;
-
-      io.to(entry.socketId).emit("profileAssigned", privatePlayerProfile(liveProfile));
-    }
-  }
-
-  rankedScheduleSave();
-  broadcastLeaderboards();
-}
 
 function checkMatchWinner(match) {
   if (!match || match.resultsFinalized) return;
