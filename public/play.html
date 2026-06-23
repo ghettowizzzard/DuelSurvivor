@@ -2092,7 +2092,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="mr-1">
-                        <span id="season-build-label" class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v2.0.0</span>
+                        <span id="season-build-label" class="text-xs tracking-widest text-cyan-400 font-bold uppercase block">SEASON 01 - Build v2.0.2</span>
                         <span class="font-orbitron font-black text-lg tracking-wider text-slate-100">DUEL.IO</span>
                     </div>
                     <button id="quest-menu-btn" class="quest-icon-btn" title="Quests" aria-label="Quests">
@@ -5947,7 +5947,7 @@ worldDeltaTracker: {
             const el = document.getElementById("season-build-label");
             if (!el) return;
             const season = getRankedSeasonInfo();
-            el.textContent = `${season.label} - Build v2.0.0`;
+            el.textContent = `${season.label} - Build v2.0.2`;
             el.title = `${season.label} ends ${new Date(season.endAt).toLocaleDateString()}`;
         }
 
