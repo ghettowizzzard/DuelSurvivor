@@ -1287,8 +1287,32 @@ function accountNormalizeInventory(rawValue, options = {}) {
 
 function accountEnsureInventory(entry) {
   if (!entry) return accountDefaultInventory();
-  entry.account = accountNormalizeInventory(entry.account);
-  return entry.account;
+
+  // Keep the same object reference alive. Account actions can hold this
+  // reference while reward helpers normalize inventory again.
+  const existingAccount = accountPlainObject(entry.account)
+    ? entry.account
+    : null;
+
+  const normalizedAccount = accountNormalizeInventory(
+    existingAccount || {}
+  );
+
+  if (!existingAccount) {
+    entry.account = normalizedAccount;
+    return entry.account;
+  }
+
+  for (const key of Object.keys(existingAccount)) {
+    if (!Object.prototype.hasOwnProperty.call(normalizedAccount, key)) {
+      delete existingAccount[key];
+    }
+  }
+
+  Object.assign(existingAccount, normalizedAccount);
+
+  entry.account = existingAccount;
+  return existingAccount;
 }
 
 function accountSnapshot(entry) {
@@ -1689,8 +1713,6 @@ function accountClaimDailyReward(entry) {
     reward.cardId = card.id;
   }
 
-  accountGrantReward(entry, reward);
-
   const summary = [];
 
   if (reward.gold) {
@@ -1708,6 +1730,8 @@ function accountClaimDailyReward(entry) {
   if (reward.eventTickets) summary.push(`+${reward.eventTickets} Event Ticket`);
   if (reward.cardId) summary.push(`+${reward.cardId.replace(/_/g, " ")}`);
 
+  // Mark the reward as claimed before any helper can normalize account data.
+  // This marker is included in the same Upstash save as the reward itself.
   account.daily.lastClaimDayKey = todayKey;
   account.daily.trackIndex =
     (trackIndex + 1) % ACCOUNT_DAILY_REWARD_TRACK.length;
@@ -1724,6 +1748,8 @@ function accountClaimDailyReward(entry) {
   account.daily.claimHistory = account.daily.claimHistory.slice(-14);
 
   entry.updatedAt = Date.now();
+
+  accountGrantReward(entry, reward);
 
   return {
     ok: true,
