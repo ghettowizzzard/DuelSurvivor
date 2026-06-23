@@ -363,6 +363,16 @@ const rankedDuoPartyQueue = [];
 const rankedDuoQueueTimers = new Map();
 
 const PLAYER_SESSION_SECRET = String(process.env.PLAYER_SESSION_SECRET || "").trim();
+
+// Use this only when you intentionally rotate PLAYER_SESSION_SECRET.
+// Put the old secret in Render here temporarily so old accounts still load.
+const PLAYER_SESSION_PREVIOUS_SECRETS = String(
+  process.env.PLAYER_SESSION_PREVIOUS_SECRETS || ""
+)
+  .split(",")
+  .map(value => value.trim())
+  .filter(Boolean);
+
 const PLAYER_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 180;
 const PLAYER_ID_BYTES = 18;
 
@@ -529,6 +539,16 @@ const RANKED_UPSTASH_ENABLED =
   !!RANKED_UPSTASH_REST_TOKEN &&
   !!RANKED_UPSTASH_KEY;
 
+// Production must not start with an empty temporary database if Upstash
+// is unavailable, misconfigured, or pointed at the wrong key.
+const RANKED_UPSTASH_FAIL_CLOSED =
+  String(process.env.RANKED_UPSTASH_FAIL_CLOSED || "true").toLowerCase() !== "false";
+
+const RANKED_UPSTASH_BACKUP_KEY = String(
+  process.env.RANKED_UPSTASH_BACKUP_KEY ||
+  `${RANKED_UPSTASH_KEY}:previous`
+).trim();
+
 const RANKED_STATE_STORAGE_LABEL = RANKED_UPSTASH_ENABLED ? "upstash-redis" : RANKED_FILE_STORAGE_LABEL;
 const RANKED_STATE_DURABLE = RANKED_UPSTASH_ENABLED ? true : RANKED_FILE_STORAGE_DURABLE;
 
@@ -536,6 +556,7 @@ const RANKED_ADMIN_KEY = process.env.RANKED_ADMIN_KEY || "";
 const rankedSeasonArchives = new Map();
 const rankedRewardInbox = new Map();
 let rankedStateSaveTimer = null;
+let rankedWriteQueue = Promise.resolve();
 let rankedStateEverLoaded = false;
 let rankedHighestKnownProfileCount = 0;
 let rankedLastSuccessfulSaveAt = 0;
@@ -581,7 +602,7 @@ const RANKED_LAST_DAMAGE_CREDIT_MS = 15000;
 const ONLINE_QUEUE_MS = 15000;
 const WORLD_SNAPSHOT_MIN_MS = 180;
 const MATCH_RECONNECT_GRACE_MS = 45000;
-const ACCOUNT_SCHEMA_VERSION = 1;
+const ACCOUNT_SCHEMA_VERSION = 2;
 const ACCOUNT_LEGACY_MIGRATION_ENABLED =
   String(process.env.ACCOUNT_LEGACY_MIGRATION_ENABLED || "true").toLowerCase() !== "false";
 
@@ -614,6 +635,30 @@ const ACCOUNT_SHARE_REWARD = Object.freeze({
   gems: 500,
   cardIds: ["starvisitor_ufo"],
   emoteIds: ["share_ufo_alien"]
+});
+
+const ACCOUNT_DAILY_TIME_ZONE = "America/Vancouver";
+
+const ACCOUNT_DAILY_REWARD_TRACK = Object.freeze([
+  { day: 1, title: "Fresh Duelist Bonus", gold: 600, gems: 0 },
+  { day: 2, title: "Starter Rift Ticket", gold: 350, gems: 0, boosterTickets: { starter_rift: 1 } },
+  { day: 3, title: "Gem Spark Cache", gold: 900, gems: 5 },
+  { day: 4, title: "Bonus Card Drop", gold: 700, gems: 0, dailyCard: { minRarityRank: 1, maxRarityRank: 3 } },
+  { day: 5, title: "Event Ticket Cache", gold: 1200, gems: 8, eventTickets: 1 },
+  { day: 6, title: "Element Burst Ticket", gold: 900, gems: 12, boosterTickets: { element_burst: 1 } },
+  { day: 7, title: "Weekly Rift Jackpot", gold: 2200, gems: 30, boosterTickets: { mythic_rift: 1 }, dailyCard: { minRarityRank: 2, maxRarityRank: 5 } }
+]);
+
+const ACCOUNT_DAILY_RARITY_RANK = Object.freeze({
+  Common: 0,
+  Uncommon: 1,
+  Rare: 2,
+  Epic: 3,
+  Legendary: 4,
+  Mythic: 5,
+  "Hollow Rare": 6,
+  "Super Ultra Rare": 7,
+  "God Tier": 8
 });
 
 const ACCOUNT_PACK_CATALOG = Object.freeze({
@@ -785,6 +830,7 @@ const ACCOUNT_SEASONAL_EVENTS = Object.freeze({
 
 const ACCOUNT_ACTION_RULES = Object.freeze({
   migrateLegacy: { cooldownMs: 0, windowMs: 60000, maxInWindow: 1 },
+  claimDailyReward: { cooldownMs: 500, windowMs: 60000, maxInWindow: 3 },
   buyPack: { cooldownMs: 350, windowMs: 10000, maxInWindow: 12 },
   buyTitle: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
   buyFrame: { cooldownMs: 250, windowMs: 10000, maxInWindow: 12 },
@@ -917,7 +963,10 @@ function loadAccountCardCatalog() {
         family: accountReadStringProperty(text, "family"),
         evolutionStage: Math.max(1, accountReadNumberProperty(text, "evolutionStage", 1)),
         battlePassExclusive: accountReadBooleanProperty(text, "battlePassExclusive"),
-        boosterExcluded: accountReadBooleanProperty(text, "boosterExcluded")
+        boosterExcluded: accountReadBooleanProperty(text, "boosterExcluded"),
+        rewardRestricted: accountReadBooleanProperty(text, "rewardRestricted"),
+        packExclusive: accountReadBooleanProperty(text, "packExclusive"),
+        lootExcluded: accountReadBooleanProperty(text, "lootExcluded")
       });
     }
 
@@ -999,6 +1048,12 @@ function accountDefaultInventory() {
   return {
     version: ACCOUNT_SCHEMA_VERSION,
     migratedAt: 0,
+    daily: {
+      lastClaimDayKey: "",
+      trackIndex: 0,
+      totalClaims: 0,
+      claimHistory: []
+    },
     ownedCards,
     boosterTickets: {},
     eventTickets: 0,
@@ -1027,7 +1082,49 @@ function accountNormalizeInventory(rawValue, options = {}) {
   const inventory = accountDefaultInventory();
   const legacy = !!options.legacy;
 
-  inventory.migratedAt = Math.max(0, Number(source.migratedAt || 0));
+ inventory.migratedAt = Math.max(0, Number(source.migratedAt || 0));
+
+  const dailySource = accountPlainObject(source.daily)
+    ? source.daily
+    : {};
+
+  const dailyKey = String(dailySource.lastClaimDayKey || "");
+
+  inventory.daily.lastClaimDayKey = /^\d{4}-\d{2}-\d{2}$/.test(dailyKey)
+    ? dailyKey
+    : "";
+
+  inventory.daily.trackIndex = safeStatInt(
+    dailySource.trackIndex,
+    0,
+    Math.max(0, ACCOUNT_DAILY_REWARD_TRACK.length - 1)
+  );
+
+  inventory.daily.totalClaims = safeStatInt(
+    dailySource.totalClaims,
+    0,
+    999999999
+  );
+
+  inventory.daily.claimHistory = Array.isArray(dailySource.claimHistory)
+    ? dailySource.claimHistory
+      .slice(-14)
+      .map(row => ({
+        dayKey: /^\d{4}-\d{2}-\d{2}$/.test(String(row?.dayKey || ""))
+          ? String(row.dayKey)
+          : "",
+        trackDay: safeStatInt(
+          row?.trackDay,
+          0,
+          ACCOUNT_DAILY_REWARD_TRACK.length
+        ),
+        title: String(row?.title || "").slice(0, 80),
+        summary: Array.isArray(row?.summary)
+          ? row.summary.map(value => String(value).slice(0, 96)).slice(0, 8)
+          : []
+      }))
+      .filter(row => row.dayKey && row.trackDay > 0)
+    : [];
 
   inventory.ownedCards = {
     ...inventory.ownedCards,
@@ -1201,6 +1298,7 @@ function accountSnapshot(entry) {
     version: ACCOUNT_SCHEMA_VERSION,
     migrationRequired: ACCOUNT_LEGACY_MIGRATION_ENABLED && !account.migratedAt,
     migratedAt: account.migratedAt || 0,
+    daily: JSON.parse(JSON.stringify(account.daily)),
     gold: safeStatInt(entry.gold, 1000, 999999999),
     gems: safeStatInt(entry.gems, 0, 999999999),
     owned: { ...account.ownedCards },
@@ -1230,6 +1328,27 @@ function accountSyncPlayerCurrency(entry, player) {
   if (!entry || !player) return;
   player.gold = safeStatInt(entry.gold, 1000, 999999999);
   player.gems = safeStatInt(entry.gems, 0, 999999999);
+}
+
+function accountCreateRollbackSnapshot(entry) {
+  return JSON.parse(JSON.stringify(serializeLeaderboardEntry(entry)));
+}
+
+function accountRestoreRollbackSnapshot(entry, snapshot) {
+  if (!entry || !snapshot || typeof snapshot !== "object") return;
+
+  for (const key of Object.keys(entry)) {
+    delete entry[key];
+  }
+
+  Object.assign(entry, {
+    ...snapshot,
+    reportKeys: new Set(
+      Array.isArray(snapshot.reportKeys) ? snapshot.reportKeys : []
+    )
+  });
+
+  accountEnsureInventory(entry);
 }
 
 function accountAllowAction(entry, actionType, now = Date.now()) {
@@ -1488,6 +1607,142 @@ function accountRollPackCard(pack) {
   return candidates[crypto.randomInt(candidates.length)];
 }
 
+function accountVancouverDayKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: ACCOUNT_DAILY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+
+  const get = type => parts.find(part => part.type === type)?.value || "";
+
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function accountRollDailyCard(rule = {}) {
+  const minRank = safeStatInt(rule.minRarityRank, 0, 8);
+
+  const maxRank = Math.max(
+    minRank,
+    safeStatInt(rule.maxRarityRank, minRank, 8)
+  );
+
+  const candidates = [...ACCOUNT_CARD_CATALOG.values()].filter(card => {
+    const rank = ACCOUNT_DAILY_RARITY_RANK[card?.rarity] ?? -1;
+
+    return (
+      rank >= minRank &&
+      rank <= maxRank &&
+      !card.battlePassExclusive &&
+      !card.boosterExcluded &&
+      !card.rewardRestricted &&
+      !card.packExclusive &&
+      !card.lootExcluded &&
+      !ACCOUNT_SHARE_REWARD.cardIds.includes(card.id)
+    );
+  });
+
+  return candidates.length
+    ? candidates[crypto.randomInt(candidates.length)]
+    : null;
+}
+
+function accountClaimDailyReward(entry) {
+  const account = accountEnsureInventory(entry);
+  const todayKey = accountVancouverDayKey();
+
+  if (account.daily.lastClaimDayKey === todayKey) {
+    return {
+      ok: false,
+      error: "Daily reward already claimed. Try again after the next Vancouver day begins."
+    };
+  }
+
+  const trackIndex = safeStatInt(
+    account.daily.trackIndex,
+    0,
+    Math.max(0, ACCOUNT_DAILY_REWARD_TRACK.length - 1)
+  );
+
+  const definition =
+    ACCOUNT_DAILY_REWARD_TRACK[trackIndex] ||
+    ACCOUNT_DAILY_REWARD_TRACK[0];
+
+  const reward = {
+    gold: definition.gold,
+    gems: definition.gems,
+    eventTickets: definition.eventTickets,
+    boosterTickets: definition.boosterTickets
+  };
+
+  if (definition.dailyCard) {
+    const card = accountRollDailyCard(definition.dailyCard);
+
+    if (!card) {
+      return {
+        ok: false,
+        error: "Daily reward card pool is unavailable. No reward was consumed."
+      };
+    }
+
+    reward.cardId = card.id;
+  }
+
+  accountGrantReward(entry, reward);
+
+  const summary = [];
+
+  if (reward.gold) {
+    summary.push(`+${Number(reward.gold).toLocaleString()} Cash Points`);
+  }
+
+  if (reward.gems) {
+    summary.push(`+${Number(reward.gems).toLocaleString()} Gems`);
+  }
+
+  for (const [packId, amount] of Object.entries(reward.boosterTickets || {})) {
+    summary.push(`+${amount} ${packId.replace(/_/g, " ")} Ticket`);
+  }
+
+  if (reward.eventTickets) summary.push(`+${reward.eventTickets} Event Ticket`);
+  if (reward.cardId) summary.push(`+${reward.cardId.replace(/_/g, " ")}`);
+
+  account.daily.lastClaimDayKey = todayKey;
+  account.daily.trackIndex =
+    (trackIndex + 1) % ACCOUNT_DAILY_REWARD_TRACK.length;
+
+  account.daily.totalClaims += 1;
+
+  account.daily.claimHistory.push({
+    dayKey: todayKey,
+    trackDay: definition.day,
+    title: definition.title,
+    summary
+  });
+
+  account.daily.claimHistory = account.daily.claimHistory.slice(-14);
+
+  entry.updatedAt = Date.now();
+
+  return {
+    ok: true,
+    trackDay: definition.day,
+    title: definition.title,
+    summary
+  };
+}
+
+function accountBuildVerifiedMatchReward(match, matchEntry, won) {
+  const kills = safeStatInt(matchEntry?.matchKills, 0, MATCH_TOTAL_SLOTS);
+
+  return {
+    gold: 75 + (won ? 350 : 0) + kills * 60,
+    gems: won ? 6 : (kills >= 5 ? 1 : 0),
+    profileXp: 120 + (won ? 500 : 0) + kills * 90
+  };
+}
+
 function accountLegacyMigration(entry, rawLegacy) {
   if (!ACCOUNT_LEGACY_MIGRATION_ENABLED) {
     return { ok: false, error: "Legacy browser-save migration is closed." };
@@ -1527,6 +1782,10 @@ function accountHandleAction(entry, actionType, data = {}) {
 
   if (actionType === "migrateLegacy") {
     return accountLegacyMigration(entry, data.legacy);
+  }
+
+  if (actionType === "claimDailyReward") {
+    return accountClaimDailyReward(entry);
   }
 
 if (actionType === "buyPack") {
@@ -1800,9 +2059,9 @@ function encodePlayerSession(payload) {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }
 
-function signPlayerSession(encodedPayload) {
+function signPlayerSession(encodedPayload, secret = PLAYER_SESSION_SECRET) {
   return crypto
-    .createHmac("sha256", PLAYER_SESSION_SECRET)
+    .createHmac("sha256", secret)
     .update(encodedPayload)
     .digest("base64url");
 }
@@ -1827,19 +2086,26 @@ function verifyPlayerSessionToken(token) {
   const [encodedPayload, signature] = token.split(".");
   if (!encodedPayload || !signature) return null;
 
-  const expectedSignature = signPlayerSession(encodedPayload);
-  const expected = Buffer.from(expectedSignature);
   const provided = Buffer.from(signature);
 
-  if (
-    expected.length !== provided.length ||
-    !crypto.timingSafeEqual(expected, provided)
-  ) {
-    return null;
-  }
+  const validSignature = [
+    PLAYER_SESSION_SECRET,
+    ...PLAYER_SESSION_PREVIOUS_SECRETS
+  ].some(secret => {
+    const expected = Buffer.from(signPlayerSession(encodedPayload, secret));
+
+    return (
+      expected.length === provided.length &&
+      crypto.timingSafeEqual(expected, provided)
+    );
+  });
+
+  if (!validSignature) return null;
 
   try {
-    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8")
+    );
 
     if (
       !payload ||
@@ -3573,7 +3839,11 @@ async function rankedValidateNonDestructiveUpstashSave(payload) {
     };
   }
 
-  return { ok: true, existingProfiles };
+  return {
+    ok: true,
+    existingProfiles,
+    existingState: existing
+  };
 }
 
 function rankedTrimStateBackups(maxBackups = 12) {
@@ -3617,13 +3887,16 @@ function rankedSaveStateFileBackup(payload) {
 
 async function rankedSaveStateNow() {
   const payload = rankedStatePayload();
+
   const result = {
     ok: true,
     durable: RANKED_STATE_DURABLE,
     label: RANKED_STATE_STORAGE_LABEL,
     key: RANKED_UPSTASH_ENABLED ? RANKED_UPSTASH_KEY : "",
+    backupKey: RANKED_UPSTASH_ENABLED ? RANKED_UPSTASH_BACKUP_KEY : "",
     file: RANKED_STATE_FILE,
     upstashSaved: false,
+    upstashBackupSaved: false,
     fileBackupSaved: false,
     error: ""
   };
@@ -3631,18 +3904,37 @@ async function rankedSaveStateNow() {
   if (RANKED_UPSTASH_ENABLED) {
     try {
       const guard = await rankedValidateNonDestructiveUpstashSave(payload);
+
       if (!guard.ok) {
         throw new Error(guard.error);
       }
 
-      await rankedUpstashCommand("SET", RANKED_UPSTASH_KEY, JSON.stringify(payload));
+      // Preserve the exact prior Upstash value before replacing it.
+      if (guard.existingState) {
+        await rankedUpstashCommand(
+          "SET",
+          RANKED_UPSTASH_BACKUP_KEY,
+          JSON.stringify(guard.existingState)
+        );
+
+        result.upstashBackupSaved = true;
+      }
+
+      await rankedUpstashCommand(
+        "SET",
+        RANKED_UPSTASH_KEY,
+        JSON.stringify(payload)
+      );
+
       result.upstashSaved = true;
       rankedStateEverLoaded = true;
+
       rankedHighestKnownProfileCount = Math.max(
         rankedHighestKnownProfileCount,
         Array.isArray(payload.profiles) ? payload.profiles.length : 0,
         guard.existingProfiles || 0
       );
+
       rankedLastSuccessfulSaveAt = Date.now();
     } catch (err) {
       result.ok = false;
@@ -3662,14 +3954,35 @@ async function rankedSaveStateNow() {
   return result;
 }
 
+function rankedCommitStateNow() {
+  const commit = rankedWriteQueue
+    .catch(() => null)
+    .then(() => rankedSaveStateNow());
+
+  rankedWriteQueue = commit.catch(() => null);
+  return commit;
+}
+
 function rankedScheduleSave() {
   if (rankedStateSaveTimer) clearTimeout(rankedStateSaveTimer);
+
   rankedStateSaveTimer = setTimeout(() => {
     rankedStateSaveTimer = null;
-    rankedSaveStateNow().catch(err => {
-      console.error("[ranked] scheduled save failed:", err);
-    });
+
+    rankedCommitStateNow()
+      .then(result => {
+        if (!result?.ok) {
+          console.error(
+            "[ranked] scheduled save failed:",
+            result?.error || "Unknown storage error."
+          );
+        }
+      })
+      .catch(err => {
+        console.error("[ranked] scheduled save failed:", err);
+      });
   }, 1500);
+
   rankedStateSaveTimer.unref?.();
 }
 
@@ -3699,59 +4012,105 @@ function rankedLoadCandidateFiles() {
 }
 
 async function rankedLoadState() {
-  try {
-    let loaded = null;
-
-    if (RANKED_UPSTASH_ENABLED) {
-      try {
-        const raw = await rankedUpstashCommand("GET", RANKED_UPSTASH_KEY);
-
-        if (raw) {
-          loaded = {
-            file: `upstash:${RANKED_UPSTASH_KEY}`,
-            data: rankedParseStatePayload(raw, `upstash:${RANKED_UPSTASH_KEY}`)
-          };
-        } else {
-          console.warn(`[ranked] Upstash key ${RANKED_UPSTASH_KEY} is empty. Will try local fallback files.`);
-        }
-      } catch (err) {
-        console.warn("[ranked] Upstash load failed. Will try local fallback files:", err.message);
-      }
-    }
-
-    if (!loaded) {
-      for (const file of rankedLoadCandidateFiles()) {
-        try {
-          loaded = {
-            file,
-            data: rankedParseStatePayload(fs.readFileSync(file, "utf8"), file)
-          };
-          break;
-        } catch (err) {
-          console.warn(`[ranked] could not load state candidate ${file}:`, err.message);
-        }
-      }
-    }
-
-    if (!loaded) {
-      console.warn(`[ranked] no saved ranked state found. New state will be created in ${RANKED_STATE_STORAGE_LABEL}.`);
-      return;
-    }
-
-    rankedApplyLoadedState(loaded.data, loaded.file);
-
-    if (RANKED_UPSTASH_ENABLED && !String(loaded.file).startsWith("upstash:")) {
-      console.warn(`[ranked] migrated local state from ${loaded.file} into Upstash key ${RANKED_UPSTASH_KEY}.`);
-      rankedScheduleSave();
-    }
-
-    if (!RANKED_UPSTASH_ENABLED && loaded.file !== RANKED_STATE_FILE) {
-      console.warn(`[ranked] migrated state from ${loaded.file} to ${RANKED_STATE_FILE}.`);
-      rankedScheduleSave();
-    }
-  } catch (err) {
-    console.error("[ranked] load failed:", err);
+  if (RANKED_STORAGE_DRIVER === "upstash" && !RANKED_UPSTASH_ENABLED) {
+    throw new Error(
+      "RANKED_STORAGE_DRIVER=upstash but the Upstash URL, token, or state key is missing."
+    );
   }
+
+  let loaded = null;
+  let upstashFailure = null;
+
+  if (RANKED_UPSTASH_ENABLED) {
+    try {
+      const raw = await rankedUpstashCommand("GET", RANKED_UPSTASH_KEY);
+
+      if (!raw) {
+        upstashFailure = new Error(
+          `Upstash key ${RANKED_UPSTASH_KEY} is empty. Refusing to create a new production state over an unknown account database.`
+        );
+      } else {
+        loaded = {
+          file: `upstash:${RANKED_UPSTASH_KEY}`,
+          data: rankedParseStatePayload(
+            raw,
+            `upstash:${RANKED_UPSTASH_KEY}`
+          )
+        };
+      }
+    } catch (err) {
+      upstashFailure = err;
+    }
+
+    if (upstashFailure && RANKED_UPSTASH_FAIL_CLOSED) {
+      throw new Error(
+        `Upstash account-state load failed: ${upstashFailure.message}`
+      );
+    }
+
+    if (upstashFailure) {
+      console.warn(
+        "[ranked] Upstash load failed; fail-closed is disabled, trying local backup:",
+        upstashFailure.message
+      );
+    }
+  }
+
+  if (!loaded) {
+    for (const file of rankedLoadCandidateFiles()) {
+      try {
+        loaded = {
+          file,
+          data: rankedParseStatePayload(
+            fs.readFileSync(file, "utf8"),
+            file
+          )
+        };
+
+        break;
+      } catch (err) {
+        console.warn(
+          `[ranked] could not load state candidate ${file}:`,
+          err.message
+        );
+      }
+    }
+  }
+
+  if (!loaded) {
+    if (RANKED_UPSTASH_FAIL_CLOSED) {
+      throw new Error(
+        "No verified account-state snapshot was loaded. Server startup is blocked to protect player data."
+      );
+    }
+
+    console.warn(
+      `[ranked] no saved state found. New state will be created in ${RANKED_STATE_STORAGE_LABEL}.`
+    );
+
+    return false;
+  }
+
+  rankedApplyLoadedState(loaded.data, loaded.file);
+
+  if (
+    RANKED_UPSTASH_ENABLED &&
+    !String(loaded.file).startsWith("upstash:")
+  ) {
+    const result = await rankedCommitStateNow();
+
+    if (!result?.ok) {
+      throw new Error(
+        `Recovered state could not be committed to Upstash: ${result?.error || "Unknown error"}`
+      );
+    }
+  }
+
+  if (!RANKED_UPSTASH_ENABLED && loaded.file !== RANKED_STATE_FILE) {
+    rankedScheduleSave();
+  }
+
+  return true;
 }
 
 function sortedRankedLeaderboardRowsForSeason(mode = "solo", seasonId = getRankedSeasonInfo().id) {
@@ -4976,6 +5335,92 @@ function finalizeServerMatchResults(match, winners) {
     if (!entry?.playerId) continue;
 
     const won = winnerSocketIds.has(entry.socketId);
+
+    const profileEntry = getOrCreateLeaderboardEntry({
+      playerId: entry.playerId,
+      name: entry.name || "Survivor"
+    });
+
+    const verifiedKills = safeStatInt(
+      entry.matchKills,
+      0,
+      MATCH_TOTAL_SLOTS
+    );
+
+    profileEntry.kills += verifiedKills;
+    profileEntry.wins += won ? 1 : 0;
+    profileEntry.losses += won ? 0 : 1;
+    profileEntry.deaths += won ? 0 : 1;
+
+    const accountReward = accountBuildVerifiedMatchReward(
+      match,
+      entry,
+      won
+    );
+
+    accountGrantReward(profileEntry, accountReward);
+    entry.accountReward = accountReward;
+    profileEntry.updatedAt = Date.now();
+
+    if (match.ranked && getMatchHumanCount(match) >= 2) {
+      entry.rankedResult = applyServerRankedMatchResult(
+        profileEntry,
+        match.rankedMode || match.mode,
+        won
+      );
+    }
+
+    const liveProfile = getPlayer(entry.socketId);
+
+    if (liveProfile) {
+      liveProfile.rank = profileEntry.rank;
+      liveProfile.level = profileEntry.level;
+      liveProfile.profileXp = profileEntry.profileXp || 0;
+      liveProfile.wins = profileEntry.wins;
+      liveProfile.kills = profileEntry.kills;
+      liveProfile.deaths = profileEntry.deaths;
+      liveProfile.losses = profileEntry.losses;
+      liveProfile.revives = profileEntry.revives;
+
+      accountSyncPlayerCurrency(profileEntry, liveProfile);
+
+      io.to(entry.socketId).emit("matchAccountReward", {
+        reward: accountReward,
+        account: accountSnapshot(profileEntry)
+      });
+
+      io.to(entry.socketId).emit(
+        "profileAssigned",
+        privatePlayerProfile(liveProfile)
+      );
+    }
+  }
+
+  rankedCommitStateNow()
+    .then(result => {
+      if (!result?.ok) {
+        console.error(
+          "[ranked] match result save failed:",
+          result?.error || "Unknown storage error."
+        );
+      }
+    })
+    .catch(err => {
+      console.error("[ranked] match result save failed:", err);
+    });
+
+  broadcastLeaderboards();
+}
+  if (!match || match.resultsFinalized) return;
+
+  match.resultsFinalized = true;
+
+  const winnerSocketIds = new Set(winners.map(entry => entry.socketId));
+
+  for (const entry of match.players.values()) {
+    if (!entry?.playerId) continue;
+
+    const won = winnerSocketIds.has(entry.socketId);
     const profileEntry = getOrCreateLeaderboardEntry({
       playerId: entry.playerId,
       name: entry.name || "Survivor"
@@ -5246,7 +5691,18 @@ io.on("connection", socket => {
       return;
     }
 
-    const session = verifyPlayerSessionToken(data?.sessionToken);
+    const suppliedSessionToken = String(data?.sessionToken || "").trim();
+    const session = verifyPlayerSessionToken(suppliedSessionToken);
+
+    // Never replace a broken existing account session with a new default profile.
+    if (suppliedSessionToken && !session) {
+      socket.emit("profileSessionInvalid", {
+        message: "Saved profile session could not be verified. No new account was created."
+      });
+
+      return;
+    }
+
     const playerId = session?.playerId || createSecurePlayerId();
     const existingSocketId = idToSocket.get(playerId);
 
@@ -5348,52 +5804,74 @@ socket.on("renamePlayer", (data, cb) => {
   broadcastLeaderboards();
 });
 
-  socket.on("accountAction", (data = {}, cb) => {
-    const p = getPlayer(socket.id);
-    if (!p?.playerId) {
-      return cb?.({ ok: false, error: "Player profile not ready." });
-    }
+socket.on("accountAction", async (data = {}, cb) => {
+  const p = getPlayer(socket.id);
 
-    // Stores, inventory changes and migrations are main-menu actions. They
-    // cannot be issued during a live match to alter active gameplay state.
-    if (p.matchId || p.inMatch) {
-      return cb?.({ ok: false, error: "Account changes are unavailable during a match." });
-    }
+  if (!p?.playerId) {
+    return cb?.({ ok: false, error: "Player profile not ready." });
+  }
 
-    const entry = getOrCreateLeaderboardEntry({
-      playerId: p.playerId,
-      name: p.name,
-      color: p.color,
-      icon: p.icon
+  if (p.matchId || p.inMatch) {
+    return cb?.({
+      ok: false,
+      error: "Account changes are unavailable during a match."
     });
+  }
 
-    const actionType = accountSafeId(data?.type, 48);
-    if (!ACCOUNT_ACTION_RULES[actionType]) {
-      return cb?.({ ok: false, error: "Unknown account action." });
-    }
-
-    if (!accountAllowAction(entry, actionType)) {
-      return cb?.({ ok: false, error: "Please wait a moment before trying that again." });
-    }
-
-    const result = accountHandleAction(entry, actionType, data);
-    if (!result.ok) return cb?.(result);
-
-    entry.updatedAt = Date.now();
-    accountSyncPlayerCurrency(entry, p);
-    rankedScheduleSave();
-
-    const account = accountSnapshot(entry);
-    socket.emit("accountSync", account);
-
-    cb?.({
-      ...result,
-      profile: privatePlayerProfile(p),
-      account
-    });
-
-    broadcastOnlineList();
+  const entry = getOrCreateLeaderboardEntry({
+    playerId: p.playerId,
+    name: p.name,
+    color: p.color,
+    icon: p.icon
   });
+
+  const actionType = accountSafeId(data?.type, 48);
+
+  if (!ACCOUNT_ACTION_RULES[actionType]) {
+    return cb?.({ ok: false, error: "Unknown account action." });
+  }
+
+  if (!accountAllowAction(entry, actionType)) {
+    return cb?.({
+      ok: false,
+      error: "Please wait a moment before trying that again."
+    });
+  }
+
+  const rollback = accountCreateRollbackSnapshot(entry);
+  const result = accountHandleAction(entry, actionType, data);
+
+  if (!result.ok) {
+    return cb?.(result);
+  }
+
+  entry.updatedAt = Date.now();
+
+  const saveResult = await rankedCommitStateNow();
+
+  if (!saveResult?.ok) {
+    accountRestoreRollbackSnapshot(entry, rollback);
+    accountSyncPlayerCurrency(entry, p);
+
+    return cb?.({
+      ok: false,
+      error: "Account storage is unavailable. Nothing was charged or claimed."
+    });
+  }
+
+  accountSyncPlayerCurrency(entry, p);
+
+  const account = accountSnapshot(entry);
+  socket.emit("accountSync", account);
+
+  cb?.({
+    ...result,
+    profile: privatePlayerProfile(p),
+    account
+  });
+
+  broadcastOnlineList();
+});
 
   socket.on("searchPlayers", (data, cb) => {
     const q = String(data?.q || "").trim().toLowerCase();
