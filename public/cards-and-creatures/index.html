@@ -288,6 +288,11 @@ function escapeCardArtText(value = "") {
             if (family === "Bloodforge") return "blood";
             if (family === "Hollowborn") return "hollow";
             if (family === "Titanhost") return "mecha";
+            if (family === "Summerborn") return "summer";
+            if (family === "Shoreguard") return "crab";
+            if (family === "Shellguard") return "turtle";
+            if (family === "Steamscale") return "koi";
+            if (family === "Casino") return "casino";
             return "generic";
         }
 
@@ -629,6 +634,80 @@ function escapeCardArtText(value = "") {
                     </g>`;
                 }
 
+                if (kind === "summer") {
+                    if (/phoenix/.test(creatureKey)) {
+                        return `<g transform="translate(120 96) scale(${artScale}) translate(-120 -96)">${creatureFrame}${creatureShadow}
+                            <path d="M65 116 C82 78 121 54 159 80 C142 83 129 96 120 122 C105 98 84 100 65 116Z" fill="#7c2d12" stroke="#f97316" stroke-width="5"/>
+                            <path d="M96 83 C72 51 54 43 30 38 C43 76 63 102 95 111Z" fill="#fb923c" stroke="#fed7aa" stroke-width="4"/>
+                            <path d="M137 82 C162 49 184 43 210 38 C196 77 176 103 139 112Z" fill="#facc15" stroke="#fff7ed" stroke-width="4"/>
+                            <path d="M119 57 C130 36 151 40 149 65 C165 55 181 68 164 90 C148 78 135 77 119 88Z" fill="#fef08a" stroke="#fb923c" stroke-width="3"/>
+                            <path d="M84 120 C63 139 42 133 31 111 M156 119 C181 135 198 125 208 104" fill="none" stroke="#f97316" stroke-width="7" stroke-linecap="round"/>
+                            <circle cx="150" cy="75" r="4" fill="#fff7ed"/><circle cx="151" cy="75" r="2" fill="#111827"/>
+                        </g>`;
+                    }
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M54 116 C76 82 110 68 145 84 C165 94 179 112 185 130 C153 116 124 118 94 132 C73 140 59 132 54 116Z" fill="#78350f" stroke="#fb923c" stroke-width="5" opacity=".8"/>
+                        <path d="M72 94 C101 67 134 66 160 92" fill="none" stroke="#fef08a" stroke-width="6" stroke-linecap="round" opacity=".7"/>
+                        <path d="M75 122 L62 143 M108 126 L104 149 M142 121 L160 141" stroke="#fed7aa" stroke-width="6" stroke-linecap="round"/>
+                        <circle cx="93" cy="84" r="4" fill="#fff7ed"/><circle cx="94" cy="84" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "crab") {
+                    return `<g transform="translate(120 101) scale(${artScale}) translate(-120 -101)">${creatureFrame}${creatureShadow}
+                        <ellipse cx="120" cy="106" rx="48" ry="34" fill="#92400e" stroke="#fbbf24" stroke-width="5"/>
+                        <ellipse cx="120" cy="91" rx="34" ry="24" fill="#b45309" stroke="#fed7aa" stroke-width="4"/>
+                        <path d="M84 101 C51 83 39 98 34 119 C56 119 70 114 89 105 M156 101 C189 83 201 98 206 119 C184 119 170 114 151 105" fill="none" stroke="#f97316" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M38 119 C28 128 27 143 43 148 M202 119 C212 128 213 143 197 148" fill="none" stroke="#fed7aa" stroke-width="5" stroke-linecap="round"/>
+                        <path d="M88 123 L62 143 M103 128 L91 151 M137 128 L149 151 M152 123 L178 143" stroke="#fbbf24" stroke-width="6" stroke-linecap="round"/>
+                        <circle cx="107" cy="86" r="4" fill="#111827"/><circle cx="133" cy="86" r="4" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "turtle") {
+                    return `<g transform="translate(120 101) scale(${artScale}) translate(-120 -101)">${creatureFrame}${creatureShadow}
+                        <ellipse cx="120" cy="107" rx="65" ry="42" fill="#0f766e" stroke="#67e8f9" stroke-width="6"/>
+                        <path d="M76 106 C96 75 145 75 165 106 C145 132 96 132 76 106Z" fill="#164e63" stroke="#cffafe" stroke-width="4"/>
+                        <path d="M91 91 L120 78 L150 91 M82 108 H158 M96 126 L120 78 L145 126" stroke="#bae6fd" stroke-width="3" opacity=".9"/>
+                        <ellipse cx="184" cy="103" rx="20" ry="16" fill="#0e7490" stroke="#cffafe" stroke-width="4"/>
+                        <path d="M66 84 L43 67 M67 128 L43 146 M173 84 L197 67 M173 128 L197 146" stroke="#67e8f9" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="190" cy="98" r="3" fill="#ecfeff"/>
+                    </g>`;
+                }
+
+                if (kind === "koi") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M67 118 C94 70 138 72 166 103" fill="none" stroke="#ef4444" stroke-width="14" stroke-linecap="round"/>
+                        <path d="M173 93 L199 76 L190 111Z" fill="#fb923c" stroke="#fed7aa" stroke-width="3"/>
+                        <circle cx="162" cy="99" r="4" fill="#fff7ed"/>
+                        <path d="M174 72 C140 128 96 126 70 94" fill="none" stroke="#38bdf8" stroke-width="14" stroke-linecap="round"/>
+                        <path d="M62 104 L38 86 L45 121Z" fill="#0ea5e9" stroke="#cffafe" stroke-width="3"/>
+                        <circle cx="77" cy="98" r="4" fill="#ecfeff"/>
+                        <path d="M70 91 C109 52 151 59 184 93 M58 117 C96 148 145 144 181 105" fill="none" stroke="#ffffff" stroke-width="3" opacity=".55"/>
+                    </g>`;
+                }
+
+                if (kind === "casino") {
+                    if (/scratch/.test(creatureKey)) {
+                        return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                            <rect x="63" y="67" width="106" height="72" rx="10" fill="#f472b6" stroke="#fdf2f8" stroke-width="5" transform="rotate(-7 116 103)"/>
+                            <rect x="76" y="79" width="78" height="20" rx="5" fill="#e5e7eb" opacity=".9" transform="rotate(-7 115 89)"/>
+                            <path d="M84 115 C103 133 131 134 151 112" fill="#020617"/>
+                            <path d="M89 115 L98 125 L106 114 L116 126 L126 114 L136 126 L146 114" fill="#f8fafc"/>
+                            <circle cx="96" cy="98" r="5" fill="#020617"/><circle cx="136" cy="95" r="5" fill="#020617"/>
+                        </g>`;
+                    }
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <rect x="78" y="58" width="84" height="84" rx="14" fill="#7c2d12" stroke="#facc15" stroke-width="5"/>
+                        <rect x="89" y="75" width="62" height="25" rx="6" fill="#020617" stroke="#fef3c7" stroke-width="3"/>
+                        <text x="120" y="94" text-anchor="middle" font-family="Orbitron, Arial" font-size="18" font-weight="900" fill="#facc15">777</text>
+                        <path d="M94 116 C109 130 132 130 147 116" fill="none" stroke="#fef3c7" stroke-width="4" stroke-linecap="round"/>
+                        <circle cx="96" cy="65" r="5" fill="#ef4444"/><circle cx="120" cy="65" r="5" fill="#22c55e"/><circle cx="144" cy="65" r="5" fill="#38bdf8"/>
+                        <path d="M162 82 H183 M183 82 V112" stroke="#facc15" stroke-width="6" stroke-linecap="round"/>
+                        <circle cx="183" cy="118" r="8" fill="#ef4444" stroke="#fef3c7" stroke-width="3"/>
+                    </g>`;
+                }
+
                 if (kind === "blood") {
                     if (/bat/.test(creatureKey)) {
                         return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
@@ -719,6 +798,28 @@ function escapeCardArtText(value = "") {
     const EXTRA_CARD_DATA = [
       {"id":"reef_shark_pup","name":"Reef Shark Pup","category":"monster","family":"Blacktide","rarity":"Rare","evolutionLine":"blacktide_shark_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"great_white_mauler","attackType":"Dash","visualColor":"#67e8f9","particleType":"water","iconSymbol":"RS","description":"A fast reef shark bite that lunges forward, clips enemies with a water wake, and can leave a short Bleed.","damage":29,"cooldown":2.55,"range":390,"duration":2.8,"durabilityMax":34,"knockback":18,"width":30},
       {"id":"great_white_mauler","name":"Great White Mauler","category":"monster","family":"Blacktide","rarity":"Epic","evolutionLine":"blacktide_shark_line","evolutionStage":2,"evolvesFrom":"reef_shark_pup","evolvesTo":"blackflag_broadside","attackType":"Pierce","visualColor":"#e0f2fe","particleType":"water","iconSymbol":"GW","description":"A fully exposed great white shark rush that tears through a line, knocks targets back, and leaves a heavy bite wound.","damage":42,"cooldown":3.55,"range":560,"duration":3.6,"durabilityMax":48,"knockback":32,"width":46},
+            {"id":"slotty","name":"Slotty","category":"monster","family":"Casino","rarity":"Rare","evolutionLine":"casino_slotty_line","evolutionStage":1,"attackType":"SlottyBomb","visualColor":"#facc15","particleType":"gold","iconSymbol":"777","description":"Slot-machine exclusive creature. Slotty bounces toward an enemy, then bursts into a coin explosion on impact.","damage":22,"cooldown":12,"range":690,"durabilityMax":24,"knockback":32,"width":28},
+      {"id":"casino_orbit","name":"Casino Orbit","category":"monster","family":"Casino","rarity":"Rare","evolutionLine":"casino_orbit_line","evolutionStage":2,"attackType":"CasinoOrbit","visualColor":"#f472b6","particleType":"prism","iconSymbol":"JACKPOT","description":"Slot-machine exclusive creature. Casino symbols orbit the player, bump enemies, and sometimes fire a lucky symbol shot.","damage":8,"damageMin":30,"damageMax":40,"cooldown":22,"range":560,"durabilityMax":24,"knockback":16,"width":24},
+      {"id":"scratchy","name":"Scratchy","category":"monster","family":"Casino","rarity":"Epic","evolutionLine":"casino_scratchy_line","evolutionStage":2,"attackType":"ScratchyBurst","visualColor":"#f472b6","particleType":"prism","iconSymbol":"SCR","description":"Scratch-ticket exclusive creature. Scratchy bites on impact, then bursts into smaller scratch-ticket shards that deal chip damage.","damage":20,"damageMin":5,"damageMax":8,"cooldown":16,"range":620,"durabilityMax":22,"knockback":24,"width":30},
+
+      {"id":"suncrest_phoenix","name":"Suncrest Phoenix","category":"monster","family":"Summerborn","rarity":"Legendary","evolutionLine":"summerborn_suncrest_line","evolutionStage":4,"attackType":"Dash","visualColor":"#f97316","particleType":"phoenix","iconSymbol":"SP","description":"A legendary summer phoenix that dives forward, burns enemies, and leaves a short-lived burning sun trail behind it.","damage":42,"cooldown":9.5,"range":575,"durabilityMax":36,"knockback":28,"width":46},
+      {"id":"mirage_coyotes","name":"Mirage Coyotes","category":"monster","family":"Summerborn","rarity":"Rare","evolutionLine":"summerborn_mirage_line","evolutionStage":3,"attackType":"MiragePack","visualColor":"#fb923c","particleType":"summerHeat","iconSymbol":"MC","description":"A rare heat trickster pack. Several small mirage coyotes dart outward in staggered angles, dealing light damage and pushback.","damage":14,"cooldown":7.5,"range":380,"durabilityMax":28,"knockback":18,"width":18},
+      {"id":"coconut_crab","name":"Coconut Crab","category":"monster","family":"Shoreguard","rarity":"Uncommon","evolutionLine":"shoreguard_crab_line","evolutionStage":1,"evolvesTo":"coconut_crab_titan","attackType":"PetBuddy","visualColor":"#d97706","particleType":"stone","iconSymbol":"CC","description":"Summons a realistic small coconut crab buddy that scuttles around, guards you, and claw-hits nearby enemies for a short time.","damage":18,"cooldown":16,"range":540,"durabilityMax":26,"knockback":16,"width":30},
+      {"id":"tideglass_turtle","name":"Tideglass Turtle","category":"monster","family":"Shellguard","rarity":"Super Ultra Rare","evolutionLine":"shellguard_tideglass_line","evolutionStage":5,"attackType":"SuperUltraMount","visualColor":"#38bdf8","particleType":"summerWater","iconSymbol":"TT","description":"A giant glass-shelled turtle mount. It protects the rider first, crushes nearby enemies, and launches curved tideglass waves.","damage":34,"cooldown":55,"range":460,"durabilityMax":100,"knockback":42,"width":150},
+      {"id":"coconut_crab_titan","name":"Coconut Crab Titan","category":"monster","family":"Shoreguard","rarity":"Super Ultra Rare","evolutionLine":"shoreguard_crab_line","evolutionStage":5,"evolvesFrom":"coconut_crab","attackType":"SuperUltraMount","visualColor":"#d97706","particleType":"stone","iconSymbol":"CCT","description":"A massive beach bruiser mount with fast sideways movement, crushing body contact, and brutal claw swings that shred props.","damage":58,"cooldown":60,"range":155,"durabilityMax":100,"knockback":58,"width":95},
+      {"id":"emberfin_koi_dragon","name":"Emberfin Koi Dragon","category":"monster","family":"Steamscale","rarity":"Mythic","evolutionLine":"steamscale_emberfin_line","evolutionStage":5,"attackType":"Pierce","visualColor":"#38bdf8","particleType":"summerWater","iconSymbol":"EKD","description":"A mythic red-and-blue koi dragon duo that spirals forward as steam, burning and frosting enemies while pushing them back.","damage":44,"cooldown":13.5,"range":675,"durabilityMax":34,"knockback":24,"width":36},
+
+      {"id":"heat_haze","name":"Heat Haze","category":"magic","rarity":"Rare","effectType":"HeatHaze","visualColor":"#fb923c","particleType":"summerHeat","iconSymbol":"HH","description":"A short shimmer dodge. Enemies struggle to see you at range, and the effect breaks when you attack or cast another Magic card.","cooldown":12,"uses":2,"duration":4.5},
+      {"id":"solar_flare","name":"Solar Flare","category":"magic","rarity":"Rare","effectType":"SolarFlare","visualColor":"#fef08a","particleType":"solar","iconSymbol":"SF","description":"A sight-range flash pulse. Enemies in the burst take light damage and are briefly blinded like a flashbang.","damage":8,"cooldown":14,"uses":2},
+      {"id":"bonfire_feast","name":"Bonfire Feast","category":"magic","rarity":"Epic","effectType":"BonfireFeast","visualColor":"#f97316","particleType":"bonfire","iconSymbol":"BF","description":"Places a magical campfire that heals you and friendly teammates inside its warm circle, then dims and fades out.","cooldown":27,"uses":2,"duration":24},
+      {"id":"high_tide","name":"High Tide","category":"magic","rarity":"Uncommon","effectType":"HighTide","visualColor":"#38bdf8","particleType":"summerWater","iconSymbol":"HT","description":"Sends a compact ocean wave forward, pushing enemies and dealing light water damage.","damage":12,"cooldown":11,"uses":2},
+      {"id":"sunstroke_surge","name":"Sunstroke Surge","category":"magic","rarity":"Epic","effectType":"SunstrokeSurge","visualColor":"#fb923c","particleType":"summerHeat","iconSymbol":"SSG","description":"A smoky heat-wave sprint. Move faster and lightly burn enemies who touch your heat aura.","cooldown":25,"uses":1,"duration":18},
+
+      {"id":"quick_sand_pit","name":"Quick Sand Pit","category":"trap","rarity":"Uncommon","effectType":"QuickSandPit","triggerType":"ManualPlace","visualColor":"#d6a94f","particleType":"sand","iconSymbol":"QSP","description":"Places a sinking sand pit. Targets inside are heavily slowed and take steady damage.","damage":4,"cooldown":8.5,"uses":2,"duration":13},
+      {"id":"jellyfish_snare","name":"Jellyfish Snare","category":"trap","rarity":"Rare","effectType":"JellyfishSnare","triggerType":"ManualPlace","visualColor":"#67e8f9","particleType":"summerWater","iconSymbol":"JS","description":"A hidden beach snare releases an animated jellyfish that chases and stings the enemy.","damage":8,"cooldown":12,"uses":2,"duration":14},
+      {"id":"umbrella_pop_trap","name":"Umbrella Pop Trap","category":"trap","rarity":"Rare","effectType":"UmbrellaPopTrap","triggerType":"ManualPlace","visualColor":"#fb7185","particleType":"summer","iconSymbol":"UP","description":"Disguises itself as a beach umbrella, then bursts open with a painful knockback snap.","damage":36,"cooldown":11,"uses":2},
+      {"id":"mirage_mine","name":"Mirage Mine","category":"trap","rarity":"Epic","effectType":"MirageMine","triggerType":"ManualPlace","visualColor":"#fef08a","particleType":"solar","iconSymbol":"MM","description":"Creates a fake loot sparkle that detonates when an enemy gets close. Damage is stronger near the center.","damage":46,"cooldown":15,"uses":2},
+      {"id":"riptide_rune","name":"Riptide Rune","category":"trap","rarity":"Epic","effectType":"RiptideRune","triggerType":"ManualPlace","visualColor":"#38bdf8","particleType":"summerWater","iconSymbol":"RR","description":"Opens a spinning water rune that drags enemies inward, slows them, and chips their health.","damage":4,"cooldown":20,"uses":1,"duration":17},
       {
   "id": "blackflag_broadside",
   "name": "Blackflag Broadside",
@@ -774,11 +875,11 @@ function escapeCardArtText(value = "") {
     });
 
     const rarityOrder = { Common:1, Uncommon:2, Rare:3, Epic:4, Legendary:5, Mythic:6, "Hollow Rare":7, "Super Ultra Rare":8, "God Tier":9, God:9 };
-    const featuredIds = ["blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","asterion_rift_crown_wyrm","aurelia_infernal_reaper","nova_seraph","neon_kirin","abyss_leviathan","infernal_fenrir","absolute_hydra","eclipse_monarch","blood_anvil_colossus","titan_breaker","reaper_cerberus","archive_dragon","aurora_chimera"];
-    const effectIds = ["blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","infernal_fenrir","absolute_hydra","neon_kirin","elder_thorn_king","pestilent_king","eclipse_monarch","aurelia_infernal_reaper","abyss_leviathan","blood_anvil_colossus"];
+    const featuredIds = ["coconut_crab_titan","tideglass_turtle","emberfin_koi_dragon","suncrest_phoenix","slotty","scratchy","casino_orbit","blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","asterion_rift_crown_wyrm","aurelia_infernal_reaper","nova_seraph","neon_kirin","abyss_leviathan","infernal_fenrir","absolute_hydra","eclipse_monarch","blood_anvil_colossus","titan_breaker","reaper_cerberus","archive_dragon","aurora_chimera"];
+    const effectIds = ["coconut_crab_titan","tideglass_turtle","slotty","scratchy","suncrest_phoenix","mirage_coyotes","emberfin_koi_dragon","casino_orbit","blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","infernal_fenrir","absolute_hydra","neon_kirin","elder_thorn_king","pestilent_king","eclipse_monarch","aurelia_infernal_reaper","abyss_leviathan","blood_anvil_colossus"];
     const categoryLabels = { monster:"Creatures", magic:"Magic", trap:"Traps" };
     const shortFamilyCopy = { Emberkin:"fast fire pressure", Ironhide:"heavy armor and knockback", Frostveil:"cold control and slows", Voltbeast:"speed, shock, and chase", Thornwild:"roots, poison, and plant pressure", Plaguekin:"poison and nasty trades", Umbra:"shadow plays and dark pressure", Starborn:"cosmic burst damage", Dunesoul:"sand, sun, and control", Tidecall:"water pressure and big finishers", Blacktide:"shark rushes, bleeding bites, and pirate broadside pressure", Graveborn:"bones, bleed, and fear", Runebound:"runes, paper, and weird tricks", Crystalbloom:"clean crystal burst", Bloodforge:"blood iron and heavy hits", Reaperborn:"mythic reaper energy", Hollowborn:"rainbow two-phase Hollow burst pressure", Titanhost:"Super Ultra mecha suit attacks",
-Riftcrown:"cyan portals, delayed sky strikes, and cosmic wyrm pressure" };
+Riftcrown:"cyan portals, delayed sky strikes, and cosmic wyrm pressure", Summerborn:"phoenix dives, mirage pack rushes, and heat pressure", Shoreguard:"crab claws, beach bruising, and object shredding", Shellguard:"mount armor, turtle body pressure, and tideglass waves", Steamscale:"fire-water dragon spirals with steam burst control", Casino:"slot-machine chaos, scratch-ticket bursts, and jackpot projectiles" };
 
     function byId(id) { return CARD_POOL.find(card => card.id === id); }
     function cardSort(a,b) { return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0) || (b.evolutionStage || 0) - (a.evolutionStage || 0) || a.name.localeCompare(b.name); }
@@ -1546,6 +1647,187 @@ function renderStats() {
         ctx.stroke();
         ctx.restore();
 
+      } else if (card.family === "Casino") {
+        const casinoKey = `${card.id || ""} ${card.name || ""}`.toLowerCase();
+        ctx.shadowBlur = 24;
+        ctx.shadowColor = card.visualColor || "#facc15";
+        if (/orbit/.test(casinoKey)) {
+          for (let i = 0; i < 6; i++) {
+            const a = age * 3.2 + i * Math.PI / 3;
+            ctx.fillStyle = ["#facc15", "#f472b6", "#38bdf8"][i % 3];
+            ctx.fillRect(Math.cos(a) * w * 1.7 - 4, Math.sin(a) * w * 1.0 - 4, 8, 8);
+          }
+          ctx.beginPath();
+          ctx.ellipse(0, 0, w * 1.25, w * 0.72, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (/scratch/.test(casinoKey)) {
+          ctx.fillStyle = "#f472b6";
+          ctx.beginPath();
+          ctx.roundRect(-w * 1.4, -w * .82, w * 2.4, w * 1.55, 6);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#020617";
+          ctx.beginPath();
+          ctx.arc(-w * .45, -w * .18, 3, 0, Math.PI * 2);
+          ctx.arc(w * .35, -w * .18, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillRect(-w * .6, w * .22, w * 1.15, 5);
+        } else {
+          ctx.fillStyle = "#7c2d12";
+          ctx.beginPath();
+          ctx.roundRect(-w * 1.05, -w * .95, w * 1.8, w * 1.9, 7);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = "#facc15";
+          ctx.font = `${Math.max(12, w * .7)}px Orbitron`;
+          ctx.fillText("777", -w * .72, w * .12);
+        }
+
+      } else if (card.family === "Summerborn") {
+        const isPhoenix = card.id === "suncrest_phoenix";
+        if (isPhoenix) {
+          const flap = Math.sin(age * 8 + stride) * w * .16;
+
+          ctx.save();
+          ctx.globalCompositeOperation = "screen";
+          for (let i = 0; i < 4; i++) {
+            ctx.fillStyle = `rgba(251,146,60,${0.2 - i * 0.03})`;
+            ctx.beginPath();
+            ctx.ellipse(-w * (1.35 + i * .28), Math.sin(age * 5 + i) * w * .18, w * (1.0 - i * .08), w * (.25 - i * .02), -0.08, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+
+          ctx.fillStyle = "#f97316";
+          ctx.beginPath();
+          ctx.ellipse(-w * .08, 0, w * 1.05, w * .42, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#facc15";
+          ctx.beginPath();
+          ctx.ellipse(w * .25, -w * .02, w * .55, w * .25, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = "#fb923c";
+          ctx.beginPath();
+          ctx.moveTo(-w * .05, -w * .18);
+          ctx.quadraticCurveTo(-w * 1.35, -w * (1.12 + flap / w), -w * 2.35, -w * .22);
+          ctx.quadraticCurveTo(-w * 1.24, w * .06, -w * .02, w * .18);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(-w * .02, w * .16);
+          ctx.quadraticCurveTo(-w * 1.25, w * (1.05 - flap / w), -w * 2.22, w * .25);
+          ctx.quadraticCurveTo(-w * 1.15, -w * .02, -w * .02, -w * .05);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#fde68a";
+          ctx.beginPath();
+          ctx.ellipse(w * 1.05, -w * .14, w * .34, w * .27, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#facc15";
+          ctx.beginPath();
+          ctx.moveTo(w * 1.28, -w * .14);
+          ctx.lineTo(w * 1.7, -w * .26);
+          ctx.lineTo(w * 1.36, -w * .02);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.strokeStyle = "#fef3c7";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(w * .92, -w * .38);
+          ctx.quadraticCurveTo(w * .98, -w * .72, w * 1.18, -w * .62);
+          ctx.moveTo(w * 1.04, -w * .36);
+          ctx.quadraticCurveTo(w * 1.16, -w * .66, w * 1.34, -w * .48);
+          ctx.stroke();
+
+          ctx.fillStyle = "#020617";
+          ctx.beginPath();
+          ctx.arc(w * 1.16, -w * .19, w * .045, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = "#ef4444";
+          for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.moveTo(-w * .9, (i - 1) * w * .14);
+            ctx.quadraticCurveTo(-w * 1.55, (i - 1) * w * .42, -w * 2.08, (i - 1) * w * .26);
+            ctx.quadraticCurveTo(-w * 1.45, (i - 1) * w * .08, -w * .86, (i - 1) * w * .05);
+            ctx.fill();
+          }
+        } else {
+          ctx.fillStyle = "rgba(251,146,60,.68)";
+          ctx.beginPath();
+          ctx.ellipse(-w * .1, 0, w * 1.1, w * .44, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = "#fbbf24";
+          ctx.beginPath();
+          ctx.ellipse(w * .82, -w * .18, w * .34, w * .28, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(w * .74, -w * .42);
+          ctx.lineTo(w * .86, -w * .82);
+          ctx.lineTo(w * 1.0, -w * .42);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.strokeStyle = "rgba(254,240,138,.76)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-w * .9, -w * .04);
+          ctx.quadraticCurveTo(-w * 1.65, -w * .7, -w * 2.05, -w * .12);
+          ctx.stroke();
+        }
+
+      } else if (card.family === "Shoreguard") {
+        ctx.fillStyle = "#b45309";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 1.08, w * .82, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        [-1, 1].forEach(side => {
+          ctx.beginPath();
+          ctx.moveTo(side * w * .85, -w * .05);
+          ctx.quadraticCurveTo(side * w * 1.8, -w * .85, side * w * 2.35, -w * .15);
+          ctx.quadraticCurveTo(side * w * 1.75, w * .25, side * w * 1.05, w * .15);
+          ctx.stroke();
+        });
+
+      } else if (card.family === "Shellguard") {
+        ctx.fillStyle = "#0f766e";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, w * 1.45, w * .88, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = "#cffafe";
+        ctx.beginPath();
+        ctx.moveTo(-w, 0); ctx.lineTo(w, 0);
+        ctx.moveTo(0, -w * .8); ctx.lineTo(0, w * .8);
+        ctx.ellipse(0, 0, w * .75, w * .5, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+      } else if (card.family === "Steamscale") {
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(-w * .1, 0, w * 1.1, -1.1, 1.1);
+        ctx.stroke();
+        ctx.strokeStyle = "#38bdf8";
+        ctx.beginPath();
+        ctx.arc(w * .1, 0, w * 1.1, 2.05, 4.25);
+        ctx.stroke();
+
       } else if (card.family === "Plaguekin") {
         ctx.beginPath();
         ctx.ellipse(-w * 0.2, 0, w * 1.1, w * 0.72, 0, 0, Math.PI * 2);
@@ -1691,6 +1973,101 @@ function renderStats() {
       drawPreviewOrbitUfoSaucer(ctx, ufoX, ufoY, 18, age, color);
     }
 
+    function drawCasinoOrbitPreviewCanvas(ctx, card, index, age, width, height, color) {
+      const casterX = 98;
+      const casterY = height * 0.5;
+      const targetX = width - 44;
+      const targetY = height * 0.5;
+      const orbitRx = 58;
+      const orbitRy = 34;
+      const orbitAngle = age * 2.25 + index * 0.45;
+      const symbols = ["7", "BAR", "$", "DI", "SP", "ST"];
+      const palette = ["#facc15", "#f472b6", "#38bdf8", "#fb7185", "#a78bfa", "#34d399"];
+
+      function drawSymbolChip(x, y, label, fill, scale = 1) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.shadowBlur = 18 * scale;
+        ctx.shadowColor = fill;
+        ctx.fillStyle = "rgba(15,23,42,.94)";
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = 2 * scale;
+        ctx.beginPath();
+        ctx.roundRect(-15 * scale, -12 * scale, 30 * scale, 24 * scale, 7 * scale);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = fill;
+        ctx.font = `900 ${label.length > 2 ? 7 * scale : 12 * scale}px Orbitron, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(label, 0, 1);
+        ctx.restore();
+      }
+
+      drawPreviewCardChip(ctx, card, 34, casterY);
+      drawPreviewTarget(ctx, targetX, targetY, color);
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(casterX, casterY, orbitRx, orbitRy, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(casterX, casterY);
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = color;
+      ctx.fillStyle = "rgba(15,23,42,.94)";
+      ctx.strokeStyle = "rgba(250,204,21,.92)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#facc15";
+      ctx.font = "900 14px Orbitron, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("$", 0, 1);
+      ctx.restore();
+
+      for (let i = 0; i < symbols.length; i++) {
+        const a = orbitAngle + i * Math.PI * 2 / symbols.length;
+        const x = casterX + Math.cos(a) * orbitRx;
+        const y = casterY + Math.sin(a) * orbitRy;
+        const scale = 0.86 + (Math.sin(a) + 1) * 0.1;
+        drawSymbolChip(x, y, symbols[i], palette[i % palette.length], scale);
+      }
+
+      const cycle = (age * 0.42 + index * 0.13) % 1;
+      if (cycle > 0.48) {
+        const t = Math.min(1, (cycle - 0.48) / 0.42);
+        const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        const launchA = orbitAngle + Math.PI * 1.3;
+        const startX = casterX + Math.cos(launchA) * orbitRx;
+        const startY = casterY + Math.sin(launchA) * orbitRy;
+        const shotX = startX + (targetX - startX) * eased;
+        const shotY = startY + (targetY - startY) * eased - Math.sin(t * Math.PI) * 18;
+
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.strokeStyle = "#facc15";
+        ctx.globalAlpha = 0.32 + Math.sin(t * Math.PI) * 0.36;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.quadraticCurveTo(width * 0.62, height * 0.18, shotX, shotY);
+        ctx.stroke();
+        ctx.restore();
+
+        drawSymbolChip(shotX, shotY, "7", "#facc15", 1.12);
+      }
+    }
+
     function drawSuitPreviewCanvas(ctx, card, index, age, width, height, color) {
       const hostX = 96;
       const hostY = height * 0.5;
@@ -1767,6 +2144,84 @@ function renderStats() {
       ctx.restore();
     }
 
+    function drawMountPreviewCanvas(ctx, card, index, age, width, height, color) {
+      const mountX = 122;
+      const mountY = height * 0.5;
+      const targetX = width - 44;
+      const targetY = height * 0.5;
+      const isCrab = String(card.id || "").includes("crab");
+      const pulse = Math.sin(age * 5 + index) * 0.5 + 0.5;
+
+      drawPreviewCardChip(ctx, card, 34, mountY);
+      drawPreviewTarget(ctx, targetX, targetY, color);
+
+      ctx.save();
+      ctx.translate(mountX, mountY);
+      ctx.shadowBlur = 24;
+      ctx.shadowColor = color;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(236,253,245,.86)";
+
+      if (isCrab) {
+        ctx.fillStyle = "#b45309";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 54, 34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        [-1, 1].forEach(side => {
+          ctx.strokeStyle = "#facc15";
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(side * 42, -6);
+          ctx.quadraticCurveTo(side * (82 + pulse * 10), -38, side * 98, -8);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(side * 98, -8);
+          ctx.lineTo(side * 115, -24);
+          ctx.moveTo(side * 98, -8);
+          ctx.lineTo(side * 114, 8);
+          ctx.stroke();
+        });
+      } else {
+        ctx.fillStyle = "#0f766e";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 72, 42, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = "#cffafe";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 44, 26, 0, 0, Math.PI * 2);
+        ctx.moveTo(-50, 0);
+        ctx.lineTo(50, 0);
+        ctx.moveTo(0, -34);
+        ctx.lineTo(0, 34);
+        ctx.stroke();
+
+        ctx.fillStyle = "#0e7490";
+        ctx.beginPath();
+        ctx.ellipse(82, -2, 18, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isCrab ? 5 : 6;
+      ctx.globalAlpha = 0.35 + pulse * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(mountX + 62, mountY);
+      ctx.quadraticCurveTo(width * 0.62, mountY + (isCrab ? Math.sin(age * 8) * 18 : -30), targetX - 8, targetY);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     function drawProjectileCanvas(canvas, card, index, now) {
       const rect = canvas.getBoundingClientRect();
       const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
@@ -1790,8 +2245,18 @@ function renderStats() {
         return;
       }
 
+      if (card.attackType === "CasinoOrbit") {
+        drawCasinoOrbitPreviewCanvas(ctx, card, index, age, width, height, color);
+        return;
+      }
+
       if (card.attackType === "SuperUltraSuit") {
         drawSuitPreviewCanvas(ctx, card, index, age, width, height, color);
+        return;
+      }
+
+      if (card.attackType === "SuperUltraMount") {
+        drawMountPreviewCanvas(ctx, card, index, age, width, height, color);
         return;
       }
 
@@ -1844,10 +2309,13 @@ function renderStats() {
 
     function projectilePreview(card, index = 0) {
       const isSuit = card.attackType === "SuperUltraSuit";
+      const isMount = card.attackType === "SuperUltraMount";
       const isOrbit = card.attackType === "OrbitUfo";
-      const attackLabel = isSuit ? "Attached Suit" : isOrbit ? "Orbit Companion" : (card.attackType || "Projectile");
-      const particleLabel = isSuit ? "mecha host" : isOrbit ? "laser zap" : (card.particleType || "creature");
-      const previewLabel = isSuit ? "in-game suit ability preview" : isOrbit ? "in-game orbit ability preview" : "in-game projectile preview";
+      const isCasinoOrbit = card.attackType === "CasinoOrbit";
+      const isCrabMount = isMount && String(card.id || "").includes("crab");
+      const attackLabel = isSuit ? "Attached Suit" : isCrabMount ? "Mount + Claw Melee" : isMount ? "Mount + Skill" : isCasinoOrbit ? "Orbit + Lucky Shot" : isOrbit ? "Orbit Companion" : (card.attackType || "Projectile");
+      const particleLabel = isSuit ? "mecha host" : isCrabMount ? "close-range claw swing" : isMount ? `${card.mountKind || "mount"} body + skill` : isCasinoOrbit ? "orbit symbols + fired chip" : isOrbit ? "laser zap" : (card.particleType || "creature");
+      const previewLabel = isSuit ? "in-game suit ability preview" : isMount ? "in-game mount ability preview" : isCasinoOrbit || isOrbit ? "in-game orbit ability preview" : "in-game projectile preview";
 
       return `
         <div class="projectile-canvas-stage" aria-label="${escapeCardArtText(card.name)} ${previewLabel}">
@@ -1880,10 +2348,13 @@ function renderStats() {
       document.getElementById("effect-grid").innerHTML = cards.map((card, index) => {
         const color = card.visualColor || "#67e8f9";
         const isSuit = card.attackType === "SuperUltraSuit";
+        const isMount = card.attackType === "SuperUltraMount";
         const isOrbit = card.attackType === "OrbitUfo";
+        const isCasinoOrbit = card.attackType === "CasinoOrbit";
+        const isCrabMount = isMount && String(card.id || "").includes("crab");
         const isBroadside = !!card.broadsideVolley;
-        const previewNoun = isSuit ? "attached suit" : isOrbit ? "orbit companion" : isBroadside ? "broadside ship" : "projectile";
-        const attackName = isSuit ? "Slash / Blast / Rush" : isOrbit ? "Orbit / Laser Zap" : isBroadside ? "Ship Charge / Cannon Volley" : (card.attackType || "Attack");
+        const previewNoun = isSuit ? "attached suit" : isCrabMount ? "mount melee" : isMount ? "mount skill" : isCasinoOrbit ? "casino orbit" : isOrbit ? "orbit companion" : isBroadside ? "broadside ship" : "projectile";
+        const attackName = isSuit ? "Slash / Blast / Rush" : isCrabMount ? "Claw Combo / Body Crush" : isMount ? "Mounted Skill" : isCasinoOrbit ? "Orbit Contact / Lucky Symbol Shot" : isOrbit ? "Orbit / Laser Zap" : isBroadside ? "Ship Charge / Cannon Volley" : (card.attackType || "Attack");
         return `<article class="effect-card" style="--fx-color:${color}">
           ${projectilePreview(card, index)}
           <h3>${card.name}</h3>
