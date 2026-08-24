@@ -2518,9 +2518,11 @@
             min-height: 0;
             margin-top: auto !important;
             margin-bottom: auto !important;
-            overflow: visible !important;
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
             padding-top: clamp(8px, 1.6vh, 24px) !important;
-            padding-bottom: clamp(10px, 1.8vh, 26px) !important;
+            padding-bottom: clamp(54px, 8vh, 86px) !important;
+            scrollbar-gutter: stable;
         }
 
         #menu-container.main-menu-nav {
@@ -2545,13 +2547,16 @@
         @media (max-width: 900px), (max-height: 760px) {
             #main-menu-ui {
                 justify-content: flex-start !important;
+                grid-template-rows: auto minmax(0, 1fr) 24px !important;
             }
 
             #main-menu-ui > main.main-menu-stage {
                 margin-top: 0 !important;
                 margin-bottom: 0 !important;
                 align-items: start;
-                padding: 6px 10px calc(env(safe-area-inset-bottom) + 12px) !important;
+                overflow-x: hidden !important;
+                overflow-y: auto !important;
+                padding: 6px 10px calc(env(safe-area-inset-bottom) + 52px) !important;
                 gap: clamp(8px, 1.2vh, 12px) !important;
             }
 
@@ -2587,6 +2592,20 @@
             [data-ranked-toggle] {
                 padding: 0.28rem 0.45rem !important;
                 font-size: 7px !important;
+            }
+
+            #main-menu-ui > footer.main-menu-footer {
+                height: 24px !important;
+                min-height: 24px !important;
+                max-height: 24px !important;
+                padding: 2px 8px !important;
+                opacity: 0.72;
+                pointer-events: none;
+            }
+
+            #main-menu-ui > footer.main-menu-footer > div:first-child span,
+            #main-menu-ui > footer.main-menu-footer a {
+                display: none !important;
             }
         }
 
