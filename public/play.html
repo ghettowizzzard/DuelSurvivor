@@ -4892,12 +4892,19 @@
         ];
 
         const EVENT_TEST_OVERRIDE_KEY = "duelio_event_test_override";
+        const FALL_PERMANENT_MAP_CONTENT_UNLOCK_AT = new Date(2026, 8, 22, 0, 0, 0, 0);
+
+        function isFallPermanentMapContentUnlocked(date = new Date()) {
+            const checkDate = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+            return checkDate >= FALL_PERMANENT_MAP_CONTENT_UNLOCK_AT;
+        }
+
         const seasonalRuntimeState = {
             activeEventId: null,
             activeEventName: "",
             testOverrideId: "",
             summerBiomeCoverage: 1,
-            fallBiomeCoverage: 0.16,
+            fallBiomeCoverage: 0,
             lastRefreshAt: 0
         };
 
@@ -5013,6 +5020,9 @@
 
         function getFallBiomeCoverageForDate(date = new Date(), fallActive = false) {
             const permanentCoverage = 0.16;
+            const fallMapUnlocked = isFallPermanentMapContentUnlocked(date);
+
+            if (!fallMapUnlocked && !fallActive) return 0;
             if (!fallActive) return permanentCoverage;
 
             if (date.getMonth() === 8) return 0.46;
@@ -5042,7 +5052,7 @@
 
             if (overrideEventId === "summer") {
                 summerBiomeCoverage = 1;
-                fallBiomeCoverage = 0.16;
+                fallBiomeCoverage = isFallPermanentMapContentUnlocked(date) ? 0.16 : 0;
             } else if (overrideEventId === "fall") {
                 summerBiomeCoverage = 0.30;
                 fallBiomeCoverage = 0.84;
@@ -25350,7 +25360,7 @@ const bots = [];
                 : 1;
             const fallBiomeCoverage = typeof getSeasonalBiomeCoverage === "function"
                 ? getSeasonalBiomeCoverage("fall")
-                : 0.16;
+                : 0;
 
             if (info.isShore) {
                 const beachNoise = islandNoise(x + 840, y - 420, 1.85);
@@ -36981,7 +36991,10 @@ function spawnBeachTreasureCrates() {
         function spawnFallBiomeFeatures() {
             const fallCoverage = typeof getSeasonalBiomeCoverage === "function"
                 ? getSeasonalBiomeCoverage("fall")
-                : 0.16;
+                : 0;
+
+            if (fallCoverage <= 0.02) return;
+
             const preset = typeof perfSettings === "object" ? perfSettings.preset : "medium";
             const baseTarget = preset === "low" ? 34 : preset === "high" ? 76 : 54;
             const treeTarget = Math.max(16, Math.round(baseTarget * (0.62 + fallCoverage)));
