@@ -2505,6 +2505,136 @@
                 display: none !important;
             }
         }
+
+        /* Keeps the expanded main menu usable inside the homepage iframe and short viewports. */
+        #main-menu-ui {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+        }
+
+        #main-menu-ui > main.main-menu-stage {
+            min-height: 0;
+            margin-top: auto !important;
+            margin-bottom: auto !important;
+            overflow: visible !important;
+            padding-top: clamp(8px, 1.6vh, 24px) !important;
+            padding-bottom: clamp(10px, 1.8vh, 26px) !important;
+        }
+
+        #menu-container.main-menu-nav {
+            width: 100%;
+            max-width: min(100%, 28rem);
+        }
+
+        #menu-container > * + * {
+            margin-top: clamp(6px, 1vh, 16px) !important;
+        }
+
+        #menu-container .menu-btn {
+            min-height: clamp(46px, 7vh, 64px);
+            padding: clamp(0.52rem, 1.05vh, 1rem) clamp(0.85rem, 1.45vw, 1.5rem) !important;
+        }
+
+        #menu-container .menu-btn-text,
+        #menu-container .menu-btn .text-left {
+            min-width: 0;
+        }
+
+        @media (max-width: 900px), (max-height: 760px) {
+            #main-menu-ui {
+                justify-content: flex-start !important;
+            }
+
+            #main-menu-ui > main.main-menu-stage {
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+                align-items: start;
+                padding: 6px 10px calc(env(safe-area-inset-bottom) + 12px) !important;
+                gap: clamp(8px, 1.2vh, 12px) !important;
+            }
+
+            .main-menu-copy > * + * {
+                margin-top: clamp(6px, 1vh, 10px) !important;
+            }
+
+            #menu-container > * + * {
+                margin-top: clamp(4px, 0.75vh, 7px) !important;
+            }
+
+            #menu-container .menu-btn {
+                min-height: clamp(38px, 6vh, 50px);
+                padding: clamp(0.34rem, 0.8vh, 0.55rem) clamp(0.62rem, 1vw, 0.9rem) !important;
+            }
+
+            #menu-container .menu-btn-text > span:first-child {
+                width: 1.85rem !important;
+                height: 1.85rem !important;
+                min-width: 1.85rem !important;
+            }
+
+            #menu-container .menu-btn .text-xl {
+                font-size: clamp(0.78rem, 2.4vh, 0.95rem) !important;
+                line-height: 1.02 !important;
+            }
+
+            #menu-container .menu-btn .text-left > div:nth-child(2) {
+                font-size: 7px !important;
+                line-height: 1.05 !important;
+            }
+
+            [data-ranked-toggle] {
+                padding: 0.28rem 0.45rem !important;
+                font-size: 7px !important;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 520px) {
+            #main-menu-ui > main.main-menu-stage {
+                position: relative !important;
+                inset: auto !important;
+                display: block !important;
+            }
+
+            .main-menu-copy {
+                display: grid !important;
+                grid-template-columns: minmax(170px, 0.72fr) minmax(250px, 1fr);
+                gap: 8px !important;
+                align-items: center;
+            }
+
+            .main-menu-copy > * + * {
+                margin-top: 0 !important;
+            }
+
+            .main-menu-hero-copy {
+                padding: 7px 9px !important;
+            }
+
+            #menu-container .menu-btn {
+                min-height: 34px;
+                padding: 0.3rem 0.55rem !important;
+            }
+
+            #menu-container > * + * {
+                margin-top: 3px !important;
+            }
+
+            #menu-container .menu-btn-text > span:first-child {
+                width: 1.5rem !important;
+                height: 1.5rem !important;
+                min-width: 1.5rem !important;
+            }
+
+            #menu-container .menu-btn .text-xl {
+                font-size: 0.72rem !important;
+            }
+
+            #menu-container .menu-btn .text-left > div:nth-child(2) {
+                font-size: 6.5px !important;
+            }
+        }
     </style>
 </head>
 <body class="relative min-h-screen text-slate-100 flex flex-col justify-between">
