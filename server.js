@@ -99,12 +99,9 @@ function isAllowedBrowserOrigin(rawOrigin) {
     const url = new URL(origin);
     const host = url.hostname.toLowerCase();
 
-    // Production browser connections must use HTTPS.
+    // Local browser testing is allowed over HTTP; production browser origins still require HTTPS.
     if (url.protocol !== "https:") {
-      return (
-        process.env.NODE_ENV === "development" &&
-        (host === "localhost" || host === "127.0.0.1" || host === "[::1]")
-      );
+      return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
     }
 
     // Allows only genuine Game Jolt HTTPS subdomains:
@@ -118,9 +115,7 @@ function isAllowedBrowserOrigin(rawOrigin) {
 
 const GAME_CORS_OPTIONS = Object.freeze({
   origin(origin, callback) {
-    // Requests without an Origin header can still read public HTTP routes,
-    // but browser CORS permission is not granted.
-    callback(null, !!origin && isAllowedBrowserOrigin(origin));
+    callback(null, !origin || isAllowedBrowserOrigin(origin));
   },
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type"],
@@ -340,7 +335,16 @@ const io = new Server(httpServer, {
   // CORS headers alone do not stop every WebSocket handshake.
   // Reject browser connections not coming from approved game hosts.
   allowRequest(req, callback) {
-    callback(null, isAllowedBrowserOrigin(req.headers.origin));
+    const origin = String(req.headers.origin || "");
+    const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+    const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+    if (!origin || localHosts.has(host)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(null, isAllowedBrowserOrigin(origin));
   },
 
   // Global per-message Socket.IO cap.
@@ -356,13 +360,20 @@ const players = new Map();
 const idToSocket = new Map();
 const parties = new Map();
 const matches = new Map();
+const tcgDuels = new Map();
+const tcgDuelInvites = new Map();
+const tcgLobbies = new Map();
+const tcgNpcProfiles = new Map();
 const leaderboardProfiles = new Map();
 
 // Ranked Duo waits here until a second real two-player party is ready.
 const rankedDuoPartyQueue = [];
 const rankedDuoQueueTimers = new Map();
 
-const PLAYER_SESSION_SECRET = String(process.env.PLAYER_SESSION_SECRET || "").trim();
+const PLAYER_SESSION_SECRET = String(
+  process.env.PLAYER_SESSION_SECRET ||
+  (process.env.NODE_ENV === "production" ? "" : "duel-survivor-local-dev-session-secret")
+).trim();
 
 // Use this only when you intentionally rotate PLAYER_SESSION_SECRET.
 // Put the old secret in Render here temporarily so old accounts still load.
@@ -440,6 +451,10 @@ const MATCH_ACTION_EMOTE_IDS = new Set([
   "bp_reaper_laugh",
   "bp_mana_bloom",
   "bp_dragon_fire",
+  "fall_leaves",
+  "fall_tornado",
+  "fall_pie",
+  "fall_coffee",
   "share_ufo_alien",
   "ranked_rift_medal_2",
   "ranked_sovereign_medal_1"
@@ -649,6 +664,7 @@ const ACCOUNT_SHARE_REWARD = Object.freeze({
 });
 
 const ACCOUNT_DAILY_TIME_ZONE = "America/Vancouver";
+const ACCOUNT_FALL_LEAVES_EMOTE_ID = "fall_leaves";
 
 const ACCOUNT_DAILY_REWARD_TRACK = Object.freeze([
   { day: 1, title: "Fresh Duelist Bonus", gold: 600, gems: 0 },
@@ -809,6 +825,10 @@ const ACCOUNT_EMOTE_IDS = new Set([
   "bp_reaper_laugh",
   "bp_mana_bloom",
   "bp_dragon_fire",
+  "fall_leaves",
+  "fall_tornado",
+  "fall_pie",
+  "fall_coffee",
   "share_ufo_alien",
   "ranked_rift_medal_2",
   "ranked_sovereign_medal_1"
@@ -842,6 +862,7 @@ const ACCOUNT_SEASONAL_EVENTS = Object.freeze({
 const ACCOUNT_ACTION_RULES = Object.freeze({
   migrateLegacy: { cooldownMs: 0, windowMs: 60000, maxInWindow: 1 },
   claimDailyReward: { cooldownMs: 500, windowMs: 60000, maxInWindow: 3 },
+  claimFallLeavesEmote: { cooldownMs: 750, windowMs: 60000, maxInWindow: 2 },
   claimProgressReward: { cooldownMs: 200, windowMs: 60000, maxInWindow: 80 },
   buyBattlePassPremium: { cooldownMs: 300, windowMs: 60000, maxInWindow: 3 },
   buyPack: { cooldownMs: 350, windowMs: 10000, maxInWindow: 12 },
@@ -973,6 +994,14 @@ function loadAccountCardCatalog() {
         id,
         rarity,
         category,
+        name: accountReadStringProperty(text, "name"),
+        description: accountReadStringProperty(text, "description"),
+        triggerType: accountReadStringProperty(text, "triggerType"),
+        effectType: accountReadStringProperty(text, "effectType"),
+        duration: accountReadNumberProperty(text, "duration", 0),
+        damage: accountReadNumberProperty(text, "damage", 0),
+        reflectRatio: accountReadNumberProperty(text, "reflectRatio", 0),
+        hpThreshold: accountReadNumberProperty(text, "hpThreshold", 0),
         family: accountReadStringProperty(text, "family"),
         evolutionStage: Math.max(1, accountReadNumberProperty(text, "evolutionStage", 1)),
         battlePassExclusive: accountReadBooleanProperty(text, "battlePassExclusive"),
@@ -1257,6 +1286,15 @@ function accountNormalizeInventory(rawValue, options = {}) {
     : [];
 
   for (const rawId of sharedEmotes) {
+    const id = accountSafeId(rawId);
+    if (id && ACCOUNT_EMOTE_IDS.has(id)) inventory.ownedEmotes[id] = 1;
+  }
+
+  const eventRewardEmotes = Array.isArray(source.eventRewardEmoteIds)
+    ? source.eventRewardEmoteIds
+    : [];
+
+  for (const rawId of eventRewardEmotes) {
     const id = accountSafeId(rawId);
     if (id && ACCOUNT_EMOTE_IDS.has(id)) inventory.ownedEmotes[id] = 1;
   }
@@ -1710,6 +1748,18 @@ function accountVancouverDayKey(date = new Date()) {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
+function accountIsFallLeavesEmoteRewardWindow(date = new Date()) {
+  const dayKey = accountVancouverDayKey(date);
+  const month = Number(dayKey.slice(5, 7));
+  const day = Number(dayKey.slice(8, 10));
+
+  return (
+    (month === 9 && day >= 22) ||
+    month === 10 ||
+    month === 11
+  );
+}
+
 function accountRollDailyCard(rule = {}) {
   const minRank = safeStatInt(rule.minRarityRank, 0, 8);
 
@@ -2010,6 +2060,25 @@ function accountBuyBattlePassPremium(entry, data = {}) {
   };
 }
 
+function accountClaimFallLeavesEmote(entry) {
+  const account = accountEnsureInventory(entry);
+
+  if (!accountIsFallLeavesEmoteRewardWindow()) {
+    return { ok: false, error: "Fall Leaves is only available during the Fall Event." };
+  }
+
+  const alreadyOwned = !!account.ownedEmotes[ACCOUNT_FALL_LEAVES_EMOTE_ID];
+  account.ownedEmotes[ACCOUNT_FALL_LEAVES_EMOTE_ID] = 1;
+  entry.updatedAt = Date.now();
+
+  return {
+    ok: true,
+    emoteId: ACCOUNT_FALL_LEAVES_EMOTE_ID,
+    alreadyOwned,
+    summary: alreadyOwned ? ["Fall Leaves Emote already owned"] : ["Fall Leaves Emote"]
+  };
+}
+
 function accountLegacyMigration(entry, rawLegacy) {
   if (!ACCOUNT_LEGACY_MIGRATION_ENABLED) {
     return { ok: false, error: "Legacy browser-save migration is closed." };
@@ -2053,6 +2122,10 @@ function accountHandleAction(entry, actionType, data = {}) {
 
   if (actionType === "claimDailyReward") {
     return accountClaimDailyReward(entry);
+  }
+
+  if (actionType === "claimFallLeavesEmote") {
+    return accountClaimFallLeavesEmote(entry);
   }
 
   if (actionType === "claimProgressReward") {
@@ -3415,6 +3488,7 @@ function publicPlayer(p) {
     icon: p.icon || "DS",
     partyId: p.partyId || null,
     inMatch: !!p.inMatch,
+    inTcgDuel: !!p.tcgDuelId,
     voiceReady: !!p.voiceReady,
     voiceMuted: !!p.voiceMuted,
     voiceMode: p.voiceMode || "ptt",
@@ -3425,6 +3499,3360 @@ function publicPlayer(p) {
 
 function broadcastOnlineList() {
   io.emit("onlinePlayers", [...players.values()].map(publicPlayer));
+}
+
+const TCG_DUEL_MIN_DECK_SIZE = 15;
+const TCG_DUEL_MAX_DECK_SIZE = 40;
+const TCG_DUEL_MAX_DUPLICATES = 3;
+const TCG_DUEL_LIFE_POINTS = 4000;
+const TCG_DUEL_INVITE_TTL_MS = 20000;
+const TCG_TURN_CHOICE_MS = 8000;
+const TCG_RPS_AUTO_PICK_MS = 10000;
+const TCG_RPS_REVEAL_MS = 2400;
+const TCG_RPS_CHOICES = new Set(["rock", "paper", "scissors"]);
+const TCG_REWARD_PACKS = { win: "mythic_rift", loss: "starter_rift" };
+const TCG_NPC_SOCKET_PREFIX = "tcg_npc_";
+const TCG_NPC_NAMES = ["RiftRunner77", "SunnyAce", "CardSharkKai", "NovaGambit", "BeachsideAce", "TabletopRonin"];
+const TCG_NPC_EXCLUDED_CARD_PATTERN = /slotty|casino|scratch/i;
+const TCG_RARITY_RANK = {
+  Common: 1,
+  Uncommon: 2,
+  Rare: 3,
+  Epic: 4,
+  Legendary: 5,
+  Mythic: 6,
+  "Super Ultra Rare": 7,
+  "God Tier": 8
+};
+const TCG_DUEL_BOARD_LANES = 5;
+const TCG_DUEL_BOARD_ROWS = 6;
+const TCG_DUEL_BOARD_CELLS = TCG_DUEL_BOARD_LANES * TCG_DUEL_BOARD_ROWS;
+
+function makeTcgDuelId() {
+  return "tcg_" + Math.random().toString(36).slice(2, 11);
+}
+
+function tcgGetServerCard(cardId) {
+  return ACCOUNT_CARD_CATALOG.get(accountSafeId(cardId)) || null;
+}
+
+function tcgCardCategory(cardId) {
+  return tcgGetServerCard(cardId)?.category || "monster";
+}
+
+function tcgCardRank(cardId) {
+  return TCG_RARITY_RANK[tcgGetServerCard(cardId)?.rarity || "Common"] || 1;
+}
+
+function tcgCardStats(cardId) {
+  const card = tcgGetServerCard(cardId);
+  const rank = tcgCardRank(cardId);
+
+  if ((card?.category || "monster") !== "monster") {
+    return { attack: 0, health: 0, rank };
+  }
+
+  const tributeBoost = tcgCreatureSacrificeCost(cardId) * 180;
+
+  return {
+    attack: Math.round(520 + rank * 260 + tributeBoost),
+    health: Math.round(780 + rank * 310 + tributeBoost * 1.35),
+    rank
+  };
+}
+
+function tcgCreatureSacrificeCost(cardId) {
+  const rank = tcgCardRank(cardId);
+  if (rank >= 7) return 2;
+  if (rank >= 5) return 1;
+  return 0;
+}
+
+function tcgNormalizeBoardLane(value) {
+  const lane = Math.floor(Number(value));
+  return Number.isFinite(lane) ? Math.max(0, Math.min(TCG_DUEL_BOARD_LANES - 1, lane)) : 0;
+}
+
+function tcgNormalizeBoardRow(value) {
+  const row = Math.floor(Number(value));
+  return Number.isFinite(row) ? Math.max(0, Math.min(TCG_DUEL_BOARD_ROWS - 1, row)) : 0;
+}
+
+function tcgCreatureBoardProfile(cardId) {
+  const card = tcgGetServerCard(cardId);
+  const rank = tcgCardRank(cardId);
+  const text = `${card?.id || ""} ${card?.name || ""} ${card?.description || ""}`.toLowerCase();
+
+  let moveRange = rank >= 7 ? 2 : 1;
+  let movePattern = "orthogonal";
+  let attackRange = rank >= 7 ? 2 : 1;
+  let attackStyle = "melee";
+
+  // Common/Uncommon/Rare creatures scout only their nearby 3x3.
+  // Mythic/SUR/God-tier and clear scout/ranged archetypes get wider light.
+  let sightRange = rank <= 3 ? 1 : rank <= 5 ? 2 : rank === 6 ? 3 : 4;
+
+  if (text.includes("phoenix") || text.includes("dragon")) {
+    moveRange = Math.max(moveRange, 2);
+    movePattern = "diagonal";
+    attackRange = Math.max(attackRange, 3);
+    attackStyle = "ranged";
+    sightRange = Math.max(sightRange, rank >= 7 ? 4 : 3);
+  }
+
+  if (text.includes("coyote") || text.includes("koi")) {
+    moveRange = Math.max(moveRange, 2);
+    movePattern = "omni";
+    attackRange = Math.max(attackRange, 3);
+    attackStyle = "ranged";
+    sightRange = Math.max(sightRange, rank >= 6 ? 3 : 2);
+  }
+
+  if (text.includes("turtle") || text.includes("tideglass")) {
+    moveRange = 1;
+    movePattern = "vertical";
+    attackRange = Math.max(attackRange, 2);
+    attackStyle = "ranged";
+    sightRange = Math.max(sightRange, 2);
+  }
+
+  if (text.includes("crab") || text.includes("titan")) {
+    moveRange = Math.max(moveRange, 2);
+    movePattern = "orthogonal";
+    attackRange = 1;
+    attackStyle = "melee";
+    if (text.includes("titan")) sightRange = Math.max(sightRange, rank >= 6 ? 3 : 2);
+  }
+
+  if (text.includes("lantern") || text.includes("flare") || text.includes("solar") || text.includes("star")) {
+    sightRange = Math.max(sightRange, rank >= 7 ? 5 : 4);
+  }
+
+  return {
+    moveRange,
+    movePattern,
+    attackRange,
+    attackStyle,
+    sightRange: Math.max(1, Math.min(5, sightRange))
+  };
+}
+
+function tcgBoardCellIndex(lane, row) {
+  return tcgNormalizeBoardRow(row) * TCG_DUEL_BOARD_LANES + tcgNormalizeBoardLane(lane);
+}
+
+function tcgBoardCellLane(cellIndex) {
+  return tcgNormalizeBoardLane(Math.floor(Number(cellIndex || 0)) % TCG_DUEL_BOARD_LANES);
+}
+
+function tcgBoardCellRow(cellIndex) {
+  return tcgNormalizeBoardRow(Math.floor(Number(cellIndex || 0)) / TCG_DUEL_BOARD_LANES);
+}
+
+function tcgNormalizeCreatureBoardState(state) {
+  if (!state) return Array(TCG_DUEL_BOARD_CELLS).fill(null);
+
+  const source = Array.isArray(state.creatureSlots) ? state.creatureSlots : [];
+  const next = Array(TCG_DUEL_BOARD_CELLS).fill(null);
+
+  source.forEach((slot, index) => {
+    if (!slot) return;
+
+    const lane = tcgNormalizeBoardLane(slot.lane ?? tcgBoardCellLane(index));
+    const row = tcgNormalizeBoardRow(slot.row ?? tcgBoardCellRow(index));
+    let cellIndex = tcgBoardCellIndex(lane, row);
+
+    if (next[cellIndex]) {
+      cellIndex = next.findIndex(entry => !entry);
+      if (cellIndex < 0) return;
+    }
+
+    slot.lane = tcgBoardCellLane(cellIndex);
+    slot.row = tcgBoardCellRow(cellIndex);
+    tcgRefreshCreatureBoardProfile(slot);
+    next[cellIndex] = slot;
+  });
+
+  state.creatureSlots = next;
+  return next;
+}
+
+function tcgNormalizeFieldTrapState(state) {
+  if (!state) return Array(TCG_DUEL_BOARD_CELLS).fill(null);
+
+  const source = Array.isArray(state.fieldTrapSlots) ? state.fieldTrapSlots : [];
+  state.fieldTrapSlots = Array.from(
+    { length: TCG_DUEL_BOARD_CELLS },
+    (_, index) => source[index] || null
+  );
+
+  return state.fieldTrapSlots;
+}
+
+function tcgMirrorBoardCellIndex(cellIndex) {
+  const lane = tcgBoardCellLane(cellIndex);
+  const row = tcgBoardCellRow(cellIndex);
+  return tcgBoardCellIndex(lane, TCG_DUEL_BOARD_ROWS - 1 - row);
+}
+
+function tcgTrapPlacementCellSet(state) {
+  const visible = new Set();
+  const creatures = tcgNormalizeCreatureBoardState(state);
+
+  creatures.forEach((creature, sourceCell) => {
+    if (!creature) return;
+
+    tcgRefreshCreatureBoardProfile(creature);
+
+    const sourceLane = tcgBoardCellLane(sourceCell);
+    const sourceRow = tcgBoardCellRow(sourceCell);
+    const range = Math.max(1, Math.min(5, Number(creature.sightRange || 1)));
+
+    for (let row = 0; row < TCG_DUEL_BOARD_ROWS; row++) {
+      for (let lane = 0; lane < TCG_DUEL_BOARD_LANES; lane++) {
+        if (Math.max(Math.abs(lane - sourceLane), Math.abs(row - sourceRow)) <= range) {
+          visible.add(tcgBoardCellIndex(lane, row));
+        }
+      }
+    }
+  });
+
+  return visible;
+}
+
+function tcgFieldTrapProfile(cardId) {
+  const card = tcgGetServerCard(cardId);
+  const rank = tcgCardRank(cardId);
+  const triggerType = String(card?.triggerType || "");
+  const effectType = String(card?.effectType || "");
+  const text = `${cardId} ${card?.name || ""} ${effectType} ${card?.description || ""}`.toLowerCase();
+
+  let kind = "snare";
+
+  if (/preventlethal|nexthitreduction|decoyclone|angel|shell.ward/.test(text)) {
+    kind = "guard";
+  } else if (/reflect|damagecloseattacker|revenge|rebuke|mirror.bite/.test(text)) {
+    kind = "reflect";
+  } else if (/umbrella|knockback|push/.test(text)) {
+    kind = "push";
+  } else if (/riptide|last.laugh/.test(text)) {
+    kind = "projectile";
+  } else if (/mine|explosion|detonat|destroy/.test(text)) {
+    kind = "blast";
+  } else if (/blind|curse|poison|revealattacker|blood.mark/.test(text)) {
+    kind = "weaken";
+  }
+
+  const attackTrigger = /OnHit|LowHP|Lethal/i.test(triggerType);
+  const exactCell = /tripwire|mine|pit/.test(text);
+  const damage = Math.max(
+    120,
+    Math.round((Number(card?.damage || 0) * 14) + 150 + rank * 95)
+  );
+
+  return {
+    kind,
+    triggerEvent: attackTrigger ? "attack" : "move",
+    triggerRadius: exactCell ? 0 : 1,
+    damage,
+    rootTurns: rank >= 4 ? 2 : 1,
+    pushDistance: rank >= 4 ? 2 : 1,
+    instantKill: rank >= 7 && kind === "blast",
+    pattern: tcgSpellPattern(cardId, "trap"),
+    range: Math.min(5, 2 + Math.ceil(rank / 2)),
+    reflectRatio: Math.max(0.3, Number(card?.reflectRatio || 0.42)),
+    ownerHpThreshold: /LowHP/i.test(triggerType)
+      ? Math.max(0.1, Number(card?.hpThreshold || 0.35))
+      : 0
+  };
+}
+
+function tcgTrapDistance(trapOwnerCell, victimCell) {
+  const mirroredTrapCell = tcgMirrorBoardCellIndex(trapOwnerCell);
+
+  return Math.max(
+    Math.abs(tcgBoardCellLane(mirroredTrapCell) - tcgBoardCellLane(victimCell)),
+    Math.abs(tcgBoardCellRow(mirroredTrapCell) - tcgBoardCellRow(victimCell))
+  );
+}
+
+function tcgPushCreatureTowardHome(state, fromCell, distance) {
+  const creature = state.creatureSlots[fromCell];
+  if (!creature) return fromCell;
+
+  const lane = tcgBoardCellLane(fromCell);
+  let destination = fromCell;
+  let row = tcgBoardCellRow(fromCell);
+
+  for (let step = 0; step < distance; step++) {
+    const nextRow = row - 1;
+    if (nextRow < 0) break;
+
+    const nextCell = tcgBoardCellIndex(lane, nextRow);
+    if (state.creatureSlots[nextCell]) break;
+
+    destination = nextCell;
+    row = nextRow;
+  }
+
+  if (destination !== fromCell) {
+    state.creatureSlots[fromCell] = null;
+    state.creatureSlots[destination] = creature;
+    creature.lane = tcgBoardCellLane(destination);
+    creature.row = tcgBoardCellRow(destination);
+  }
+
+  return destination;
+}
+
+function tcgBuildTrapProjectilePaths(profile, sourceCell) {
+  const sourceLane = tcgBoardCellLane(sourceCell);
+  const sourceRow = tcgBoardCellRow(sourceCell);
+
+  return [-1, 1].map((rowDirection, projectileIndex) => {
+    const path = [];
+
+    for (let step = 0; step <= profile.range; step++) {
+      const row = sourceRow + rowDirection * step;
+      if (row < 0 || row >= TCG_DUEL_BOARD_ROWS) break;
+
+      let lane = sourceLane;
+
+      if (profile.pattern === "diagonal") {
+        lane += rowDirection * step;
+      } else if (profile.pattern === "zigzag" || profile.pattern === "bounce") {
+        lane += step % 2 === 0 ? 0 : rowDirection;
+      }
+
+      if (lane < 0 || lane >= TCG_DUEL_BOARD_LANES) continue;
+
+      path.push({
+        kind: "creature",
+        lane,
+        row,
+        cellIndex: tcgBoardCellIndex(lane, row),
+        step,
+        projectileIndex
+      });
+    }
+
+    return path;
+  }).filter(path => path.length);
+}
+
+function tcgResolveFieldTraps(duel, victimSocketId, victimCellIndex, eventType, incomingDamage = 0) {
+  const victimState = duel.players[victimSocketId];
+  const trapOwnerSocketId = getTcgOpponentSocketId(duel, victimSocketId);
+  const trapOwnerState = duel.players[trapOwnerSocketId];
+
+  if (!victimState || !trapOwnerState) {
+    return { triggered: false, destroyed: false, displaced: false, cancelAction: false };
+  }
+
+  tcgNormalizeCreatureBoardState(victimState);
+  tcgNormalizeCreatureBoardState(trapOwnerState);
+
+  const traps = tcgNormalizeFieldTrapState(trapOwnerState);
+  let currentCell = victimCellIndex;
+  let triggered = false;
+  let destroyed = false;
+  let displaced = false;
+  let cancelAction = false;
+
+  for (let trapCell = 0; trapCell < traps.length; trapCell++) {
+    const trap = traps[trapCell];
+    const victim = victimState.creatureSlots[currentCell];
+
+    if (!trap || !victim) continue;
+
+    const profile = tcgFieldTrapProfile(trap.cardId);
+    if (profile.triggerEvent !== eventType) continue;
+    if (trap.setTurn >= duel.turnNumber) continue;
+    if (tcgTrapDistance(trapCell, currentCell) > profile.triggerRadius) continue;
+
+    if (
+      profile.ownerHpThreshold > 0 &&
+      trapOwnerState.lifePoints / TCG_DUEL_LIFE_POINTS > profile.ownerHpThreshold
+    ) {
+      continue;
+    }
+
+    traps[trapCell] = null;
+    trapOwnerState.discard.push(trap.cardId);
+    triggered = true;
+
+    const victimReference = victim;
+    const sourceOnVictimBoard = tcgMirrorBoardCellIndex(trapCell);
+    let paths = [[{
+      kind: "creature",
+      lane: tcgBoardCellLane(currentCell),
+      row: tcgBoardCellRow(currentCell),
+      cellIndex: currentCell,
+      step: 0,
+      projectileIndex: 0
+    }]];
+    const hits = [];
+
+    if (profile.kind === "guard") {
+      cancelAction = true;
+    } else if (profile.kind === "reflect") {
+      const damage = Math.max(profile.damage, Math.round(incomingDamage * profile.reflectRatio));
+      const beforeHealth = Math.max(0, Number(victim.health || 0));
+      const killed = tcgDamageCreature(victimState, currentCell, damage);
+
+      hits.push({
+        kind: "creature",
+        lane: tcgBoardCellLane(currentCell),
+        row: tcgBoardCellRow(currentCell),
+        cellIndex: currentCell,
+        step: 0,
+        projectileIndex: 0,
+        damage,
+        beforeHealth,
+        destroyed: killed
+      });
+    } else if (profile.kind === "projectile") {
+      paths = tcgBuildTrapProjectilePaths(profile, sourceOnVictimBoard);
+      const hitCells = new Set();
+
+      paths.forEach(path => {
+        path.forEach(step => {
+          const target = victimState.creatureSlots[step.cellIndex];
+          if (!target || hitCells.has(step.cellIndex)) return;
+
+          const beforeHealth = Math.max(0, Number(target.health || 0));
+          const killed = tcgDamageCreature(victimState, step.cellIndex, profile.damage);
+          hitCells.add(step.cellIndex);
+
+          hits.push({
+            ...step,
+            damage: profile.damage,
+            beforeHealth,
+            destroyed: killed
+          });
+        });
+      });
+    } else {
+      const damage = profile.instantKill ? 999999 : profile.damage;
+      const beforeHealth = Math.max(0, Number(victim.health || 0));
+      const killed = tcgDamageCreature(victimState, currentCell, damage);
+
+      hits.push({
+        kind: "creature",
+        lane: tcgBoardCellLane(currentCell),
+        row: tcgBoardCellRow(currentCell),
+        cellIndex: currentCell,
+        step: 0,
+        projectileIndex: 0,
+        damage,
+        beforeHealth,
+        destroyed: killed
+      });
+
+      if (!killed) {
+        if (profile.kind === "snare") {
+          victim.rootedUntilTurn = Math.max(
+            Number(victim.rootedUntilTurn || 0),
+            duel.turnNumber + profile.rootTurns * 2
+          );
+        } else if (profile.kind === "weaken") {
+          victim.attack = Math.max(100, Math.round(Number(victim.attack || 0) * 0.72));
+          victim.rootedUntilTurn = Math.max(Number(victim.rootedUntilTurn || 0), duel.turnNumber + 1);
+        } else if (profile.kind === "push") {
+          const pushedCell = tcgPushCreatureTowardHome(victimState, currentCell, profile.pushDistance);
+          displaced = displaced || pushedCell !== currentCell;
+          currentCell = pushedCell;
+          cancelAction = cancelAction || displaced;
+        }
+      }
+    }
+
+    const survivingCell = victimState.creatureSlots.indexOf(victimReference);
+    if (survivingCell < 0) {
+      destroyed = true;
+    } else {
+      currentCell = survivingCell;
+    }
+
+    const card = tcgGetServerCard(trap.cardId);
+    const trapName = card?.name || trap.cardId.replace(/_/g, " ");
+
+    tcgPushLog(duel, `${trapOwnerState.name}'s ${trapName} was triggered!`, {
+      actionType: "trigger_field_trap",
+      actorSocketId: trapOwnerSocketId,
+      victimSocketId,
+      effect: {
+        eventType: "trap_trigger",
+        ownerSocketId: trapOwnerSocketId,
+        targetSocketId: victimSocketId,
+        targetSide: "enemy",
+        friendlyFire: false,
+        legalTargets: "enemy_only",
+        cardId: trap.cardId,
+        category: "trap",
+        kind: profile.kind,
+        pattern: profile.pattern,
+        damage: profile.damage,
+        sourceCell: trapCell,
+        sourceLane: tcgBoardCellLane(trapCell),
+        paths,
+        hits,
+        revealDurationMs: 4600
+      }
+    });
+  }
+
+  return {
+    triggered,
+    destroyed,
+    displaced,
+    cancelAction,
+    currentCellIndex: currentCell
+  };
+}
+
+function tcgResolveCreatureCellIndex(state, rawIndex) {
+  const slots = tcgNormalizeCreatureBoardState(state);
+  const index = Math.floor(Number(rawIndex));
+
+  if (index >= 0 && index < slots.length && slots[index]) return index;
+
+  if (index >= 0 && index < TCG_DUEL_BOARD_LANES) {
+    let best = -1;
+    let bestRow = -1;
+
+    slots.forEach((slot, cellIndex) => {
+      if (!slot) return;
+      const lane = tcgNormalizeBoardLane(slot.lane ?? tcgBoardCellLane(cellIndex));
+      const row = tcgNormalizeBoardRow(slot.row ?? tcgBoardCellRow(cellIndex));
+
+      if (lane === index && row > bestRow) {
+        best = cellIndex;
+        bestRow = row;
+      }
+    });
+
+    return best;
+  }
+
+  return -1;
+}
+
+function tcgCreatureAtCell(state, lane, row) {
+  const slots = tcgNormalizeCreatureBoardState(state);
+  return slots[tcgBoardCellIndex(lane, row)] || null;
+}
+
+function tcgMovementDistance(profile, laneDelta, rowDelta) {
+  const absLane = Math.abs(laneDelta);
+  const absRow = Math.abs(rowDelta);
+  return profile.movePattern === "diagonal" || profile.movePattern === "omni"
+    ? Math.max(absLane, absRow)
+    : absLane + absRow;
+}
+
+function tcgMovementPatternAllows(profile, laneDelta, rowDelta) {
+  const absLane = Math.abs(laneDelta);
+  const absRow = Math.abs(rowDelta);
+
+  if (!absLane && !absRow) return false;
+  if (profile.movePattern === "vertical") return laneDelta === 0;
+  if (profile.movePattern === "horizontal") return rowDelta === 0;
+  if (profile.movePattern === "diagonal") return absLane === absRow;
+  if (profile.movePattern === "omni") return true;
+  return laneDelta === 0 || rowDelta === 0;
+}
+
+function tcgRefreshCreatureBoardProfile(slot) {
+  if (!slot) return null;
+  const profile = tcgCreatureBoardProfile(slot.cardId);
+  slot.lane = tcgNormalizeBoardLane(slot.lane ?? 0);
+  slot.row = tcgNormalizeBoardRow(slot.row ?? 0);
+  slot.moveRange = profile.moveRange;
+  slot.movePattern = profile.movePattern;
+  slot.attackRange = profile.attackRange;
+  slot.attackStyle = profile.attackStyle;
+  slot.sightRange = profile.sightRange;
+  return slot;
+}
+
+function tcgAttackCellLane(slot, cellIndex) {
+  return tcgNormalizeBoardLane(slot?.lane ?? (cellIndex >= TCG_DUEL_BOARD_LANES ? tcgBoardCellLane(cellIndex) : cellIndex));
+}
+
+function tcgAttackCellRow(slot, cellIndex) {
+  return tcgNormalizeBoardRow(slot?.row ?? (cellIndex >= TCG_DUEL_BOARD_LANES ? tcgBoardCellRow(cellIndex) : 0));
+}
+
+function tcgCreatureBoardMetrics(attacker, attackerCellIndex, defender, defenderCellIndex) {
+  const attackerRow = tcgAttackCellRow(attacker, attackerCellIndex);
+  const defenderRow = tcgAttackCellRow(defender, defenderCellIndex);
+  const attackerLane = tcgAttackCellLane(attacker, attackerCellIndex);
+  const defenderLane = tcgAttackCellLane(defender, defenderCellIndex);
+  const rowDistance = Math.abs((TCG_DUEL_BOARD_ROWS - 1) - attackerRow - defenderRow);
+  const laneDistance = Math.abs(defenderLane - attackerLane);
+
+  return {
+    attackerRow,
+    defenderRow,
+    attackerLane,
+    defenderLane,
+    rowDistance,
+    laneDistance,
+    distance: Math.max(rowDistance, laneDistance)
+  };
+}
+
+function tcgCanCreatureAttackTarget(attacker, attackerCellIndex, defender, defenderCellIndex) {
+  if (!attacker || !defender) return false;
+  const profile = tcgCreatureBoardProfile(attacker.cardId);
+  const metrics = tcgCreatureBoardMetrics(attacker, attackerCellIndex, defender, defenderCellIndex);
+
+  if (profile.attackStyle === "melee") {
+    return metrics.rowDistance <= 1 && metrics.laneDistance <= 1;
+  }
+
+  return metrics.rowDistance <= profile.attackRange && metrics.laneDistance <= profile.attackRange;
+}
+
+function tcgDirectLaneBlocked(opponentState, directLane) {
+  const slots = tcgNormalizeCreatureBoardState(opponentState);
+  return !!slots[tcgBoardCellIndex(directLane, 0)];
+}
+
+function tcgCanCreatureAttackDirect(attacker, attackerCellIndex = -1, opponentState = null, directLane = null) {
+  if (!attacker) return false;
+
+  const profile = tcgCreatureBoardProfile(attacker.cardId);
+  const attackerLane = tcgAttackCellLane(attacker, attackerCellIndex);
+  const attackerRow = tcgAttackCellRow(attacker, attackerCellIndex);
+  const lane = directLane === null || directLane === undefined
+    ? attackerLane
+    : tcgNormalizeBoardLane(directLane);
+  const laneDistance = Math.abs(lane - attackerLane);
+
+  if (attackerRow < TCG_DUEL_BOARD_ROWS - 1) return false;
+  if (opponentState && tcgDirectLaneBlocked(opponentState, lane)) return false;
+
+  if (profile.attackStyle === "melee") {
+    return laneDistance <= 1;
+  }
+
+  return laneDistance <= profile.attackRange;
+}
+
+function tcgFindDirectPushbackCell(state, attackerCellIndex) {
+  const slots = tcgNormalizeCreatureBoardState(state);
+  const attackerLane = tcgBoardCellLane(attackerCellIndex);
+  const attackerRow = tcgBoardCellRow(attackerCellIndex);
+
+  if (attackerRow <= 0) return -1;
+
+  const fallbackRows = [attackerRow - 1];
+  const laneOrder = [attackerLane, attackerLane - 1, attackerLane + 1];
+
+  for (const row of fallbackRows) {
+    for (const lane of laneOrder) {
+      if (lane < 0 || lane >= TCG_DUEL_BOARD_LANES) continue;
+      const cellIndex = tcgBoardCellIndex(lane, row);
+      if (!slots[cellIndex]) return cellIndex;
+    }
+  }
+
+  return -1;
+}
+
+function tcgPushDirectAttackerBack(state, attackerCellIndex) {
+  const slots = tcgNormalizeCreatureBoardState(state);
+  const slot = slots[attackerCellIndex];
+  if (!slot) return false;
+
+  const targetCell = tcgFindDirectPushbackCell(state, attackerCellIndex);
+  if (targetCell < 0 || targetCell === attackerCellIndex) return false;
+
+  slots[attackerCellIndex] = null;
+  slots[targetCell] = slot;
+  slot.lane = tcgBoardCellLane(targetCell);
+  slot.row = tcgBoardCellRow(targetCell);
+  return true;
+}
+
+function tcgAttackDirectionFromSlots(attackerCellIndex, targetCellIndex) {
+  const attackerLane = attackerCellIndex >= TCG_DUEL_BOARD_LANES ? tcgBoardCellLane(attackerCellIndex) : tcgNormalizeBoardLane(attackerCellIndex);
+  const targetLane = targetCellIndex >= TCG_DUEL_BOARD_LANES && targetCellIndex < TCG_DUEL_BOARD_CELLS
+    ? tcgBoardCellLane(targetCellIndex)
+    : tcgNormalizeBoardLane(targetCellIndex);
+  const delta = targetLane - attackerLane;
+  if (delta < 0) return "forward_left";
+  if (delta > 0) return "forward_right";
+  return "forward";
+}
+
+function tcgCreatureAttackShape(attacker) {
+  const profile = tcgCreatureBoardProfile(attacker?.cardId);
+  if (profile.attackStyle !== "ranged") return "melee";
+
+  const card = tcgGetServerCard(attacker?.cardId);
+  const text = `${card?.id || ""} ${card?.name || ""} ${card?.description || ""}`.toLowerCase();
+
+  if (text.includes("coyote") || text.includes("koi") || text.includes("star")) return "radius";
+  if (text.includes("phoenix") || text.includes("dragon")) return "diagonal";
+  return "line";
+}
+
+function tcgCanCreatureAttackTarget(attacker, attackerCellIndex, defender, defenderCellIndex) {
+  if (!attacker || !defender) return false;
+
+  const profile = tcgCreatureBoardProfile(attacker.cardId);
+  const metrics = tcgCreatureBoardMetrics(attacker, attackerCellIndex, defender, defenderCellIndex);
+  const range = Math.max(1, Number(profile.attackRange || 1));
+  const shape = tcgCreatureAttackShape(attacker);
+
+  if (shape === "melee") return metrics.rowDistance <= 1 && metrics.laneDistance <= 1;
+  if (shape === "radius") return metrics.distance <= range;
+  if (shape === "diagonal") {
+    return metrics.rowDistance <= range && (metrics.laneDistance === 0 || metrics.laneDistance === metrics.rowDistance);
+  }
+
+  return metrics.rowDistance <= range && metrics.laneDistance === 0;
+}
+
+function tcgResolveEffectKind(cardId, category = "") {
+  const card = tcgGetServerCard(cardId);
+  const text = `${card?.id || ""} ${card?.name || ""} ${card?.description || ""}`.toLowerCase();
+
+  if (text.includes("heal") || text.includes("shield") || text.includes("feast") || text.includes("bonfire")) return "heal";
+  if (text.includes("draw") || text.includes("mirror") || text.includes("luck") || text.includes("echo")) return "draw";
+  if (text.includes("tide") || text.includes("riptide") || text.includes("wave") || text.includes("ocean")) return "aoe";
+  if (text.includes("stun") || text.includes("snare") || text.includes("jellyfish") || text.includes("umbrella") || text.includes("sand") || text.includes("slow")) return "disable";
+  if (text.includes("destroy") || text.includes("reaper") || text.includes("mine") || text.includes("mirage")) return "destroy";
+  if (text.includes("flare") || text.includes("solar") || text.includes("fire") || text.includes("heat") || text.includes("burn")) return "burn";
+  return category === "trap" ? "disable" : "burn";
+}
+
+function tcgSpellEffectTemplate(cardId, category = "") {
+  const card = tcgGetServerCard(cardId);
+  const rank = tcgCardRank(cardId);
+  const text = `${card?.id || ""} ${card?.name || ""} ${card?.description || ""}`.toLowerCase();
+  const effectKind = tcgResolveEffectKind(cardId, category);
+
+  const template = {
+    effectKind,
+    pattern: "straight",
+    range: TCG_DUEL_BOARD_ROWS + 1,
+    damage: category === "trap" ? 620 + rank * 160 : 480 + rank * 135,
+    piercing: false,
+    stopsOnHit: true,
+    projectileCount: 1,
+    canHitLp: category === "magic",
+    lpScale: 0.42,
+    requiresTarget: false,
+    debuff: null
+  };
+
+  if (effectKind === "heal" || effectKind === "draw") return { ...template, pattern: "utility", damage: 0, canHitLp: false };
+  if (effectKind === "aoe") return { ...template, pattern: text.includes("riptide") ? "bounce" : "wave", range: 5, damage: 260 + rank * 90, piercing: true, stopsOnHit: false, projectileCount: text.includes("riptide") ? 2 : 5, lpScale: 0.28 };
+  if (effectKind === "destroy") return { ...template, pattern: text.includes("mine") || text.includes("mirage") ? "zigzag" : "straight", damage: rank >= 5 ? 99999 : 720 + rank * 180, requiresTarget: true, canHitLp: false };
+  if (effectKind === "disable") return { ...template, pattern: text.includes("jellyfish") || text.includes("umbrella") ? "zigzag" : "cross", damage: 320 + rank * 95, piercing: true, stopsOnHit: false, projectileCount: 3, canHitLp: false, debuff: "weaken" };
+  if (effectKind === "burn") return { ...template, pattern: text.includes("solar") || text.includes("flare") ? "diagonal" : "straight", projectileCount: text.includes("solar") || text.includes("flare") ? 2 : 1 };
+
+  return template;
+}
+
+function tcgSpellPattern(cardId, category = "") {
+  return tcgSpellEffectTemplate(cardId, category).pattern;
+}
+
+function tcgSpellAnchorFromTarget(targetSlotIndex, opponentState, casterLane) {
+  const raw = Math.floor(Number(targetSlotIndex));
+
+  if (raw >= 0 && raw < TCG_DUEL_BOARD_CELLS) {
+    return { cellIndex: raw, lane: tcgBoardCellLane(raw), row: tcgBoardCellRow(raw) };
+  }
+
+  const resolved = tcgResolveCreatureCellIndex(opponentState, raw);
+  if (resolved >= 0) {
+    return { cellIndex: resolved, lane: tcgBoardCellLane(resolved), row: tcgBoardCellRow(resolved) };
+  }
+
+  return { cellIndex: -1, lane: tcgNormalizeBoardLane(raw >= 0 ? raw : casterLane), row: TCG_DUEL_BOARD_ROWS - 1 };
+}
+
+function tcgSpellProjectileStarts(template, anchorLane) {
+  if (template.pattern === "wave") return Array.from({ length: TCG_DUEL_BOARD_LANES }, (_, lane) => ({ lane, dir: 0 }));
+  if (template.pattern === "cross") return [-1, 0, 1].map(offset => ({ lane: anchorLane + offset, dir: 0 }));
+  if (template.pattern === "diagonal") return [{ lane: anchorLane, dir: -1 }, { lane: anchorLane, dir: 1 }];
+  if (template.pattern === "zigzag") return [{ lane: anchorLane, dir: -1 }, { lane: anchorLane, dir: 1 }];
+  if (template.pattern === "bounce") return [{ lane: anchorLane, dir: anchorLane <= 2 ? 1 : -1 }, { lane: anchorLane, dir: anchorLane <= 2 ? -1 : 1 }];
+  return [{ lane: anchorLane, dir: 0 }];
+}
+
+function tcgBuildSpellProjectilePaths(template, anchorLane) {
+  const paths = [];
+
+  tcgSpellProjectileStarts(template, anchorLane).forEach((start, projectileIndex) => {
+    const path = [];
+    let lane = tcgNormalizeBoardLane(start.lane);
+    let dir = start.dir || 0;
+
+    for (let step = 0; step < Math.max(1, Number(template.range || 1)); step++) {
+      if (template.pattern === "diagonal") {
+        lane = anchorLane + dir * (step + 1);
+      } else if (template.pattern === "zigzag") {
+        lane = anchorLane + (step % 2 === 0 ? 0 : dir);
+      } else if (template.pattern === "bounce" && step > 0) {
+        lane += dir;
+        if (lane < 0 || lane >= TCG_DUEL_BOARD_LANES) {
+          dir *= -1;
+          lane += dir * 2;
+        }
+      } else if (template.pattern !== "bounce") {
+        lane = start.lane;
+      }
+
+      if (lane < 0 || lane >= TCG_DUEL_BOARD_LANES) continue;
+
+      if (step < TCG_DUEL_BOARD_ROWS) {
+        const row = TCG_DUEL_BOARD_ROWS - 1 - step;
+        path.push({ kind: "creature", lane, row, cellIndex: tcgBoardCellIndex(lane, row), step, projectileIndex });
+      } else if (template.canHitLp) {
+        path.push({ kind: "base", lane, row: -1, cellIndex: -1, step, projectileIndex });
+      }
+    }
+
+    if (path.length) paths.push(path);
+  });
+
+  return paths;
+}
+
+function tcgPatternTargetSlots(pattern, anchorSlotIndex, opponentState) {
+  const anchor = tcgSpellAnchorFromTarget(anchorSlotIndex, opponentState, anchorSlotIndex);
+  const template = {
+    pattern,
+    range: TCG_DUEL_BOARD_ROWS + 1,
+    canHitLp: false,
+    projectileCount: pattern === "wave" ? 5 : pattern === "cross" ? 3 : pattern === "diagonal" || pattern === "zigzag" || pattern === "bounce" ? 2 : 1
+  };
+
+  return [...new Set(tcgBuildSpellProjectilePaths(template, anchor.lane)
+    .flat()
+    .filter(step => step.kind === "creature" && opponentState.creatureSlots[step.cellIndex])
+    .map(step => step.cellIndex))];
+}
+
+function tcgEffectNeedsTarget(effectKind, opponentState) {
+  if (!opponentState?.creatureSlots?.some(Boolean)) return false;
+  return effectKind === "destroy";
+}
+
+function cleanTcgDeckPayload(deckPayload) {
+  const rawIds = Array.isArray(deckPayload?.deckIds) ? deckPayload.deckIds : [];
+  const counts = {};
+  const deckIds = [];
+
+  for (const rawId of rawIds) {
+    const cardId = String(rawId || "").trim();
+    if (!cardId) continue;
+
+    counts[cardId] = counts[cardId] || 0;
+    if (counts[cardId] >= TCG_DUEL_MAX_DUPLICATES) continue;
+    if (deckIds.length >= TCG_DUEL_MAX_DECK_SIZE) break;
+
+    counts[cardId]++;
+    deckIds.push(cardId);
+  }
+
+  if (deckIds.length < TCG_DUEL_MIN_DECK_SIZE) {
+    return {
+      ok: false,
+      error: `Card Duel requires at least ${TCG_DUEL_MIN_DECK_SIZE} valid cards.`
+    };
+  }
+
+  return { ok: true, deckIds };
+}
+
+function shuffleTcgDeck(deckIds) {
+  const deck = [...deckIds];
+
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+
+  return deck;
+}
+
+function drawTcgCards(playerState, count) {
+  let drawn = 0;
+
+  for (let i = 0; i < count; i++) {
+    if (!playerState.deck.length) {
+      return { drawn, deckedOut: true };
+    }
+
+    playerState.hand.push(playerState.deck.shift());
+    drawn++;
+  }
+
+  return { drawn, deckedOut: false };
+}
+
+function makeTcgPlayerState(p, deckIds) {
+  const state = {
+    socketId: p.socketId,
+    playerId: p.playerId,
+    name: p.name,
+    lifePoints: TCG_DUEL_LIFE_POINTS,
+    deck: shuffleTcgDeck(deckIds),
+    hand: [],
+    discard: [],
+    creatureSlots: Array(TCG_DUEL_BOARD_CELLS).fill(null),
+    spellTrapSlots: Array(5).fill(null),
+    fieldTrapSlots: Array(TCG_DUEL_BOARD_CELLS).fill(null),
+    normalSummonUsed: false,
+    spellMoveUsed: false,
+    directBlockedThisTurn: false
+  };
+
+  drawTcgCards(state, 5);
+  return state;
+}
+
+function getTcgOpponentSocketId(duel, socketId) {
+  return Object.keys(duel.players).find(id => id !== socketId) || null;
+}
+
+function tcgEmptyPublicVision() {
+  return {
+    visibleEnemyCreatureCells: [],
+    visibleOpponentBoardKeys: [],
+    trapPlacementCells: []
+  };
+}
+
+function tcgPublicBoardKey(kind, lane, rowOrCell = 0) {
+  if (kind === "creature") return `creature:opponent:${Math.floor(Number(rowOrCell || 0))}`;
+  return `${kind}:opponent:${tcgNormalizeBoardLane(lane)}`;
+}
+
+function tcgViewerSharedCreatureRow(row) {
+  return TCG_DUEL_BOARD_ROWS - tcgNormalizeBoardRow(row);
+}
+
+function tcgOpponentSharedCreatureRow(row) {
+  return 1 + tcgNormalizeBoardRow(row);
+}
+
+function tcgBuildPublicVision(viewerState, opponentState) {
+  if (!viewerState || !opponentState) return tcgEmptyPublicVision();
+
+  const viewerSlots = tcgNormalizeCreatureBoardState(viewerState);
+  const opponentSlots = tcgNormalizeCreatureBoardState(opponentState);
+  const visibleEnemyCreatureCells = new Set();
+  const visibleOpponentBoardKeys = new Set();
+
+  viewerSlots.forEach((source, sourceCellIndex) => {
+    if (!source) return;
+
+    tcgRefreshCreatureBoardProfile(source);
+
+    const sourceLane = tcgBoardCellLane(sourceCellIndex);
+    const sourceRow = tcgBoardCellRow(sourceCellIndex);
+    const sourceSharedRow = tcgViewerSharedCreatureRow(sourceRow);
+    const sightRange = Math.max(1, Math.min(5, Math.round(Number(source.sightRange || tcgCreatureBoardProfile(source.cardId).sightRange || 1))));
+
+    for (let lane = 0; lane < TCG_DUEL_BOARD_LANES; lane++) {
+      for (let row = 0; row < TCG_DUEL_BOARD_ROWS; row++) {
+        const targetCell = tcgBoardCellIndex(lane, row);
+        const targetSharedRow = tcgOpponentSharedCreatureRow(row);
+        const distance = Math.max(Math.abs(lane - sourceLane), Math.abs(targetSharedRow - sourceSharedRow));
+
+        if (distance <= sightRange) {
+          visibleOpponentBoardKeys.add(tcgPublicBoardKey("creature", lane, targetCell));
+          if (opponentSlots[targetCell]) visibleEnemyCreatureCells.add(targetCell);
+        }
+      }
+
+      const spellDistance = Math.max(Math.abs(lane - sourceLane), Math.abs(0 - sourceSharedRow));
+
+      if (spellDistance <= sightRange) {
+        visibleOpponentBoardKeys.add(tcgPublicBoardKey("spell", lane));
+        visibleOpponentBoardKeys.add(tcgPublicBoardKey("base", lane));
+      }
+    }
+  });
+
+  return {
+    visibleEnemyCreatureCells: [...visibleEnemyCreatureCells],
+    visibleOpponentBoardKeys: [...visibleOpponentBoardKeys],
+    trapPlacementCells: [...tcgTrapPlacementCellSet(viewerState)]
+  };
+}
+
+function publicTcgPlayerState(playerState, revealHand = false, options = {}) {
+  const revealPrivate = !!revealHand;
+  const hideUnseenCreatures = !!options.hideUnseenCreatures && !revealPrivate;
+  const hideBackrow = !!options.hideBackrow && !revealPrivate;
+  const visibleCreatureCells = new Set(options.visibleCreatureCells || []);
+
+  tcgNormalizeCreatureBoardState(playerState);
+
+  return {
+    socketId: playerState.socketId,
+    playerId: playerState.playerId,
+    name: playerState.name,
+    lifePoints: playerState.lifePoints,
+    deckCount: playerState.deck.length,
+    handCount: playerState.hand.length,
+    hand: revealPrivate ? [...playerState.hand] : [],
+    discardCount: playerState.discard.length,
+    graveyardCount: playerState.discard.length,
+    creatureSlots: playerState.creatureSlots.map((slot, index) => {
+      if (!slot) return null;
+      if (hideUnseenCreatures && !visibleCreatureCells.has(index)) return null;
+
+      tcgRefreshCreatureBoardProfile(slot);
+
+      if (slot.faceDown && !revealPrivate) {
+        return {
+          faceDown: true,
+          position: slot.position || "defense",
+          setTurn: slot.summonedTurn || 0,
+          lane: tcgNormalizeBoardLane(slot.lane ?? tcgBoardCellLane(index)),
+          row: tcgNormalizeBoardRow(slot.row ?? tcgBoardCellRow(index)),
+          moveRange: slot.moveRange || 1,
+          movePattern: slot.movePattern || "orthogonal",
+          attackRange: slot.attackRange || 1,
+          attackStyle: slot.attackStyle || "melee",
+          sightRange: slot.sightRange || 2
+        };
+      }
+
+      return { ...slot };
+    }),
+    spellTrapSlots: playerState.spellTrapSlots.map(slot => {
+      if (!slot) return null;
+      if (hideBackrow) return null;
+      if (!revealPrivate) {
+        return {
+          faceDown: true,
+          category: "set",
+          setTurn: slot.setTurn || 0
+        };
+      }
+      return { ...slot };
+    }),
+    fieldTrapSlots: tcgNormalizeFieldTrapState(playerState).map(slot => {
+      if (!slot || !revealPrivate) return null;
+      return { ...slot };
+    })
+  };
+}
+
+function publicTcgRpsScore(duel, viewerSocketId) {
+  const playerSocketIds = Object.keys(duel?.players || {});
+  const selfSocketId = duel?.players?.[viewerSocketId] ? viewerSocketId : playerSocketIds[0];
+  const opponentSocketId = duel?.players?.[viewerSocketId]
+    ? getTcgOpponentSocketId(duel, viewerSocketId)
+    : playerSocketIds[1];
+  const wins = duel?.rps?.wins || {};
+
+  return {
+    round: Math.max(1, Number(duel?.rps?.round || 1)),
+    targetWins: 2,
+    selfWins: Math.max(0, Number(wins[selfSocketId] || 0)),
+    opponentWins: Math.max(0, Number(wins[opponentSocketId] || 0))
+  };
+}
+
+function publicTcgRpsReveal(duel, viewerSocketId) {
+  const reveal = duel?.rpsReveal;
+  if (!reveal) return null;
+
+  const playerSocketIds = Object.keys(duel.players || {});
+  const viewerIsDuelist = !!duel.players?.[viewerSocketId];
+  const selfSocketId = viewerIsDuelist ? viewerSocketId : playerSocketIds[0];
+  const opponentSocketId = viewerIsDuelist ? getTcgOpponentSocketId(duel, viewerSocketId) : playerSocketIds[1];
+  const picks = reveal.picks || {};
+  const winnerSocketId = reveal.winnerSocketId || null;
+
+  return {
+    id: reveal.id || "",
+    round: Math.max(1, Number(reveal.round || duel.rps?.round || 1)),
+    result: !winnerSocketId ? "tie" : winnerSocketId === selfSocketId ? "win" : "loss",
+    selfPick: picks[selfSocketId] || "",
+    opponentPick: picks[opponentSocketId] || "",
+    selfName: duel.players?.[selfSocketId]?.name || "You",
+    opponentName: duel.players?.[opponentSocketId]?.name || "Rival",
+    winnerName: winnerSocketId ? duel.players?.[winnerSocketId]?.name || "Rival" : "",
+    message: reveal.message || duel.rpsStatus || "",
+    revealUntil: Math.max(0, Number(reveal.revealUntil || 0)),
+    selfWins: Math.max(0, Number(reveal.wins?.[selfSocketId] || 0)),
+    opponentWins: Math.max(0, Number(reveal.wins?.[opponentSocketId] || 0)),
+    targetWins: 2
+  };
+}
+
+function publicTcgScrubActionEntry(entry, overrideMessage = "") {
+  const safe = {
+    at: Number(entry?.at || Date.now()),
+    message: String(overrideMessage || entry?.message || "")
+  };
+
+  if (entry?.meta?.effect || entry?.meta?.combat) {
+    safe.meta = {};
+    if (entry.meta.effect) safe.meta.effect = entry.meta.effect;
+    if (entry.meta.combat) safe.meta.combat = entry.meta.combat;
+  }
+
+  return safe;
+}
+
+function publicTcgActionLog(duel, viewerSocketId) {
+  const rawEntries = Array.isArray(duel?.actionLog) ? duel.actionLog : [];
+  const viewerState = duel?.players?.[viewerSocketId] || null;
+  const opponentSocketId = viewerState ? getTcgOpponentSocketId(duel, viewerSocketId) : null;
+  const opponentState = opponentSocketId ? duel.players[opponentSocketId] : null;
+  const opponentName = opponentState?.name || "Opponent";
+  const vision = viewerState && opponentState ? tcgBuildPublicVision(viewerState, opponentState) : tcgEmptyPublicVision();
+  const visibleBoardKeys = new Set(vision.visibleOpponentBoardKeys || []);
+
+  const viewerHasCreatureCellVision = cellIndex => {
+    const cell = Math.floor(Number(cellIndex));
+    if (cell < 0 || cell >= TCG_DUEL_BOARD_CELLS) return false;
+    return visibleBoardKeys.has(tcgPublicBoardKey("creature", tcgBoardCellLane(cell), cell));
+  };
+
+  const sanitized = [];
+
+  for (const entry of rawEntries) {
+    const meta = entry?.meta || {};
+    const actorSocketId = meta.actorSocketId || meta.ownerSocketId || "";
+    const isOpponentAction = !!opponentSocketId && actorSocketId === opponentSocketId;
+
+    if (!isOpponentAction) {
+      sanitized.push(publicTcgScrubActionEntry(entry));
+      continue;
+    }
+
+    if (meta.actionType === "set_spell_trap") {
+      sanitized.push(publicTcgScrubActionEntry(entry, `${opponentName} set a card.`));
+      continue;
+    }
+
+    if (meta.actionType === "summon_creature") {
+      const visible = viewerHasCreatureCellVision(meta.cellIndex);
+      const message = visible && !meta.faceDown
+        ? `${opponentName} summoned a creature.`
+        : `${opponentName} placed a card.`;
+      sanitized.push(publicTcgScrubActionEntry(entry, message));
+      continue;
+    }
+
+    if (meta.actionType === "move_creature") {
+      const fromVisible = viewerHasCreatureCellVision(meta.fromCellIndex);
+      const toVisible = viewerHasCreatureCellVision(meta.toCellIndex);
+      if (!fromVisible && !toVisible) continue;
+
+      const message = fromVisible && toVisible
+        ? `${opponentName} moved a visible creature.`
+        : toVisible
+          ? `${opponentName} moved a creature into view.`
+          : `${opponentName} moved a visible creature into the darkness.`;
+
+      sanitized.push(publicTcgScrubActionEntry(entry, message));
+      continue;
+    }
+
+    if (meta.actionType === "phase" && meta.phase === "end") {
+      sanitized.push(publicTcgScrubActionEntry(entry, `${opponentName} ended their turn.`));
+      continue;
+    }
+
+    if (meta.actionType === "end_turn") {
+      sanitized.push(publicTcgScrubActionEntry(entry, `${opponentName} ended their turn.`));
+      continue;
+    }
+
+    sanitized.push(publicTcgScrubActionEntry(entry));
+  }
+
+  return sanitized.slice(0, 8);
+}
+
+function publicTcgDuelState(duel, viewerSocketId) {
+  const playerSocketIds = Object.keys(duel.players);
+  const isDuelist = !!duel.players[viewerSocketId];
+
+  if (!isDuelist) {
+    const left = duel.players[playerSocketIds[0]];
+    const right = duel.players[playerSocketIds[1]];
+
+    return {
+      duelId: duel.duelId,
+      lobbyCode: duel.lobbyCode || "",
+      spectator: true,
+      status: duel.status,
+      phase: duel.phase,
+      turnNumber: duel.turnNumber,
+      activeSocketId: duel.activeSocketId,
+      chooserSocketId: duel.chooserSocketId,
+      choiceDeadlineAt: duel.choiceDeadlineAt || 0,
+      rpsStatus: duel.rpsStatus || "",
+      rpsReveal: publicTcgRpsReveal(duel, viewerSocketId),
+      rpsScore: publicTcgRpsScore(duel, viewerSocketId),
+      rpsPicked: false,
+      winnerSocketId: duel.winnerSocketId || null,
+      loserSocketId: duel.loserSocketId || null,
+      endReason: duel.endReason || "",
+      rewards: duel.rewards || null,
+      rewardForSelf: null,
+      actionLog: publicTcgActionLog(duel, viewerSocketId),
+      vision: tcgEmptyPublicVision(),
+      self: left ? publicTcgPlayerState(left, false, { hideBackrow: true, hideUnseenCreatures: true, visibleCreatureCells: [] }) : null,
+      opponent: right ? publicTcgPlayerState(right, false, { hideBackrow: true, hideUnseenCreatures: true, visibleCreatureCells: [] }) : null
+    };
+  }
+
+  const opponentSocketId = getTcgOpponentSocketId(duel, viewerSocketId);
+  const self = duel.players[viewerSocketId];
+  const opponent = opponentSocketId ? duel.players[opponentSocketId] : null;
+  const vision = tcgBuildPublicVision(self, opponent);
+
+  return {
+    duelId: duel.duelId,
+    lobbyCode: duel.lobbyCode || "",
+    spectator: false,
+    status: duel.status,
+    phase: duel.phase,
+    turnNumber: duel.turnNumber,
+    activeSocketId: duel.activeSocketId,
+    chooserSocketId: duel.chooserSocketId,
+    choiceDeadlineAt: duel.choiceDeadlineAt || 0,
+    rpsStatus: duel.rpsStatus || "",
+    rpsReveal: publicTcgRpsReveal(duel, viewerSocketId),
+    rpsScore: publicTcgRpsScore(duel, viewerSocketId),
+    rpsPicked: !!duel.rps?.picks?.[viewerSocketId],
+    winnerSocketId: duel.winnerSocketId || null,
+    loserSocketId: duel.loserSocketId || null,
+    endReason: duel.endReason || "",
+    rewards: duel.rewards || null,
+    rewardForSelf: duel.rewardResults?.[viewerSocketId] || null,
+          actionLog: publicTcgActionLog(duel, viewerSocketId),
+    vision,
+    self: self ? publicTcgPlayerState(self, true) : null,
+    opponent: opponent ? publicTcgPlayerState(opponent, false, {
+      hideBackrow: true,
+      hideUnseenCreatures: true,
+      visibleCreatureCells: vision.visibleEnemyCreatureCells
+    }) : null
+  };
+}
+
+function emitTcgDuelUpdate(duel) {
+  for (const socketId of Object.keys(duel.players)) {
+    if (!tcgIsNpcSocketId(socketId)) {
+      io.to(socketId).emit("tcgDuelUpdate", publicTcgDuelState(duel, socketId));
+    }
+  }
+
+  const spectatorIds = Array.isArray(duel.spectators) ? duel.spectators : [];
+  for (const socketId of spectatorIds) {
+    if (!duel.players[socketId] && !tcgIsNpcSocketId(socketId)) {
+      io.to(socketId).emit("tcgDuelUpdate", publicTcgDuelState(duel, socketId));
+    }
+  }
+
+  tcgMaybeScheduleNpcAction(duel);
+}
+
+const TCG_LOBBY_VISIBILITIES = new Set(["open", "closed", "invite_only"]);
+const TCG_LOBBY_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function normalizeTcgLobbyVisibility(value) {
+  const clean = String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+  return TCG_LOBBY_VISIBILITIES.has(clean) ? clean : "closed";
+}
+
+function makeTcgLobbyCode() {
+  for (let attempt = 0; attempt < 32; attempt++) {
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += TCG_LOBBY_CODE_CHARS[Math.floor(Math.random() * TCG_LOBBY_CODE_CHARS.length)];
+    }
+    if (!tcgLobbies.has(code)) return code;
+  }
+
+  return "D" + Date.now().toString(36).slice(-5).toUpperCase();
+}
+
+function publicTcgLobby(lobby, viewerSocketId) {
+  const slotIds = lobby.duelSlots || [null, null];
+  const slotSet = new Set(slotIds.filter(Boolean));
+  const members = (lobby.members || [])
+    .map(id => tcgGetLobbyProfile(lobby, id))
+    .filter(Boolean)
+    .map(publicPlayer);
+
+  const playerBySocketId = new Map(members.map(player => [player.socketId, player]));
+
+  return {
+    code: lobby.code,
+    visibility: lobby.visibility || "closed",
+    leaderSocketId: lobby.leaderSocketId,
+    isLeader: lobby.leaderSocketId === viewerSocketId,
+    activeDuelId: lobby.activeDuelId || null,
+    memberCount: members.length,
+    canStart: !!slotIds[0] && !!slotIds[1] && !lobby.activeDuelId,
+    duelSlots: slotIds.map(socketId => socketId ? playerBySocketId.get(socketId) || null : null),
+    pool: members.filter(player => !slotSet.has(player.socketId))
+  };
+}
+
+function emitTcgLobbyUpdate(lobby) {
+  if (!lobby) return;
+
+  for (const socketId of lobby.members || []) {
+    if (!tcgIsNpcSocketId(socketId)) {
+      io.to(socketId).emit("tcgLobbyUpdate", publicTcgLobby(lobby, socketId));
+    }
+  }
+}
+
+function leaveTcgLobby(socketId, reason = "left") {
+  const p = getPlayer(socketId);
+  const lobby = p?.tcgLobbyCode ? tcgLobbies.get(p.tcgLobbyCode) : null;
+  if (!lobby) {
+    if (p) p.tcgLobbyCode = null;
+    return;
+  }
+
+  lobby.members = (lobby.members || []).filter(id => id !== socketId);
+  lobby.duelSlots = (lobby.duelSlots || [null, null]).map(id => id === socketId ? null : id);
+  lobby.spectators = (lobby.spectators || []).filter(id => id !== socketId);
+  delete lobby.deckIdsBySocketId[socketId];
+
+  if (p) p.tcgLobbyCode = null;
+
+  const humanMembers = lobby.members.filter(id => !tcgIsNpcSocketId(id));
+
+  if (!humanMembers.length) {
+    for (const npcSocketId of Object.keys(lobby.npcProfilesBySocketId || {})) {
+      tcgNpcProfiles.delete(npcSocketId);
+    }
+
+    tcgLobbies.delete(lobby.code);
+    return;
+  }
+
+  if (lobby.leaderSocketId === socketId || tcgIsNpcSocketId(lobby.leaderSocketId)) {
+    lobby.leaderSocketId = humanMembers[0];
+  }
+
+  io.to(socketId).emit("tcgLobbyClosed", { reason });
+  emitTcgLobbyUpdate(lobby);
+}
+
+function getOpenTcgLobbyResults() {
+  return [...tcgLobbies.values()]
+    .filter(lobby => lobby.visibility === "open" && !lobby.activeDuelId)
+    .slice(0, 16)
+    .map(lobby => {
+      const host = getPlayer(lobby.leaderSocketId);
+      return {
+        code: lobby.code,
+        hostName: host?.name || "Host",
+        memberCount: (lobby.members || []).length
+      };
+    });
+}
+
+function createTcgDuelFromLobby(lobby) {
+  const slotIds = lobby?.duelSlots || [];
+  const firstSocketId = slotIds[0];
+  const secondSocketId = slotIds[1];
+
+  if (!firstSocketId || !secondSocketId) {
+    return { ok: false, error: "Two duelists are required." };
+  }
+
+  const first = tcgGetLobbyProfile(lobby, firstSocketId);
+  const second = tcgGetLobbyProfile(lobby, secondSocketId);
+  const realFirst = getPlayer(firstSocketId);
+  const realSecond = getPlayer(secondSocketId);
+
+  if (!first || !second) return { ok: false, error: "A duelist is no longer connected." };
+  if ((realFirst && (realFirst.inMatch || realFirst.tcgDuelId)) || (realSecond && (realSecond.inMatch || realSecond.tcgDuelId))) {
+    return { ok: false, error: "A duelist is already busy." };
+  }
+
+  const firstDeck = cleanTcgDeckPayload({ deckIds: lobby.deckIdsBySocketId[firstSocketId] || [] });
+  const secondDeck = cleanTcgDeckPayload({ deckIds: lobby.deckIdsBySocketId[secondSocketId] || [] });
+
+  if (!firstDeck.ok) return { ok: false, error: `${first.name}: ${firstDeck.error}` };
+  if (!secondDeck.ok) return { ok: false, error: `${second.name}: ${secondDeck.error}` };
+
+  const duelId = makeTcgDuelId();
+  const duel = {
+    duelId,
+    lobbyCode: lobby.code,
+    npcSocketIds: [firstSocketId, secondSocketId].filter(tcgIsNpcSocketId),
+    spectators: (lobby.members || []).filter(id => id !== firstSocketId && id !== secondSocketId),
+    status: "rps",
+    phase: "rps",
+    turnNumber: 0,
+    activeSocketId: null,
+    chooserSocketId: null,
+    choiceDeadlineAt: Date.now() + TCG_RPS_AUTO_PICK_MS,
+    rpsStatus: "Choose rock, paper, or scissors.",
+    rpsReveal: null,
+    rpsHistory: [],
+    rps: {
+      round: 1,
+      wins: {
+        [firstSocketId]: 0,
+        [secondSocketId]: 0
+      },
+      picks: {},
+      revealing: false
+    },
+    players: {
+      [firstSocketId]: makeTcgPlayerState(first, firstDeck.deckIds),
+      [secondSocketId]: makeTcgPlayerState(second, secondDeck.deckIds)
+    }
+  };
+
+  tcgDuels.set(duelId, duel);
+  if (realFirst) realFirst.tcgDuelId = duelId;
+  if (realSecond) realSecond.tcgDuelId = duelId;
+  lobby.activeDuelId = duelId;
+  lobby.spectators = duel.spectators;
+
+  tcgScheduleRpsAuto(duel);
+  emitTcgLobbyUpdate(lobby);
+  emitTcgDuelUpdate(duel);
+  broadcastOnlineList();
+
+  return { ok: true, duelId };
+}
+
+function tcgIsNpcSocketId(socketId) {
+  return String(socketId || "").startsWith(TCG_NPC_SOCKET_PREFIX);
+}
+
+function tcgGetLobbyProfile(lobby, socketId) {
+  return getPlayer(socketId) || lobby?.npcProfilesBySocketId?.[socketId] || tcgNpcProfiles.get(socketId) || null;
+}
+
+function makeTcgNpcSocketId() {
+  return `${TCG_NPC_SOCKET_PREFIX}${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function makeTcgNpcProfile(socketId) {
+  const name = TCG_NPC_NAMES[Math.floor(Math.random() * TCG_NPC_NAMES.length)] || "RiftRival";
+
+  return {
+    socketId,
+    playerId: socketId,
+    name,
+    rank: "DUELIST",
+    level: 10 + Math.floor(Math.random() * 45),
+    profileXp: 0,
+    wins: 0,
+    kills: 0,
+    deaths: 0,
+    losses: 0,
+    revives: 0,
+    gold: 0,
+    gems: 0,
+    color: ["#ef4444", "#f97316", "#a855f7", "#22d3ee", "#22c55e"][Math.floor(Math.random() * 5)],
+    icon: name.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "DS",
+    isNpc: true
+  };
+}
+
+function tcgNpcEligibleCards() {
+  return [...ACCOUNT_CARD_CATALOG.values()].filter(card => {
+    if (!card?.id || !["monster", "magic", "trap"].includes(card.category)) return false;
+    if (TCG_NPC_EXCLUDED_CARD_PATTERN.test(`${card.id} ${card.name || ""}`)) return false;
+    return true;
+  });
+}
+
+function tcgNpcPickWeightedCard(cards, counts) {
+  const candidates = cards.filter(card => (counts[card.id] || 0) < TCG_DUEL_MAX_DUPLICATES);
+  if (!candidates.length) return null;
+
+  let total = 0;
+  const weighted = candidates.map(card => {
+    const rank = tcgCardRank(card.id);
+    const rarityWeight = Math.pow(0.62, Math.max(0, rank - 1));
+    const categoryWeight = card.category === "monster" ? 1.08 : card.category === "trap" ? 0.86 : 0.96;
+    const weight = Math.max(0.05, rarityWeight * categoryWeight);
+    total += weight;
+    return { card, weight };
+  });
+
+  let roll = Math.random() * total;
+  for (const entry of weighted) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.card;
+  }
+
+  return weighted[weighted.length - 1]?.card || null;
+}
+
+function makeTcgNpcDeck() {
+  const cards = tcgNpcEligibleCards();
+  const byCategory = {
+    monster: cards.filter(card => card.category === "monster"),
+    magic: cards.filter(card => card.category === "magic"),
+    trap: cards.filter(card => card.category === "trap")
+  };
+
+  const counts = {};
+  const deckIds = [];
+  const targetSize = 26 + Math.floor(Math.random() * 11);
+
+  const addFromCategory = category => {
+    const card = tcgNpcPickWeightedCard(byCategory[category] || cards, counts);
+    if (!card) return false;
+    counts[card.id] = (counts[card.id] || 0) + 1;
+    deckIds.push(card.id);
+    return true;
+  };
+
+  for (let i = 0; i < 12 && deckIds.length < targetSize; i++) addFromCategory("monster");
+  for (let i = 0; i < 7 && deckIds.length < targetSize; i++) addFromCategory("magic");
+  for (let i = 0; i < 6 && deckIds.length < targetSize; i++) addFromCategory("trap");
+
+  while (deckIds.length < Math.max(TCG_DUEL_MIN_DECK_SIZE, targetSize) && deckIds.length < TCG_DUEL_MAX_DECK_SIZE) {
+    const roll = Math.random();
+    addFromCategory(roll < 0.52 ? "monster" : roll < 0.78 ? "magic" : "trap");
+  }
+
+  return shuffleTcgDeck(deckIds).slice(0, TCG_DUEL_MAX_DECK_SIZE);
+}
+
+function tcgNpcVisibleEnemyCellSet(duel, socketId) {
+  const state = duel?.players?.[socketId];
+  const opponent = duel?.players?.[getTcgOpponentSocketId(duel, socketId)];
+  if (!state || !opponent) return new Set();
+
+  tcgNormalizeCreatureBoardState(state);
+  tcgNormalizeCreatureBoardState(opponent);
+
+  const vision = tcgBuildPublicVision(state, opponent);
+  return new Set((vision.visibleEnemyCreatureCells || []).filter(index =>
+    index >= 0 &&
+    index < TCG_DUEL_BOARD_CELLS &&
+    opponent.creatureSlots[index]
+  ));
+}
+
+function tcgNpcVisibleEnemyTargets(duel, socketId) {
+  const opponent = duel?.players?.[getTcgOpponentSocketId(duel, socketId)];
+  const visibleCells = tcgNpcVisibleEnemyCellSet(duel, socketId);
+  if (!opponent) return [];
+
+  return [...visibleCells].map(index => {
+    const slot = opponent.creatureSlots[index];
+    const hidden = !!slot?.faceDown;
+    const lane = tcgBoardCellLane(index);
+    const row = tcgBoardCellRow(index);
+    const attack = hidden ? 700 : Math.max(0, Number(slot.attack || 0));
+    const health = hidden ? 900 : Math.max(0, Number(slot.health || slot.maxHealth || 0));
+
+    return {
+      slot,
+      index,
+      lane,
+      row,
+      hidden,
+      attack,
+      health,
+      score: attack + health * 0.45 + row * 180,
+      threatScore: attack + row * 420 + (row >= TCG_DUEL_BOARD_ROWS - 1 ? 700 : 0)
+    };
+  }).sort((a, b) => b.threatScore - a.threatScore);
+}
+
+function tcgNpcPickTargetCreatureSlot(state, mode = "strongest", allowedCells = null) {
+  const allowed = allowedCells ? new Set(allowedCells) : null;
+  let bestIndex = -1;
+  let bestScore = mode === "weakest" ? Infinity : -Infinity;
+
+  tcgNormalizeCreatureBoardState(state).forEach((slot, index) => {
+    if (!slot || (allowed && !allowed.has(index))) return;
+
+    const hidden = !!slot.faceDown;
+    const score = hidden ? 1100 : (slot.attack || 0) + (slot.health || slot.maxHealth || 0) * 0.45;
+
+    if (mode === "weakest") {
+      if (score < bestScore) {
+        bestScore = score;
+        bestIndex = index;
+      }
+    } else if (score > bestScore) {
+      bestScore = score;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function tcgNpcPreferredLanesFromTargets(targets = []) {
+  const lanes = [];
+  targets.forEach(target => {
+    lanes.push(target.lane, target.lane - 1, target.lane + 1);
+  });
+  lanes.push(2, 1, 3, 0, 4);
+  return [...new Set(lanes)].filter(lane => lane >= 0 && lane < TCG_DUEL_BOARD_LANES);
+}
+
+function tcgNpcChooseSummon(duel, socketId) {
+  const state = duel.players[socketId];
+  const visibleTargets = tcgNpcVisibleEnemyTargets(duel, socketId);
+  const preferredOpenLanes = tcgNpcPreferredLanesFromTargets(visibleTargets);
+  let best = null;
+
+  tcgNormalizeCreatureBoardState(state);
+
+  state.hand.forEach((cardId, handIndex) => {
+    if (tcgCardCategory(cardId) !== "monster") return;
+
+    const cost = tcgCreatureSacrificeCost(cardId);
+    const availableSacrifices = state.creatureSlots
+      .map((slot, index) => slot ? { slot, index, score: (slot.attack || 0) + (slot.health || 0) * 0.35 + tcgBoardCellRow(index) * 120 } : null)
+      .filter(Boolean)
+      .sort((a, b) => a.score - b.score);
+
+    const openSlots = preferredOpenLanes.filter(index => !state.creatureSlots[index]);
+    const sacrificeSlots = availableSacrifices.slice(0, cost).map(entry => entry.index);
+    const backrowSacrificeSlots = sacrificeSlots.filter(index => index >= 0 && index < TCG_DUEL_BOARD_LANES);
+
+    if (cost > availableSacrifices.length) return;
+    if (!openSlots.length && (!cost || !backrowSacrificeSlots.length)) return;
+
+    const stats = tcgCardStats(cardId);
+    const boardProfile = tcgCreatureBoardProfile(cardId);
+    const sacrificePenalty = availableSacrifices.slice(0, cost).reduce((sum, entry) => sum + entry.score, 0);
+    const slotCandidates = openSlots.length ? openSlots : backrowSacrificeSlots;
+
+    slotCandidates.forEach(slotIndex => {
+      const centerBonus = 180 - Math.abs(slotIndex - 2) * 38;
+      const visibleLaneBonus = visibleTargets.some(target => Math.abs(target.lane - slotIndex) <= 1) ? 180 : 0;
+      const scoutingBonus = (boardProfile.sightRange || 2) * 110;
+      const rangeBonus = (boardProfile.attackRange || 1) * 95 + (boardProfile.moveRange || 1) * 65;
+      const lowLpGuardBonus = state.lifePoints < 1900 ? stats.health * 0.22 : 0;
+      const score = stats.attack + stats.health * 0.58 + centerBonus + visibleLaneBonus + scoutingBonus + rangeBonus + lowLpGuardBonus - sacrificePenalty * 0.55;
+
+      if (!best || score > best.score) {
+        best = {
+          handIndex,
+          slotIndex,
+          score,
+          sacrificeSlots
+        };
+      }
+    });
+  });
+
+  return best;
+}
+
+function tcgNpcScoreSpellPlan(duel, socketId, slotIndex, cardId, category, visibleTargets) {
+  const state = duel.players[socketId];
+  const opponent = duel.players[getTcgOpponentSocketId(duel, socketId)];
+  const template = tcgSpellEffectTemplate(cardId, category);
+  const visibleCells = new Set(visibleTargets.map(target => target.index));
+  const rank = tcgCardRank(cardId);
+
+  if (template.effectKind === "heal") {
+    return state.lifePoints < 3300
+      ? { slotIndex, targetSlotIndex: -1, score: (TCG_DUEL_LIFE_POINTS - state.lifePoints) * 0.45 + rank * 130 }
+      : null;
+  }
+
+  if (template.effectKind === "draw") {
+    return { slotIndex, targetSlotIndex: -1, score: 260 + rank * 120 };
+  }
+
+  const targetOptions = template.requiresTarget
+    ? visibleTargets.map(target => target.index)
+    : tcgNpcPreferredLanesFromTargets(visibleTargets);
+
+  let best = null;
+
+  targetOptions.forEach(targetSlotIndex => {
+    const anchor = tcgSpellAnchorFromTarget(targetSlotIndex, opponent, slotIndex);
+    const paths = tcgBuildSpellProjectilePaths(template, anchor.lane);
+    const hitCells = new Set();
+    let score = rank * 90 + template.damage * 0.08;
+    let visibleHitCount = 0;
+    let lpPressure = 0;
+
+    paths.forEach(path => {
+      let pathHit = false;
+
+      for (const step of path) {
+        if (step.kind === "creature") {
+          if (!visibleCells.has(step.cellIndex) || hitCells.has(step.cellIndex)) continue;
+
+          const target = opponent.creatureSlots[step.cellIndex];
+          if (!target) continue;
+
+          const health = target.faceDown ? 900 : Math.max(1, Number(target.health || target.maxHealth || 1));
+          const attack = target.faceDown ? 700 : Math.max(0, Number(target.attack || 0));
+          const destroys = template.damage >= health;
+
+          score += 520 + attack * 0.42 + health * 0.18 + (destroys ? 920 : 0) + tcgBoardCellRow(step.cellIndex) * 180;
+          visibleHitCount++;
+          hitCells.add(step.cellIndex);
+          pathHit = true;
+
+          if (template.stopsOnHit) break;
+        } else if (step.kind === "base" && template.canHitLp && !pathHit) {
+          lpPressure += Math.round(template.damage * template.lpScale);
+          score += Math.round(template.damage * template.lpScale * 0.45);
+          pathHit = true;
+        }
+      }
+    });
+
+    if (!visibleHitCount && !lpPressure) {
+      score += visibleTargets.length ? -260 : 90 - Math.abs(anchor.lane - 2) * 18;
+    }
+
+    if (!best || score > best.score) {
+      best = { slotIndex, targetSlotIndex, score, visibleHitCount, lpPressure };
+    }
+  });
+
+  if (!best || best.score < 120) return null;
+  return best;
+}
+
+function tcgNpcTryActivateMagic(duel, socketId) {
+  const state = duel.players[socketId];
+  let best = null;
+  const visibleTargets = tcgNpcVisibleEnemyTargets(duel, socketId);
+
+  for (let slotIndex = 0; slotIndex < state.spellTrapSlots.length; slotIndex++) {
+    const slot = state.spellTrapSlots[slotIndex];
+    if (!slot || slot.category !== "magic") continue;
+
+    const plan = tcgNpcScoreSpellPlan(
+      duel,
+      socketId,
+      slotIndex,
+      slot.cardId,
+      "magic",
+      visibleTargets
+    );
+
+    if (plan && (!best || plan.score > best.score)) best = plan;
+  }
+
+  if (!best) return { ok: false };
+  return tcgActivateSpellTrap(duel, socketId, best.slotIndex, best.targetSlotIndex);
+}
+
+function tcgNpcTrySetBackrow(duel, socketId) {
+  const state = duel.players[socketId];
+  const opponent = duel.players[getTcgOpponentSocketId(duel, socketId)];
+  const visibleTargets = tcgNpcVisibleEnemyTargets(duel, socketId);
+  const preferredLanes = tcgNpcPreferredLanesFromTargets(visibleTargets);
+  const openMagicSlots = state.spellTrapSlots
+    .map((slot, index) => !slot ? index : -1)
+    .filter(index => index >= 0);
+
+  const fieldTraps = tcgNormalizeFieldTrapState(state);
+  const legalTrapCells = [...tcgTrapPlacementCellSet(state)].filter(cellIndex =>
+    !fieldTraps[cellIndex] &&
+    !state.creatureSlots[cellIndex] &&
+    !opponent.creatureSlots[tcgMirrorBoardCellIndex(cellIndex)]
+  );
+
+  const existingTrapCount = fieldTraps.filter(Boolean).length;
+  const trapCardsInHand = state.hand.filter(cardId => tcgCardCategory(cardId) === "trap").length;
+  let best = null;
+
+  state.hand.forEach((cardId, handIndex) => {
+    const category = tcgCardCategory(cardId);
+    const rank = tcgCardRank(cardId);
+
+    if (category === "magic" && openMagicSlots.length) {
+      const lane = preferredLanes.find(candidate => openMagicSlots.includes(candidate)) ?? openMagicSlots[0];
+      const template = tcgSpellEffectTemplate(cardId, "magic");
+      const score =
+        280 +
+        rank * 105 +
+        (template.effectKind === "heal" ? Math.max(0, TCG_DUEL_LIFE_POINTS - state.lifePoints) * 0.2 : 0) +
+        (template.effectKind === "aoe" ? visibleTargets.length * 220 : 0);
+
+      if (!best || score > best.score) {
+        best = { handIndex, slotIndex: lane, score };
+      }
+
+      return;
+    }
+
+    if (category !== "trap" || !legalTrapCells.length || existingTrapCount >= 4) return;
+
+    const shouldReserveLastTrap =
+      trapCardsInHand <= 1 &&
+      existingTrapCount >= 1 &&
+      state.lifePoints > 1800 &&
+      !visibleTargets.length;
+
+    if (shouldReserveLastTrap) return;
+
+    const profile = tcgFieldTrapProfile(cardId);
+
+    legalTrapCells.forEach(cellIndex => {
+      const lane = tcgBoardCellLane(cellIndex);
+      const row = tcgBoardCellRow(cellIndex);
+      let score = 300 + rank * 120;
+
+      visibleTargets.forEach(target => {
+        const targetOnNpcBoard = tcgMirrorBoardCellIndex(target.index);
+        const distance = Math.max(
+          Math.abs(lane - tcgBoardCellLane(targetOnNpcBoard)),
+          Math.abs(row - tcgBoardCellRow(targetOnNpcBoard))
+        );
+
+        score += Math.max(0, 900 - distance * 210);
+        if (profile.kind === "snare" || profile.kind === "push") score += target.threatScore * 0.14;
+        if (profile.kind === "blast" && target.health <= profile.damage) score += 1000;
+      });
+
+      if (state.lifePoints < 1900) score += (TCG_DUEL_BOARD_ROWS - row) * 90;
+      if (row <= 1) score += state.lifePoints < 2200 ? 450 : 100;
+      score -= existingTrapCount * 170;
+
+      if (!best || score > best.score) {
+        best = { handIndex, slotIndex: cellIndex, score };
+      }
+    });
+  });
+
+  if (!best) return { ok: false };
+  return tcgSetSpellTrap(duel, socketId, best.handIndex, best.slotIndex);
+}
+
+function tcgNpcFindAttackPlan(duel, socketId) {
+  const state = duel.players[socketId];
+  const opponent = duel.players[getTcgOpponentSocketId(duel, socketId)];
+  const visibleTargets = tcgNpcVisibleEnemyTargets(duel, socketId);
+  let best = null;
+
+  tcgNormalizeCreatureBoardState(state);
+  tcgNormalizeCreatureBoardState(opponent);
+
+  state.creatureSlots.forEach((attacker, attackerIndex) => {
+    if (!attacker || attacker.hasAttacked) return;
+
+    tcgRefreshCreatureBoardProfile(attacker);
+    attacker.lane = tcgBoardCellLane(attackerIndex);
+    attacker.row = tcgBoardCellRow(attackerIndex);
+
+    visibleTargets.forEach(target => {
+      const defender = target.slot;
+      const targetIndex = target.index;
+
+      if (!tcgCanCreatureAttackTarget(attacker, attackerIndex, defender, targetIndex)) return;
+
+      const metrics = tcgCreatureBoardMetrics(attacker, attackerIndex, defender, targetIndex);
+      const targetHealth = target.hidden ? 900 : Math.max(1, Number(defender.health || defender.maxHealth || 1));
+      const canKill = (attacker.attack || 0) >= targetHealth;
+      const score =
+        (canKill ? 2400 : 0) +
+        target.attack +
+        target.health * 0.38 +
+        target.row * 260 -
+        metrics.distance * 95;
+
+      if (!best || score > best.score) {
+        best = {
+          type: "creature",
+          attackerIndex,
+          targetIndex,
+          attackDirection: tcgAttackDirectionFromSlots(attackerIndex, targetIndex),
+          score
+        };
+      }
+    });
+
+    const attackerLane = tcgBoardCellLane(attackerIndex);
+    const directLaneCandidates = [...new Set([attackerLane, attackerLane - 1, attackerLane + 1])]
+      .filter(lane => lane >= 0 && lane < TCG_DUEL_BOARD_LANES);
+
+    directLaneCandidates.forEach(directLane => {
+      if (!tcgCanCreatureAttackDirect(attacker, attackerIndex, opponent, directLane)) return;
+
+      const score =
+        (attacker.attack || 0) +
+        tcgBoardCellRow(attackerIndex) * 520 -
+        Math.abs(directLane - attackerLane) * 100 +
+        (opponent.lifePoints <= (attacker.attack || 0) ? 2200 : 0);
+
+      if (!best || score > best.score) {
+        best = {
+          type: "direct",
+          attackerIndex,
+          targetIndex: -1,
+          directLaneIndex: directLane,
+          attackDirection: tcgAttackDirectionFromSlots(attackerIndex, directLane),
+          score
+        };
+      }
+    });
+  });
+
+  return best;
+}
+
+function tcgNpcMoveCandidates(slot, fromCellIndex) {
+  const moves = [];
+  const profile = tcgCreatureBoardProfile(slot.cardId);
+  const originLane = tcgBoardCellLane(fromCellIndex);
+  const originRow = tcgBoardCellRow(fromCellIndex);
+  const range = Math.max(1, Math.floor(Number(slot.moveRange || profile.moveRange || 1)));
+
+  for (let laneDelta = -range; laneDelta <= range; laneDelta++) {
+    for (let rowDelta = -range; rowDelta <= range; rowDelta++) {
+      if (!tcgMovementPatternAllows(profile, laneDelta, rowDelta)) continue;
+
+      const distance = tcgMovementDistance(profile, laneDelta, rowDelta);
+      if (distance < 1 || distance > range) continue;
+
+      const targetLane = originLane + laneDelta;
+      const targetRow = originRow + rowDelta;
+
+      if (targetLane < 0 || targetLane >= TCG_DUEL_BOARD_LANES) continue;
+      if (targetRow < 0 || targetRow >= TCG_DUEL_BOARD_ROWS) continue;
+
+      moves.push({
+        lane: targetLane,
+        row: targetRow,
+        cellIndex: tcgBoardCellIndex(targetLane, targetRow),
+        distance
+      });
+    }
+  }
+
+  return moves;
+}
+
+function tcgNpcTryMoveCreature(duel, socketId) {
+  const state = duel.players[socketId];
+  const opponent = duel.players[getTcgOpponentSocketId(duel, socketId)];
+  const slots = tcgNormalizeCreatureBoardState(state);
+  const visibleTargets = tcgNpcVisibleEnemyTargets(duel, socketId);
+  const threatenedLanes = visibleTargets
+    .filter(target => target.row >= TCG_DUEL_BOARD_ROWS - 1)
+    .map(target => target.lane);
+
+  let bestMove = null;
+
+  slots.forEach((slot, fromCellIndex) => {
+    if (!slot || slot.moveUsed || slot.summonedTurn >= duel.turnNumber) return;
+
+    tcgRefreshCreatureBoardProfile(slot);
+    const currentLane = tcgBoardCellLane(fromCellIndex);
+    const currentRow = tcgBoardCellRow(fromCellIndex);
+    slot.lane = currentLane;
+    slot.row = currentRow;
+
+    tcgNpcMoveCandidates(slot, fromCellIndex).forEach(move => {
+      if (slots[move.cellIndex]) return;
+
+      const fake = { ...slot, lane: move.lane, row: move.row };
+      let score =
+        move.row * 320 -
+        Math.abs(move.lane - 2) * 32 -
+        move.distance * 22 +
+        (move.row > currentRow ? 280 : -80);
+
+      if (state.lifePoints < 2100 && move.row === TCG_DUEL_BOARD_ROWS - 1) score += 260;
+      if (threatenedLanes.some(lane => Math.abs(lane - move.lane) <= 1) && move.row === TCG_DUEL_BOARD_ROWS - 1) score += 850;
+
+      if (!visibleTargets.length) {
+        score += 260 + move.row * 260 + (slot.sightRange || 2) * 95;
+      }
+
+      visibleTargets.forEach(target => {
+        if (tcgCanCreatureAttackTarget(fake, move.cellIndex, target.slot, target.index)) {
+          const canKill = (slot.attack || 0) >= Math.max(1, target.health || 1);
+          score += 1600 + (canKill ? 1000 : 0) + target.attack * 0.48 + target.row * 180;
+        } else {
+          const metrics = tcgCreatureBoardMetrics(fake, move.cellIndex, target.slot, target.index);
+          score -= metrics.distance * 80;
+        }
+      });
+
+      if (tcgCanCreatureAttackDirect(fake, move.cellIndex, opponent, move.lane)) {
+        score += 1700 + (slot.attack || 0) * 0.22 + (opponent.lifePoints <= (slot.attack || 0) ? 1600 : 0);
+      }
+
+      if (!bestMove || score > bestMove.score) {
+        bestMove = {
+          fromCell: fromCellIndex,
+          toCell: move.cellIndex,
+          row: move.row,
+          score
+        };
+      }
+    });
+  });
+
+  if (!bestMove || bestMove.score < 140) return false;
+
+  const result = tcgMoveCreature(duel, socketId, bestMove.fromCell, bestMove.toCell, bestMove.row);
+  return !!result.ok;
+}
+
+function tcgNpcEndTurnReliably(duel, socketId) {
+  if (!duel || duel.status !== "active" || duel.activeSocketId !== socketId) return;
+
+  if (duel.phase !== "end") {
+    const phaseResult = tcgSetPhase(duel, socketId, "end");
+    if (!phaseResult.ok && duel.status === "active" && duel.activeSocketId === socketId) {
+      duel.phase = "end";
+      tcgPushLog(duel, `${duel.players[socketId]?.name || "Opponent"} prepared to end their turn.`);
+      emitTcgDuelUpdate(duel);
+    }
+    return;
+  }
+
+  const endResult = tcgEndTurn(duel, socketId);
+  if (!endResult.ok) emitTcgDuelUpdate(duel);
+}
+
+function tcgNpcRunMainPhase(duel, socketId) {
+  const state = duel.players[socketId];
+  const opponent = duel.players[getTcgOpponentSocketId(duel, socketId)];
+
+  if (!state || !opponent) {
+    tcgNpcEndTurnReliably(duel, socketId);
+    return;
+  }
+
+  if (duel.status !== "active" || duel.activeSocketId !== socketId || duel.phase !== "main") return;
+
+  const hasCreature = tcgNormalizeCreatureBoardState(state).some(Boolean);
+
+  if (!hasCreature && !state.normalSummonUsed) {
+    const summon = tcgNpcChooseSummon(duel, socketId);
+    if (summon) {
+      const result = tcgSummonCreature(duel, socketId, summon.handIndex, summon.slotIndex, summon.sacrificeSlots);
+      if (result.ok || duel.status === "finished") return;
+    }
+  }
+
+  const magicResult = tcgNpcTryActivateMagic(duel, socketId);
+  if (magicResult.ok || duel.status === "finished") return;
+
+  if (!state.normalSummonUsed) {
+    const summon = tcgNpcChooseSummon(duel, socketId);
+    if (summon) {
+      const result = tcgSummonCreature(duel, socketId, summon.handIndex, summon.slotIndex, summon.sacrificeSlots);
+      if (result.ok || duel.status === "finished") return;
+    }
+  }
+
+  if (tcgNpcTryMoveCreature(duel, socketId) || duel.status === "finished") return;
+
+  const setResult = tcgNpcTrySetBackrow(duel, socketId);
+  if (setResult.ok || duel.status === "finished") return;
+
+  const canAttack =
+    duel.status === "active" &&
+    duel.turnNumber !== 1 &&
+    duel.firstTurnSocketId !== socketId &&
+    !!tcgNpcFindAttackPlan(duel, socketId);
+
+  if (canAttack) {
+    const result = tcgSetPhase(duel, socketId, "attack");
+    if (!result.ok) tcgNpcEndTurnReliably(duel, socketId);
+    return;
+  }
+
+  tcgPushLog(duel, `${state.name} scouted the field and passed.`);
+  tcgNpcEndTurnReliably(duel, socketId);
+}
+
+function tcgNpcRunBattlePhase(duel, socketId) {
+  if (duel.status !== "active" || duel.activeSocketId !== socketId) return;
+
+  const plan = tcgNpcFindAttackPlan(duel, socketId);
+
+  if (plan) {
+    const result = tcgAttackWithCreature(
+      duel,
+      socketId,
+      plan.attackerIndex,
+      plan.targetIndex,
+      plan.attackDirection || "forward",
+      plan.directLaneIndex ?? plan.attackerIndex
+    );
+
+    if (result.ok || duel.status === "finished") return;
+
+    tcgPushLog(duel, `${duel.players[socketId].name} found no legal attack path through the fog.`);
+  } else {
+    tcgPushLog(duel, `${duel.players[socketId].name} held position and ended battle.`);
+  }
+
+  tcgNpcEndTurnReliably(duel, socketId);
+}
+
+function tcgRunNpcAction(duel, socketId) {
+  if (!duel || duel.status === "finished" || !tcgIsNpcSocketId(socketId)) return;
+
+  if (duel.status === "rps") {
+    if (duel.rps?.revealing) return;
+
+    if (!duel.rps.picks[socketId]) {
+      duel.rps.picks[socketId] = tcgRandomRpsChoice();
+      tcgSetRpsWaitingStatus(duel);
+      const resolved = resolveTcgRpsRound(duel);
+      if (!resolved && duel.status === "rps") emitTcgDuelUpdate(duel);
+    }
+    return;
+  }
+
+  if (duel.status === "turn_choice" && duel.chooserSocketId === socketId) {
+    const opponentSocketId = getTcgOpponentSocketId(duel, socketId);
+    const firstSocketId = Math.random() < 0.48 ? socketId : opponentSocketId;
+    startTcgDuelTurns(duel, firstSocketId);
+    return;
+  }
+
+  if (duel.status !== "active" || duel.activeSocketId !== socketId) return;
+
+  if (duel.phase === "draw") {
+    tcgDrawForTurn(duel, socketId);
+  } else if (duel.phase === "standby") {
+    tcgAdvanceStandbyToMain(duel, socketId);
+  } else if (duel.phase === "main") {
+    tcgNpcRunMainPhase(duel, socketId);
+  } else if (duel.phase === "attack" || duel.phase === "battle") {
+    tcgNpcRunBattlePhase(duel, socketId);
+  } else if (duel.phase === "end") {
+    tcgEndTurn(duel, socketId);
+  }
+}
+
+function tcgGetNpcActionSocketId(duel) {
+  if (!duel || duel.status === "finished" || !duel.players) return null;
+
+  if (duel.status === "rps") {
+    return Object.keys(duel.players).find(socketId =>
+      tcgIsNpcSocketId(socketId) && !duel.rps?.picks?.[socketId]
+    ) || null;
+  }
+
+  if (duel.status === "turn_choice" && tcgIsNpcSocketId(duel.chooserSocketId)) {
+    return duel.chooserSocketId;
+  }
+
+  if (duel.status === "active" && tcgIsNpcSocketId(duel.activeSocketId)) {
+    return duel.activeSocketId;
+  }
+
+  return null;
+}
+
+function tcgNpcDelay(minMs, maxMs) {
+  return Math.round(minMs + Math.random() * Math.max(0, maxMs - minMs));
+}
+
+function tcgNpcActionDelay(duel, npcSocketId) {
+  if (!duel || !npcSocketId) return tcgNpcDelay(1200, 2200);
+
+  if (duel.status === "rps") return tcgNpcDelay(900, 1800);
+  if (duel.status === "turn_choice") return tcgNpcDelay(1200, 2600);
+
+  if (duel.status !== "active") return tcgNpcDelay(1200, 2200);
+
+  const turnKey = `${npcSocketId}:${duel.turnNumber || 0}`;
+
+  if (duel.phase === "draw") return tcgNpcDelay(3000, 6000);
+  if (duel.phase === "standby") return tcgNpcDelay(1200, 2400);
+
+  if (duel.phase === "main") {
+    if (duel.npcMainThinkTurnKey !== turnKey) {
+      duel.npcMainThinkTurnKey = turnKey;
+      return tcgNpcDelay(4000, 10000);
+    }
+
+    return tcgNpcDelay(2200, 3600);
+  }
+
+  if (duel.phase === "attack" || duel.phase === "battle") {
+    if (duel.npcBattleThinkTurnKey !== turnKey) {
+      duel.npcBattleThinkTurnKey = turnKey;
+      return tcgNpcDelay(2200, 5200);
+    }
+
+    return tcgNpcDelay(1500, 2800);
+  }
+
+  if (duel.phase === "end") return tcgNpcDelay(2000, 4000);
+
+  return tcgNpcDelay(1400, 2600);
+}
+
+function tcgMaybeScheduleNpcAction(duel, force = false) {
+  if (!duel || duel.status === "finished") return;
+
+  const npcSocketId = tcgGetNpcActionSocketId(duel);
+
+  if (!npcSocketId) {
+    if (duel.npcActionTimer) clearTimeout(duel.npcActionTimer);
+    duel.npcActionTimer = null;
+    duel.npcActionPending = false;
+    duel.npcActionPendingAt = 0;
+    duel.npcActionSocketId = null;
+    return;
+  }
+
+  const now = Date.now();
+  const samePendingNpc = duel.npcActionPending && duel.npcActionSocketId === npcSocketId;
+  if (!force && samePendingNpc && now - Number(duel.npcActionPendingAt || 0) < 2500) return;
+
+  if (duel.npcActionTimer) clearTimeout(duel.npcActionTimer);
+
+  duel.npcActionPending = true;
+  duel.npcActionPendingAt = now;
+  duel.npcActionSocketId = npcSocketId;
+
+  const delay = tcgNpcActionDelay(duel, npcSocketId);
+
+  duel.npcActionTimer = setTimeout(() => {
+    const liveDuel = tcgDuels.get(duel.duelId);
+    if (!liveDuel || liveDuel.status === "finished") return;
+
+    liveDuel.npcActionTimer = null;
+    liveDuel.npcActionPending = false;
+    liveDuel.npcActionPendingAt = 0;
+
+    const liveNpcSocketId = tcgGetNpcActionSocketId(liveDuel);
+    if (!liveNpcSocketId) {
+      liveDuel.npcActionSocketId = null;
+      return;
+    }
+
+    try {
+      tcgRunNpcAction(liveDuel, liveNpcSocketId);
+    } catch (error) {
+      console.error("[tcg] NPC action failed:", error);
+
+      if (liveDuel.status === "turn_choice" && liveDuel.chooserSocketId === liveNpcSocketId) {
+        const opponentSocketId = getTcgOpponentSocketId(liveDuel, liveNpcSocketId);
+        startTcgDuelTurns(liveDuel, opponentSocketId || liveNpcSocketId);
+      } else if (liveDuel.status === "active" && liveDuel.activeSocketId === liveNpcSocketId) {
+        liveDuel.phase = "end";
+        try {
+          tcgEndTurn(liveDuel, liveNpcSocketId);
+        } catch (endError) {
+          console.error("[tcg] NPC emergency end turn failed:", endError);
+          emitTcgDuelUpdate(liveDuel);
+        }
+      }
+    }
+
+    setTimeout(() => {
+      const refreshed = tcgDuels.get(duel.duelId);
+      if (!refreshed || refreshed.status === "finished") return;
+      if (tcgGetNpcActionSocketId(refreshed)) tcgMaybeScheduleNpcAction(refreshed, true);
+    }, 180);
+  }, delay);
+}
+
+function tcgRollRewardPack(entry, packId) {
+  const pack = ACCOUNT_PACK_CATALOG[packId];
+  const cards = [];
+
+  if (!pack || !ACCOUNT_CARD_CATALOG.size) return cards;
+
+  for (let index = 0; index < 3; index++) {
+    const card = accountRollPackCard(pack);
+    if (!card) continue;
+    accountAddCard(entry, card.id, 1);
+    cards.push(card.id);
+  }
+
+  return cards;
+}
+
+function tcgGrantDuelReward(socketId, reward) {
+  const p = getPlayer(socketId);
+
+  if (!p?.playerId) {
+    return { ...reward, packCards: [], account: null, profile: null };
+  }
+
+  const entry = getOrCreateLeaderboardEntry({
+    playerId: p.playerId,
+    name: p.name,
+    color: p.color,
+    icon: p.icon
+  });
+
+  accountGrantReward(entry, {
+    gold: reward.gold,
+    gems: reward.gems
+  });
+
+  const packCards = tcgRollRewardPack(entry, reward.packId);
+
+  accountSyncPlayerCurrency(entry, p);
+
+  const account = accountSnapshot(entry);
+  const profile = privatePlayerProfile(p);
+
+  io.to(socketId).emit("accountSync", account);
+  io.to(socketId).emit("profileAssigned", profile);
+
+  return {
+    ...reward,
+    packCards,
+    account,
+    profile
+  };
+}
+
+function endTcgDuel(duel, winnerSocketId, reason = "complete") {
+  if (!duel || duel.status === "finished") return;
+
+  const loserSocketId = getTcgOpponentSocketId(duel, winnerSocketId);
+  const isConcession = reason === "forfeit" || reason === "disconnect";
+
+  duel.status = "finished";
+  duel.winnerSocketId = winnerSocketId;
+  duel.loserSocketId = loserSocketId;
+  duel.endReason = reason;
+  duel.rewards = isConcession
+    ? {
+        [winnerSocketId]: { result: "win", gold: 750, gems: 15, packTier: "standard", packId: TCG_REWARD_PACKS.loss },
+        [loserSocketId]: { result: "loss", gold: 0, gems: 0, packTier: "none", packId: null }
+      }
+    : {
+        [winnerSocketId]: { result: "win", gold: 1500, gems: 25, packTier: "premium", packId: TCG_REWARD_PACKS.win },
+        [loserSocketId]: { result: "loss", gold: 750, gems: 15, packTier: "standard", packId: TCG_REWARD_PACKS.loss }
+      };
+  duel.rewardResults = {};
+
+  for (const [socketId, reward] of Object.entries(duel.rewards)) {
+    duel.rewardResults[socketId] = tcgGrantDuelReward(socketId, reward);
+  }
+
+  void rankedCommitStateNow();
+
+  for (const socketId of Object.keys(duel.players)) {
+    const p = getPlayer(socketId);
+    if (p && p.tcgDuelId === duel.duelId) p.tcgDuelId = null;
+    io.to(socketId).emit("tcgDuelEnded", publicTcgDuelState(duel, socketId));
+  }
+
+  const spectatorIds = Array.isArray(duel.spectators) ? duel.spectators : [];
+  for (const socketId of spectatorIds) {
+    if (!duel.players[socketId]) {
+      io.to(socketId).emit("tcgDuelEnded", publicTcgDuelState(duel, socketId));
+    }
+  }
+
+  const lobby = duel.lobbyCode ? tcgLobbies.get(duel.lobbyCode) : null;
+  if (lobby && lobby.activeDuelId === duel.duelId) {
+    lobby.activeDuelId = null;
+    emitTcgLobbyUpdate(lobby);
+  }
+
+  broadcastOnlineList();
+
+  setTimeout(() => {
+    tcgDuels.delete(duel.duelId);
+  }, 60000);
+}
+
+function forfeitTcgDuel(duel, loserSocketId, reason = "forfeit") {
+  const winnerSocketId = getTcgOpponentSocketId(duel, loserSocketId);
+  if (!winnerSocketId) return;
+  endTcgDuel(duel, winnerSocketId, reason);
+}
+
+function tcgPushLog(duel, message, meta = null) {
+  duel.actionLog = Array.isArray(duel.actionLog) ? duel.actionLog : [];
+  const entry = {
+    at: Date.now(),
+    message: String(message || "")
+  };
+  if (meta && typeof meta === "object") entry.meta = meta;
+  duel.actionLog.unshift(entry);
+  duel.actionLog = duel.actionLog.slice(0, 8);
+}
+
+function tcgCheckLifeAndDeckLoss(duel) {
+  for (const [socketId, state] of Object.entries(duel.players)) {
+    if (state.lifePoints <= 0) {
+      forfeitTcgDuel(duel, socketId, "life_points_zero");
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function tcgStartTurn(duel, socketId) {
+  const state = duel.players[socketId];
+
+  duel.status = "active";
+  duel.phase = "draw";
+  duel.activeSocketId = socketId;
+  duel.drawPendingSocketId = socketId;
+  duel.standbyDeadlineAt = 0;
+  duel.turnNumber += 1;
+
+  state.normalSummonUsed = false;
+  state.spellMoveUsed = false;
+  state.directBlockedThisTurn = false;
+  tcgNormalizeCreatureBoardState(state).forEach((slot, index) => {
+    if (slot) {
+      slot.hasAttacked = false;
+      slot.attacksThisTurn = 0;
+      slot.moveUsed = false;
+      slot.lane = tcgBoardCellLane(index);
+      slot.row = tcgBoardCellRow(index);
+      tcgRefreshCreatureBoardProfile(slot);
+    }
+  });
+
+  tcgPushLog(duel, `${state.name} starts turn ${duel.turnNumber}. Draw Phase.`);
+  emitTcgDuelUpdate(duel);
+  return true;
+}
+
+function tcgHasStandbyResponse(duel, activeSocketId) {
+  return Object.entries(duel.players).some(([socketId, state]) =>
+    state.spellTrapSlots.some(slot =>
+      slot &&
+      slot.category === "trap" &&
+      slot.setTurn < duel.turnNumber &&
+      socketId !== activeSocketId
+    )
+  );
+}
+
+function tcgAdvanceStandbyToMain(duel, socketId) {
+  if (!duel || duel.status !== "active" || duel.activeSocketId !== socketId) return;
+  if (duel.phase !== "standby") return;
+  duel.phase = "main";
+  duel.standbyDeadlineAt = 0;
+  tcgPushLog(duel, `${duel.players[socketId].name} enters Main Phase.`);
+  emitTcgDuelUpdate(duel);
+}
+
+function tcgDrawForTurn(duel, socketId) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+  if (duel.phase !== "draw" || duel.drawPendingSocketId !== socketId) return { ok: false, error: "Draw Phase is not pending." };
+
+  const state = duel.players[socketId];
+  const opponentSocketId = getTcgOpponentSocketId(duel, socketId);
+  const drawnCardId = state.deck[0] || null;
+  const draw = drawTcgCards(state, 1);
+
+  if (draw.deckedOut) {
+    endTcgDuel(duel, opponentSocketId, "deck_out");
+    return { ok: true };
+  }
+
+  duel.drawPendingSocketId = null;
+  duel.standbyDeadlineAt = 0;
+  duel.phase = "main";
+  tcgPushLog(duel, `${state.name} draws a card and enters Main Phase.`);
+  emitTcgDuelUpdate(duel);
+  return { ok: true, cardId: drawnCardId, phase: duel.phase };
+}
+
+function startTcgDuelTurns(duel, firstSocketId) {
+  duel.status = "active";
+  duel.phase = "main";
+  duel.turnNumber = 0;
+  duel.firstTurnSocketId = firstSocketId;
+  tcgStartTurn(duel, firstSocketId);
+}
+
+function tcgRequireActiveTurn(duel, socketId) {
+  if (!duel || duel.status !== "active") return { ok: false, error: "Duel is not active." };
+  if (duel.activeSocketId !== socketId) return { ok: false, error: "It is not your turn." };
+  return { ok: true };
+}
+
+function tcgRemoveHandCard(playerState, handIndex) {
+  const index = Math.max(0, Math.floor(Number(handIndex)));
+  if (index < 0 || index >= playerState.hand.length) return null;
+  return playerState.hand.splice(index, 1)[0] || null;
+}
+
+function tcgSummonCreature(duel, socketId, handIndex, slotIndex = -1, sacrificeSlots = [], options = {}) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+  if (duel.phase !== "main") return { ok: false, error: "Summon during Main Phase." };
+
+  const state = duel.players[socketId];
+  if (state.normalSummonUsed) return { ok: false, error: "You already summoned this turn." };
+
+  const cardId = state.hand[Math.max(0, Math.floor(Number(handIndex)))];
+  if (!cardId || tcgCardCategory(cardId) !== "monster") return { ok: false, error: "That is not a creature card." };
+
+  const summonOptions = options && typeof options === "object" ? options : {};
+  const faceDown = !!summonOptions.faceDown;
+  const position = faceDown || summonOptions.position === "defense" ? "defense" : "attack";
+  tcgNormalizeCreatureBoardState(state);
+
+  const tributeCost = tcgCreatureSacrificeCost(cardId);
+  const cleanSacrifices = [...new Set((Array.isArray(sacrificeSlots) ? sacrificeSlots : []).map(index => Math.floor(Number(index))))].filter(index =>
+    index >= 0 &&
+    index < TCG_DUEL_BOARD_CELLS &&
+    state.creatureSlots[index]
+  );
+
+  if (cleanSacrifices.length < tributeCost) {
+    return { ok: false, error: `${cardId.replace(/_/g, " ")} requires ${tributeCost} sacrifice${tributeCost === 1 ? "" : "s"}.` };
+  }
+
+  let targetSlot = Math.floor(Number(slotIndex));
+  const targetWillBeCleared = cleanSacrifices.includes(targetSlot);
+  const openBackRowSlot = Array.from({ length: TCG_DUEL_BOARD_LANES }, (_, index) => index)
+    .find(index => !state.creatureSlots[index] || cleanSacrifices.includes(index));
+
+  if (targetSlot < 0 || targetSlot >= TCG_DUEL_BOARD_LANES || (state.creatureSlots[targetSlot] && !targetWillBeCleared)) {
+    targetSlot = openBackRowSlot ?? -1;
+  }
+
+  if (targetSlot < 0) return { ok: false, error: "No open creature slot." };
+
+  cleanSacrifices.slice(0, tributeCost).forEach(index => {
+    if (state.creatureSlots[index]) {
+      state.discard.push(state.creatureSlots[index].cardId);
+      state.creatureSlots[index] = null;
+    }
+  });
+
+  tcgRemoveHandCard(state, handIndex);
+
+  const stats = tcgCardStats(cardId);
+  const boardProfile = tcgCreatureBoardProfile(cardId);
+  state.creatureSlots[targetSlot] = {
+    cardId,
+    attack: stats.attack,
+    maxHealth: stats.health,
+    health: stats.health,
+    hasAttacked: true,
+    attacksThisTurn: 0,
+    moveUsed: true,
+    summonedTurn: duel.turnNumber,
+    tributeCost,
+    position,
+    faceDown,
+    lane: targetSlot,
+    row: 0,
+    moveRange: boardProfile.moveRange,
+    movePattern: boardProfile.movePattern,
+    attackRange: boardProfile.attackRange,
+    attackStyle: boardProfile.attackStyle,
+    sightRange: boardProfile.sightRange
+  };
+  state.normalSummonUsed = true;
+
+  tcgPushLog(duel, faceDown
+    ? `${state.name} set a creature face-down in defense position.`
+    : `${state.name} summoned a creature${tributeCost ? ` by sacrificing ${tributeCost}` : ""}.`,
+    {
+      actionType: "summon_creature",
+      actorSocketId: socketId,
+      cellIndex: targetSlot,
+      cardId,
+      faceDown,
+      tributeCost
+    }
+  );
+  emitTcgDuelUpdate(duel);
+  return { ok: true };
+}
+
+function tcgSetSpellTrap(duel, socketId, handIndex, slotIndex = -1) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+  if (duel.phase !== "main") return { ok: false, error: "Place cards during Main Phase." };
+
+  const state = duel.players[socketId];
+  const opponent = duel.players[getTcgOpponentSocketId(duel, socketId)];
+  const cleanHandIndex = Math.max(0, Math.floor(Number(handIndex)));
+  const cardId = state.hand[cleanHandIndex];
+  const category = tcgCardCategory(cardId);
+
+  if (!cardId || (category !== "magic" && category !== "trap")) {
+    return { ok: false, error: "That card cannot be placed here." };
+  }
+
+  if (category === "magic") {
+    let targetSlot = Math.floor(Number(slotIndex));
+
+    if (targetSlot < 0 || targetSlot >= TCG_DUEL_BOARD_LANES || state.spellTrapSlots[targetSlot]) {
+      targetSlot = state.spellTrapSlots.findIndex(slot => !slot);
+    }
+
+    if (targetSlot < 0) return { ok: false, error: "No open Magic slot." };
+
+    tcgRemoveHandCard(state, cleanHandIndex);
+
+    state.spellTrapSlots[targetSlot] = {
+      cardId,
+      category: "magic",
+      setTurn: duel.turnNumber,
+      ownerSocketId: socketId,
+      faceDown: true,
+      lane: targetSlot,
+      pattern: tcgSpellPattern(cardId, "magic")
+    };
+
+    tcgPushLog(duel, `${state.name} set a card.`, {
+      actionType: "set_spell_trap",
+      actorSocketId: socketId,
+      slotIndex: targetSlot,
+      category: "magic"
+    });
+
+    emitTcgDuelUpdate(duel);
+    return { ok: true };
+  }
+
+  tcgNormalizeCreatureBoardState(state);
+  tcgNormalizeCreatureBoardState(opponent);
+
+  const traps = tcgNormalizeFieldTrapState(state);
+  const targetCell = Math.floor(Number(slotIndex));
+  const visibleCells = tcgTrapPlacementCellSet(state);
+
+  if (targetCell < 0 || targetCell >= TCG_DUEL_BOARD_CELLS) {
+    return { ok: false, error: "Choose a highlighted field cell." };
+  }
+
+  if (!visibleCells.has(targetCell)) {
+    return { ok: false, error: "Your creatures cannot currently see that field cell." };
+  }
+
+  if (traps[targetCell]) {
+    return { ok: false, error: "You already have a Trap on that field cell." };
+  }
+
+  if (
+    state.creatureSlots[targetCell] ||
+    opponent.creatureSlots[tcgMirrorBoardCellIndex(targetCell)]
+  ) {
+    return { ok: false, error: "Traps cannot be placed under a creature." };
+  }
+
+  tcgRemoveHandCard(state, cleanHandIndex);
+
+  traps[targetCell] = {
+    cardId,
+    category: "trap",
+    setTurn: duel.turnNumber,
+    ownerSocketId: socketId,
+    faceDown: true,
+    cellIndex: targetCell
+  };
+
+  tcgPushLog(duel, `${state.name} set a card on the field.`, {
+    actionType: "set_spell_trap",
+    actorSocketId: socketId,
+    cellIndex: targetCell,
+    category: "trap"
+  });
+
+  emitTcgDuelUpdate(duel);
+  return { ok: true };
+}
+
+function tcgDamageCreature(ownerState, slotIndex, damage) {
+  const slot = ownerState.creatureSlots[slotIndex];
+  if (!slot) return false;
+
+  slot.health -= Math.max(0, Math.round(Number(damage || 0)));
+
+  if (slot.health <= 0) {
+    ownerState.discard.push(slot.cardId);
+    ownerState.creatureSlots[slotIndex] = null;
+    return true;
+  }
+
+  return false;
+}
+
+function tcgFindFirstCreatureSlot(state) {
+  return state.creatureSlots.findIndex(slot => !!slot);
+}
+
+function tcgMoveCreature(duel, socketId, fromSlotIndex, toSlotIndex, toRow) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+  if (duel.phase !== "main") return { ok: false, error: "Move creatures during Main Phase." };
+
+  const state = duel.players[socketId];
+  const slots = tcgNormalizeCreatureBoardState(state);
+  const fromCell = tcgResolveCreatureCellIndex(state, fromSlotIndex);
+  const rawTarget = Math.floor(Number(toSlotIndex));
+  const targetCell = rawTarget >= TCG_DUEL_BOARD_LANES && rawTarget < TCG_DUEL_BOARD_CELLS
+    ? rawTarget
+    : tcgBoardCellIndex(rawTarget, toRow);
+
+  const slot = slots[fromCell];
+
+  if (!slot) return { ok: false, error: "No creature in that board cell." };
+  if (slot.moveUsed) return { ok: false, error: "That creature already moved this turn." };
+  if (Number(slot.rootedUntilTurn || 0) >= duel.turnNumber) {
+    return { ok: false, error: "That creature is trapped and cannot move yet." };
+  }
+  if (slot.summonedTurn >= duel.turnNumber) return { ok: false, error: "Newly summoned creatures move next turn." };
+  if (targetCell < 0 || targetCell >= TCG_DUEL_BOARD_CELLS) return { ok: false, error: "That board cell is outside the field." };
+  if (targetCell !== fromCell && slots[targetCell]) return { ok: false, error: "That board cell is occupied." };
+
+  tcgRefreshCreatureBoardProfile(slot);
+
+  const fromLane = tcgBoardCellLane(fromCell);
+  const fromRow = tcgBoardCellRow(fromCell);
+  const targetLane = tcgBoardCellLane(targetCell);
+  const targetRow = tcgBoardCellRow(targetCell);
+  const laneDelta = targetLane - fromLane;
+  const rowDelta = targetRow - fromRow;
+  const profile = tcgCreatureBoardProfile(slot.cardId);
+  const movementDistance = tcgMovementDistance(profile, laneDelta, rowDelta);
+
+  if (movementDistance < 1) return { ok: false, error: "Choose a new position." };
+  if (!tcgMovementPatternAllows(profile, laneDelta, rowDelta)) return { ok: false, error: "That creature cannot move in that pattern." };
+  if (movementDistance > (slot.moveRange || profile.moveRange || 1)) return { ok: false, error: "That creature cannot move that far." };
+
+  const alignedPath = laneDelta === 0 || rowDelta === 0 || Math.abs(laneDelta) === Math.abs(rowDelta);
+  if (alignedPath && movementDistance > 1) {
+    const laneStep = Math.sign(laneDelta);
+    const rowStep = Math.sign(rowDelta);
+    let checkLane = fromLane + laneStep;
+    let checkRow = fromRow + rowStep;
+
+    while (checkLane !== targetLane || checkRow !== targetRow) {
+      if (slots[tcgBoardCellIndex(checkLane, checkRow)]) {
+        return { ok: false, error: "That movement path is blocked." };
+      }
+
+      checkLane += laneStep;
+      checkRow += rowStep;
+    }
+  }
+
+  const traversalCells = [];
+
+  if (alignedPath) {
+    const laneStep = Math.sign(laneDelta);
+    const rowStep = Math.sign(rowDelta);
+    let traversalLane = fromLane + laneStep;
+    let traversalRow = fromRow + rowStep;
+
+    while (traversalLane !== targetLane || traversalRow !== targetRow) {
+      traversalCells.push(tcgBoardCellIndex(traversalLane, traversalRow));
+      traversalLane += laneStep;
+      traversalRow += rowStep;
+    }
+
+    traversalCells.push(targetCell);
+  } else {
+    traversalCells.push(targetCell);
+  }
+
+  slot.moveUsed = true;
+  slot.moveRange = profile.moveRange;
+  slot.movePattern = profile.movePattern;
+  slot.attackRange = profile.attackRange;
+  slot.attackStyle = profile.attackStyle;
+
+  let currentCell = fromCell;
+  let trapTriggered = false;
+  let creatureDestroyed = false;
+
+  for (const traversalCell of traversalCells) {
+    if (!state.creatureSlots[currentCell]) {
+      creatureDestroyed = true;
+      break;
+    }
+
+    slots[currentCell] = null;
+    slots[traversalCell] = slot;
+    currentCell = traversalCell;
+    slot.lane = tcgBoardCellLane(currentCell);
+    slot.row = tcgBoardCellRow(currentCell);
+
+    const trapResult = tcgResolveFieldTraps(
+      duel,
+      socketId,
+      currentCell,
+      "move"
+    );
+
+    trapTriggered = trapTriggered || trapResult.triggered;
+    creatureDestroyed = creatureDestroyed || trapResult.destroyed;
+
+    if (trapResult.destroyed) break;
+
+    currentCell = Number.isFinite(Number(trapResult.currentCellIndex))
+      ? Number(trapResult.currentCellIndex)
+      : currentCell;
+
+    const wasStopped =
+      trapResult.displaced ||
+      Number(slot.rootedUntilTurn || 0) >= duel.turnNumber;
+
+    if (wasStopped) break;
+  }
+
+  tcgPushLog(duel, `${state.name} moved a creature.`, {
+    actionType: "move_creature",
+    actorSocketId: socketId,
+    fromCellIndex: fromCell,
+    toCellIndex: currentCell
+  });
+
+  emitTcgDuelUpdate(duel);
+  return {
+    ok: true,
+    trapTriggered,
+    creatureDestroyed,
+    finalCellIndex: currentCell
+  };
+}
+
+function tcgMoveSpellTrap(duel, socketId, fromSlotIndex, toSlotIndex) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+  if (duel.phase !== "main") return { ok: false, error: "Reorder magic/trap cards during Main Phase." };
+
+  const state = duel.players[socketId];
+  if (state.spellMoveUsed) return { ok: false, error: "You already moved a magic/trap card this turn." };
+
+  const fromLane = tcgNormalizeBoardLane(fromSlotIndex);
+  const targetLane = tcgNormalizeBoardLane(toSlotIndex);
+  const slot = state.spellTrapSlots[fromLane];
+
+  if (!slot) return { ok: false, error: "No magic/trap card in that lane." };
+  if (fromLane === targetLane) return { ok: false, error: "Choose a different magic/trap lane." };
+
+  const swap = state.spellTrapSlots[targetLane];
+  state.spellTrapSlots[targetLane] = slot;
+  state.spellTrapSlots[fromLane] = swap || null;
+
+  state.spellTrapSlots.forEach((entry, index) => {
+    if (entry) entry.lane = index;
+  });
+
+  state.spellMoveUsed = true;
+  tcgPushLog(duel, `${state.name} rearranged their back row.`);
+  emitTcgDuelUpdate(duel);
+  return { ok: true };
+}
+
+function tcgHasTideglassGuard(state) {
+  return state.creatureSlots.some(slot => {
+    const card = slot ? tcgGetServerCard(slot.cardId) : null;
+    return card && /tideglass|turtle/i.test(`${card.id} ${card.name}`);
+  });
+}
+
+function tcgActivateSpellTrap(duel, socketId, slotIndex, targetSlotIndex = -1) {
+  const state = duel.players[socketId];
+  const opponentSocketId = getTcgOpponentSocketId(duel, socketId);
+  const opponent = duel.players[opponentSocketId];
+  const index = Math.max(0, Math.floor(Number(slotIndex)));
+  const slot = state?.spellTrapSlots?.[index];
+
+  if (!state || !opponent) return { ok: false, error: "Card Duel opponent not found." };
+  if (!slot) return { ok: false, error: "No card in that slot." };
+
+  const card = tcgGetServerCard(slot.cardId);
+  const category = slot.category || card?.category || "magic";
+  const template = tcgSpellEffectTemplate(slot.cardId, category);
+
+  if (category === "magic") {
+    const turn = tcgRequireActiveTurn(duel, socketId);
+    if (!turn.ok) return turn;
+    if (duel.phase !== "main") return { ok: false, error: "Magic activates during your Main Phase." };
+  }
+
+  if (category === "trap" && slot.setTurn >= duel.turnNumber) {
+    return { ok: false, error: "Trap cards cannot activate on the same turn they were set." };
+  }
+
+  const enemySlots = tcgNormalizeCreatureBoardState(opponent);
+  const targetCell = tcgResolveCreatureCellIndex(opponent, targetSlotIndex);
+
+  if (template.requiresTarget && targetCell < 0) {
+    return { ok: false, error: "Choose a target creature for this effect." };
+  }
+
+  state.spellTrapSlots[index] = null;
+  state.discard.push(slot.cardId);
+
+  const baseEffectEvent = {
+    eventType: "spell_projectile",
+    ownerSocketId: socketId,
+    targetSocketId: opponentSocketId,
+    targetSide: "enemy",
+    friendlyFire: false,
+    legalTargets: "enemy_only",
+    cardId: slot.cardId,
+    category,
+    kind: template.effectKind,
+    pattern: template.pattern,
+    damage: template.damage,
+    range: template.range,
+    piercing: template.piercing,
+    stopsOnHit: template.stopsOnHit,
+    projectileCount: template.projectileCount,
+    sourceLane: index,
+    paths: [],
+    hits: []
+  };
+
+  if (template.effectKind === "heal") {
+    const heal = 420 + tcgCardRank(slot.cardId) * 130;
+    state.lifePoints = Math.min(TCG_DUEL_LIFE_POINTS, state.lifePoints + heal);
+    tcgPushLog(duel, `${state.name} restored ${heal} LP.`, { effect: { ...baseEffectEvent, eventType: "utility", amount: heal } });
+  } else if (template.effectKind === "draw") {
+    const draw = drawTcgCards(state, 1);
+    if (draw.deckedOut) {
+      endTcgDuel(duel, opponentSocketId, "deck_out");
+      return { ok: true };
+    }
+    tcgPushLog(duel, `${state.name} drew a card.`, { effect: { ...baseEffectEvent, eventType: "utility", amount: 1 } });
+  } else {
+    const anchor = tcgSpellAnchorFromTarget(targetSlotIndex, opponent, index);
+    const paths = tcgBuildSpellProjectilePaths(template, anchor.lane);
+    const hitCells = new Set();
+    const hits = [];
+    let lpHits = 0;
+    const maxLpHits = template.pattern === "wave" ? 2 : template.projectileCount > 1 ? 2 : 1;
+
+    paths.forEach(path => {
+      let pathHit = false;
+
+      for (const step of path) {
+        if (step.kind === "creature") {
+          const target = enemySlots[step.cellIndex];
+          if (!target || hitCells.has(step.cellIndex)) continue;
+
+          if (target.faceDown) target.faceDown = false;
+          if (template.debuff === "weaken") {
+            target.hasAttacked = true;
+            target.attack = Math.max(100, Math.round((target.attack || 0) * 0.82));
+          }
+
+          const beforeHealth = Math.max(0, Math.round(target.health || target.maxHealth || 0));
+          const destroyed = tcgDamageCreature(opponent, step.cellIndex, template.damage);
+          hitCells.add(step.cellIndex);
+          pathHit = true;
+
+          hits.push({
+            kind: "creature",
+            cellIndex: step.cellIndex,
+            lane: step.lane,
+            row: step.row,
+            step: step.step,
+            projectileIndex: step.projectileIndex,
+            damage: template.damage,
+            beforeHealth,
+            destroyed
+          });
+
+          if (template.stopsOnHit) break;
+        } else if (step.kind === "base" && template.canHitLp && !pathHit && lpHits < maxLpHits) {
+          const lpDamage = Math.max(1, Math.round(template.damage * template.lpScale));
+          opponent.lifePoints -= lpDamage;
+          lpHits++;
+          pathHit = true;
+          hits.push({
+            kind: "lp",
+            lane: step.lane,
+            step: step.step,
+            projectileIndex: step.projectileIndex,
+            damage: lpDamage
+          });
+        }
+      }
+    });
+
+    const creatureHits = hits.filter(hit => hit.kind === "creature").length;
+    const lpDamage = hits.filter(hit => hit.kind === "lp").reduce((sum, hit) => sum + hit.damage, 0);
+    const hitText = creatureHits
+      ? `${creatureHits} enemy creature${creatureHits === 1 ? "" : "s"}`
+      : lpDamage
+        ? `${lpDamage} LP`
+        : "nothing";
+
+    tcgPushLog(
+      duel,
+      `${state.name} fired a ${template.pattern} ${category} effect for ${template.damage} damage and hit ${hitText}.`,
+      {
+        effect: {
+          ...baseEffectEvent,
+          anchorLane: anchor.lane,
+          anchorCell: anchor.cellIndex,
+          paths,
+          hits
+        }
+      }
+    );
+  }
+
+  if (!tcgCheckLifeAndDeckLoss(duel)) emitTcgDuelUpdate(duel);
+  return { ok: true };
+}
+
+function tcgAttackWithCreature(duel, socketId, attackerSlotIndex, targetSlotIndex = -1, attackDirection = "forward", directLaneIndex = 2) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+  if (duel.phase !== "attack" && duel.phase !== "battle") return { ok: false, error: "Switch to Battle Phase first." };
+  if (duel.turnNumber === 1 && duel.firstTurnSocketId === socketId) return { ok: false, error: "First player cannot attack on turn one." };
+
+  const state = duel.players[socketId];
+  const opponentSocketId = getTcgOpponentSocketId(duel, socketId);
+  const opponent = duel.players[opponentSocketId];
+
+  tcgNormalizeCreatureBoardState(state);
+  tcgNormalizeCreatureBoardState(opponent);
+
+  const attackerIndex = tcgResolveCreatureCellIndex(state, attackerSlotIndex);
+  const attacker = state.creatureSlots[attackerIndex];
+
+  if (!attacker) return { ok: false, error: "No attacker in that board cell." };
+  if (attacker.hasAttacked) return { ok: false, error: "That creature already attacked." };
+
+  tcgRefreshCreatureBoardProfile(attacker);
+  attacker.lane = tcgBoardCellLane(attackerIndex);
+  attacker.row = tcgBoardCellRow(attackerIndex);
+
+  const trapResult = tcgResolveFieldTraps(
+    duel,
+    socketId,
+    attackerIndex,
+    "attack",
+    Number(attacker.attack || 0)
+  );
+
+  if (trapResult.destroyed || trapResult.displaced || trapResult.cancelAction) {
+    const survivingAttacker = state.creatureSlots[trapResult.currentCellIndex];
+    if (survivingAttacker) survivingAttacker.hasAttacked = true;
+
+    emitTcgDuelUpdate(duel);
+    return {
+      ok: true,
+      trapTriggered: trapResult.triggered,
+      attackCancelled: true
+    };
+  }
+
+  const targetIndex = tcgResolveCreatureCellIndex(opponent, targetSlotIndex);
+  const defender = targetIndex >= 0 ? opponent.creatureSlots[targetIndex] : null;
+
+  if (defender) {
+    tcgRefreshCreatureBoardProfile(defender);
+    defender.lane = tcgBoardCellLane(targetIndex);
+    defender.row = tcgBoardCellRow(targetIndex);
+
+    if (!tcgCanCreatureAttackTarget(attacker, attackerIndex, defender, targetIndex)) {
+      return { ok: false, error: "Target is outside this creature's attack range or line." };
+    }
+
+    const profile = tcgCreatureBoardProfile(attacker.cardId);
+    const shape = tcgCreatureAttackShape(attacker);
+    const metrics = tcgCreatureBoardMetrics(attacker, attackerIndex, defender, targetIndex);
+    const direction = attackDirection || tcgAttackDirectionFromSlots(attackerIndex, targetIndex);
+
+    if (defender.faceDown) {
+      defender.faceDown = false;
+      tcgPushLog(duel, `${opponent.name}'s face-down creature was flipped: ${defender.cardId.replace(/_/g, " ")}.`);
+    }
+
+    const defenderIsDefense = defender.position === "defense";
+    const defenderHealthBefore = Math.max(0, Math.round(defender.health || defender.maxHealth || 0));
+    const defenderAttack = Math.max(0, Math.round(defender.attack || 0));
+    const attackerDamage = Math.max(0, Math.round(attacker.attack || 0));
+    const destroyedDefender = tcgDamageCreature(opponent, targetIndex, defenderIsDefense && attackerDamage > defenderHealthBefore ? 999999 : attackerDamage);
+    let lpSpill = 0;
+
+    if (destroyedDefender) {
+      const overkill = Math.max(0, attackerDamage - defenderHealthBefore);
+      if (!defenderIsDefense) lpSpill = Math.round(overkill * (shape === "melee" ? 0.55 : 0.35));
+      if (lpSpill > 0) opponent.lifePoints -= lpSpill;
+    } else if (shape === "melee" || metrics.rowDistance <= 1) {
+      tcgDamageCreature(state, attackerIndex, defenderAttack);
+    }
+
+    if (defenderIsDefense && !destroyedDefender && attackerDamage < defenderHealthBefore && shape === "melee") {
+      const recoil = defenderHealthBefore - attackerDamage;
+      state.lifePoints -= recoil;
+      tcgPushLog(duel, `${state.name} attacked ${direction.replace(/_/g, " ")} into stronger defense and took ${recoil} LP damage.`);
+    } else {
+      tcgPushLog(
+        duel,
+        `${state.name} made a ${shape} ${direction.replace(/_/g, " ")} attack for ${attackerDamage}${destroyedDefender ? " and destroyed the creature" : ""}${lpSpill ? `, spilling ${lpSpill} LP damage` : ""}.`,
+        {
+          combat: {
+            attackerCell: attackerIndex,
+            targetCell: targetIndex,
+            shape,
+            attackRange: profile.attackRange,
+            rowDistance: metrics.rowDistance,
+            laneDistance: metrics.laneDistance,
+            damage: attackerDamage,
+            destroyed: destroyedDefender,
+            lpSpill
+          }
+        }
+      );
+    }
+
+    if (state.creatureSlots[attackerIndex]) state.creatureSlots[attackerIndex].hasAttacked = true;
+  } else {
+    const requestedLane = Math.floor(Number(directLaneIndex));
+    const directLane = requestedLane >= 0 ? tcgNormalizeBoardLane(requestedLane) : tcgBoardCellLane(attackerIndex);
+
+    if (!tcgCanCreatureAttackDirect(attacker, attackerIndex, opponent, directLane)) {
+      return { ok: false, error: "Move to the enemy base zone and clear that lane before attacking LP." };
+    }
+
+    let pushedBack = false;
+
+    if (tcgHasTideglassGuard(opponent) && !opponent.directBlockedThisTurn) {
+      opponent.directBlockedThisTurn = true;
+      attacker.hasAttacked = true;
+      pushedBack = tcgPushDirectAttackerBack(state, attackerIndex);
+      tcgPushLog(duel, `${opponent.name}'s Tideglass guard blocked the direct attack${pushedBack ? " and forced the attacker back" : ""}.`);
+    } else {
+      const directDamage = Math.max(0, Math.round(attacker.attack || 0));
+      opponent.lifePoints -= directDamage;
+      attacker.hasAttacked = true;
+      pushedBack = tcgPushDirectAttackerBack(state, attackerIndex);
+      tcgPushLog(
+        duel,
+        `${state.name} attacked lane ${directLane + 1} LP directly for ${directDamage}${pushedBack ? " and fell back one space" : ""}.`,
+        { combat: { attackerCell: attackerIndex, directLane, damage: directDamage, direct: true, pushedBack } }
+      );
+    }
+  }
+
+  if (!tcgCheckLifeAndDeckLoss(duel)) emitTcgDuelUpdate(duel);
+  return { ok: true };
+}
+
+function tcgSetPhase(duel, socketId, phase) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+
+  const cleanPhase =
+    phase === "standby" ? "standby" :
+    phase === "main" ? "main" :
+    phase === "attack" || phase === "battle" ? "attack" :
+    phase === "end" ? "end" :
+    "";
+
+  if (!cleanPhase) return { ok: false, error: "Invalid phase." };
+  if (duel.phase === "draw") return { ok: false, error: "Draw first." };
+  if (duel.phase === "standby" && cleanPhase !== "main" && cleanPhase !== "end") return { ok: false, error: "Standby can only advance to Main or End." };
+  if (duel.phase === "main" && !["main", "attack", "end"].includes(cleanPhase)) return { ok: false, error: "Main can advance to Attack or End." };
+  if (duel.phase === "attack" && cleanPhase !== "end") return { ok: false, error: "Attack Phase can only advance to End." };
+
+  duel.phase = cleanPhase;
+  if (cleanPhase !== "end") {
+    tcgPushLog(duel, `${duel.players[socketId].name} entered ${cleanPhase.toUpperCase()} Phase.`, {
+      actionType: "phase",
+      actorSocketId: socketId,
+      phase: cleanPhase
+    });
+  }
+  emitTcgDuelUpdate(duel);
+  return { ok: true };
+}
+
+function tcgEndTurn(duel, socketId) {
+  const turn = tcgRequireActiveTurn(duel, socketId);
+  if (!turn.ok) return turn;
+  if (duel.phase !== "end") return { ok: false, error: "Move to End Phase first." };
+
+  const nextSocketId = getTcgOpponentSocketId(duel, socketId);
+  tcgPushLog(duel, `${duel.players[socketId].name} ended their turn.`, {
+    actionType: "end_turn",
+    actorSocketId: socketId
+  });
+  tcgStartTurn(duel, nextSocketId);
+  return { ok: true };
+}
+
+function tcgRandomRpsChoice() {
+  const choices = ["rock", "paper", "scissors"];
+  return choices[Math.floor(Math.random() * choices.length)] || "rock";
+}
+
+function tcgRpsChoiceBeats(choice, otherChoice) {
+  return (
+    (choice === "rock" && otherChoice === "scissors") ||
+    (choice === "paper" && otherChoice === "rock") ||
+    (choice === "scissors" && otherChoice === "paper")
+  );
+}
+
+function tcgSetRpsWaitingStatus(duel) {
+  const pickedCount = Object.keys(duel.rps?.picks || {}).length;
+  const playerCount = Object.keys(duel.players || {}).length;
+  duel.rpsStatus = pickedCount >= playerCount
+    ? "Revealing RPS choices..."
+    : "Choice locked. Waiting for rival.";
+}
+
+function tcgScheduleRpsAuto(duel) {
+  if (!duel || duel.status !== "rps" || duel.rps?.revealing) return;
+
+  if (duel.rpsAutoTimer) clearTimeout(duel.rpsAutoTimer);
+
+  duel.phase = "rps";
+  duel.choiceDeadlineAt = Date.now() + TCG_RPS_AUTO_PICK_MS;
+
+  duel.rpsAutoTimer = setTimeout(() => {
+    const liveDuel = tcgDuels.get(duel.duelId);
+    if (!liveDuel || liveDuel.status !== "rps" || liveDuel.rps?.revealing) return;
+
+    let changed = false;
+
+    for (const socketId of Object.keys(liveDuel.players || {})) {
+      if (!liveDuel.rps?.picks?.[socketId]) {
+        liveDuel.rps.picks[socketId] = tcgRandomRpsChoice();
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+
+    tcgSetRpsWaitingStatus(liveDuel);
+    resolveTcgRpsRound(liveDuel);
+    tcgMaybeScheduleNpcAction(liveDuel, true);
+  }, TCG_RPS_AUTO_PICK_MS);
+}
+
+function scheduleTcgTurnChoiceAuto(duel) {
+  const duelId = duel.duelId;
+
+  setTimeout(() => {
+    const liveDuel = tcgDuels.get(duelId);
+    if (!liveDuel || liveDuel.status !== "turn_choice") return;
+
+    const chooserSocketId = liveDuel.chooserSocketId;
+    const opponentSocketId = getTcgOpponentSocketId(liveDuel, chooserSocketId);
+    const firstSocketId = Math.random() < 0.5 ? chooserSocketId : opponentSocketId;
+    startTcgDuelTurns(liveDuel, firstSocketId);
+    tcgMaybeScheduleNpcAction(liveDuel, true);
+  }, TCG_TURN_CHOICE_MS);
+}
+
+function tcgFinishRpsReveal(duelId, revealId) {
+  const duel = tcgDuels.get(duelId);
+  if (!duel || duel.status !== "rps" || duel.rpsReveal?.id !== revealId) return;
+
+  const reveal = duel.rpsReveal;
+  const winnerSocketId = reveal.winnerSocketId || null;
+
+  duel.rps.picks = {};
+  duel.rps.revealing = false;
+  duel.rpsReveal = null;
+
+  if (winnerSocketId && (duel.rps.wins[winnerSocketId] || 0) >= 2) {
+    duel.status = "turn_choice";
+    duel.phase = "turn_choice";
+    duel.chooserSocketId = winnerSocketId;
+    duel.choiceDeadlineAt = Date.now() + TCG_TURN_CHOICE_MS;
+    duel.rpsStatus = `${duel.players[winnerSocketId].name} won RPS. Choose turn order.`;
+    scheduleTcgTurnChoiceAuto(duel);
+  } else {
+    if (winnerSocketId) duel.rps.round++;
+    duel.phase = "rps";
+    duel.rpsStatus = winnerSocketId
+      ? `Round ${duel.rps.round}. Choose rock, paper, or scissors.`
+      : "Tie. Pick again.";
+    tcgScheduleRpsAuto(duel);
+  }
+
+  emitTcgDuelUpdate(duel);
+  tcgMaybeScheduleNpcAction(duel, true);
+}
+
+function resolveTcgRpsRound(duel) {
+  if (!duel || duel.status !== "rps" || duel.rps?.revealing) return false;
+
+  const socketIds = Object.keys(duel.players);
+  const [a, b] = socketIds;
+  const pickA = duel.rps.picks[a];
+  const pickB = duel.rps.picks[b];
+
+  if (!pickA || !pickB) return false;
+
+  if (duel.rpsAutoTimer) {
+    clearTimeout(duel.rpsAutoTimer);
+    duel.rpsAutoTimer = null;
+  }
+
+  const tie = pickA === pickB;
+  const winnerSocketId = tie ? null : tcgRpsChoiceBeats(pickA, pickB) ? a : b;
+
+  if (winnerSocketId) {
+    duel.rps.wins[winnerSocketId] = (duel.rps.wins[winnerSocketId] || 0) + 1;
+  }
+
+  const revealId = `rps_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  const message = tie
+    ? `Tie: both picked ${pickA}. Rematch.`
+    : `${duel.players[winnerSocketId].name} wins the RPS round.`;
+
+  duel.phase = "rps_reveal";
+  duel.rps.revealing = true;
+  duel.rpsStatus = message;
+  duel.rpsReveal = {
+    id: revealId,
+    round: duel.rps.round,
+    picks: {
+      [a]: pickA,
+      [b]: pickB
+    },
+    winnerSocketId,
+    message,
+    wins: { ...(duel.rps.wins || {}) },
+    revealUntil: Date.now() + TCG_RPS_REVEAL_MS
+  };
+
+  duel.rpsHistory = Array.isArray(duel.rpsHistory) ? duel.rpsHistory : [];
+  duel.rpsHistory.unshift(duel.rpsReveal);
+  duel.rpsHistory = duel.rpsHistory.slice(0, 5);
+
+  emitTcgDuelUpdate(duel);
+
+  setTimeout(() => {
+    tcgFinishRpsReveal(duel.duelId, revealId);
+  }, TCG_RPS_REVEAL_MS);
+
+  return true;
 }
 
 function getSpectatorCountsPayload() {
@@ -6218,6 +9646,356 @@ socket.on("accountAction", async (data = {}, cb) => {
     }
   });
 
+  socket.on("tcgDuelInvite", data => {
+    const from = getPlayer(socket.id);
+    const targetSocket = getSocketByPlayerId(data?.targetId);
+    const target = targetSocket ? getPlayer(targetSocket.id) : null;
+
+    if (!from) return;
+    if (!targetSocket || !target) return socket.emit("tcgDuelInviteFailed", "Friend is offline.");
+    if (from.inMatch || target.inMatch) return socket.emit("tcgDuelInviteFailed", "Card Duels can only start from the main menu.");
+    if (from.tcgDuelId || target.tcgDuelId) return socket.emit("tcgDuelInviteFailed", "A player is already in a Card Duel.");
+
+    const deck = cleanTcgDeckPayload(data?.deckPayload);
+
+    if (!deck.ok) {
+      return socket.emit("tcgDuelInviteFailed", deck.error);
+    }
+
+    const inviteId = "tcg_invite_" + Math.random().toString(36).slice(2, 10);
+
+    tcgDuelInvites.set(inviteId, {
+      inviteId,
+      fromSocketId: socket.id,
+      targetSocketId: targetSocket.id,
+      fromDeckIds: deck.deckIds,
+      createdAt: Date.now()
+    });
+
+    targetSocket.emit("tcgDuelInviteIncoming", {
+      inviteId,
+      fromSocketId: socket.id,
+      fromPlayer: publicPlayer(from),
+      deckCount: deck.deckIds.length
+    });
+
+    socket.emit("tcgDuelInviteSent", { targetId: data?.targetId });
+  });
+
+  socket.on("tcgDuelInviteResponse", data => {
+    const invite = tcgDuelInvites.get(data?.inviteId);
+    const me = getPlayer(socket.id);
+
+    if (!invite || !me || invite.targetSocketId !== socket.id) return;
+
+    const inviterSocket = io.sockets.sockets.get(invite.fromSocketId);
+    const inviter = getPlayer(invite.fromSocketId);
+
+    tcgDuelInvites.delete(invite.inviteId);
+
+    if (!inviterSocket || !inviter) {
+      return socket.emit("tcgDuelInviteFailed", "Challenger is no longer online.");
+    }
+
+    if (!data?.accepted) {
+      inviterSocket.emit("tcgDuelInviteDeclined", { player: publicPlayer(me) });
+      return;
+    }
+
+    if (Date.now() - invite.createdAt > TCG_DUEL_INVITE_TTL_MS) {
+      return socket.emit("tcgDuelInviteFailed", "Card Duel invite expired.");
+    }
+
+    if (me.inMatch || inviter.inMatch || me.tcgDuelId || inviter.tcgDuelId) {
+      return socket.emit("tcgDuelInviteFailed", "A player is already busy.");
+    }
+
+    const targetDeck = cleanTcgDeckPayload(data?.deckPayload);
+
+    if (!targetDeck.ok) {
+      return socket.emit("tcgDuelInviteFailed", targetDeck.error);
+    }
+
+    const duelId = makeTcgDuelId();
+
+    const duel = {
+      duelId,
+      status: "rps",
+      phase: "rps",
+      turnNumber: 0,
+      activeSocketId: null,
+      chooserSocketId: null,
+      choiceDeadlineAt: Date.now() + TCG_RPS_AUTO_PICK_MS,
+      rpsStatus: "Choose rock, paper, or scissors.",
+      rpsReveal: null,
+      rpsHistory: [],
+      rps: {
+        round: 1,
+        wins: {
+          [invite.fromSocketId]: 0,
+          [socket.id]: 0
+        },
+        picks: {},
+        revealing: false
+      },
+      players: {
+        [invite.fromSocketId]: makeTcgPlayerState(inviter, invite.fromDeckIds),
+        [socket.id]: makeTcgPlayerState(me, targetDeck.deckIds)
+      }
+    };
+
+    tcgDuels.set(duelId, duel);
+    inviter.tcgDuelId = duelId;
+    me.tcgDuelId = duelId;
+
+    tcgScheduleRpsAuto(duel);
+    emitTcgDuelUpdate(duel);
+    broadcastOnlineList();
+  });
+
+  socket.on("tcgLobbyCreate", (data, cb) => {
+    const p = getPlayer(socket.id);
+    if (!p) return cb?.({ ok: false, error: "Player profile not found." });
+    if (p.inMatch || p.tcgDuelId) return cb?.({ ok: false, error: "Leave the current match or duel first." });
+
+    const deck = cleanTcgDeckPayload(data?.deckPayload);
+    if (!deck.ok) return cb?.({ ok: false, error: deck.error });
+
+    if (p.tcgLobbyCode) leaveTcgLobby(socket.id, "Moved to a new lobby.");
+
+    const code = makeTcgLobbyCode();
+    const lobby = {
+      code,
+      leaderSocketId: socket.id,
+      visibility: "closed",
+      members: [socket.id],
+      duelSlots: [socket.id, null],
+      spectators: [],
+      activeDuelId: null,
+      createdAt: Date.now(),
+      deckIdsBySocketId: {
+        [socket.id]: deck.deckIds
+      }
+    };
+
+    tcgLobbies.set(code, lobby);
+    p.tcgLobbyCode = code;
+    cb?.({ ok: true, lobby: publicTcgLobby(lobby, socket.id) });
+    emitTcgLobbyUpdate(lobby);
+  });
+
+  socket.on("tcgLobbyJoin", (data, cb) => {
+    const p = getPlayer(socket.id);
+    const code = String(data?.code || "").trim().toUpperCase();
+    const lobby = code ? tcgLobbies.get(code) : null;
+
+    if (!p) return cb?.({ ok: false, error: "Player profile not found." });
+    if (!lobby) return cb?.({ ok: false, error: "Lobby code not found." });
+    if (p.inMatch || p.tcgDuelId) return cb?.({ ok: false, error: "Leave the current match or duel first." });
+    if (lobby.visibility === "closed") return cb?.({ ok: false, error: "This lobby is closed." });
+    if (lobby.activeDuelId) return cb?.({ ok: false, error: "This lobby already has a duel in progress." });
+
+    const deck = cleanTcgDeckPayload(data?.deckPayload);
+    if (!deck.ok) return cb?.({ ok: false, error: deck.error });
+
+    if (p.tcgLobbyCode && p.tcgLobbyCode !== code) leaveTcgLobby(socket.id, "Moved to another lobby.");
+
+    if (!lobby.members.includes(socket.id)) lobby.members.push(socket.id);
+    lobby.deckIdsBySocketId[socket.id] = deck.deckIds;
+
+    if (!lobby.duelSlots[0]) lobby.duelSlots[0] = socket.id;
+    else if (!lobby.duelSlots[1]) lobby.duelSlots[1] = socket.id;
+    else if (!lobby.spectators.includes(socket.id)) lobby.spectators.push(socket.id);
+
+    p.tcgLobbyCode = code;
+    cb?.({ ok: true, lobby: publicTcgLobby(lobby, socket.id) });
+    emitTcgLobbyUpdate(lobby);
+  });
+
+  socket.on("tcgLobbySearch", (data, cb) => {
+    cb?.({ ok: true, lobbies: getOpenTcgLobbyResults() });
+  });
+
+  socket.on("tcgLobbyNpcFallback", (data, cb) => {
+    const p = getPlayer(socket.id);
+    if (!p) return cb?.({ ok: false, error: "Player profile not found." });
+    if (p.inMatch || p.tcgDuelId) return cb?.({ ok: false, error: "Leave the current match or duel first." });
+
+    const deck = cleanTcgDeckPayload(data?.deckPayload);
+    if (!deck.ok) return cb?.({ ok: false, error: deck.error });
+
+    if (getOpenTcgLobbyResults().length) {
+      return cb?.({ ok: false, error: "An open player lobby appeared. Search again." });
+    }
+
+    if (p.tcgLobbyCode) leaveTcgLobby(socket.id, "Moved to duel lobby.");
+
+    const code = makeTcgLobbyCode();
+    const npcSocketId = makeTcgNpcSocketId();
+    const npcProfile = makeTcgNpcProfile(npcSocketId);
+    const npcDeck = makeTcgNpcDeck();
+
+    tcgNpcProfiles.set(npcSocketId, npcProfile);
+
+    const lobby = {
+      code,
+      leaderSocketId: socket.id,
+      visibility: "closed",
+      members: [socket.id, npcSocketId],
+      duelSlots: [socket.id, npcSocketId],
+      spectators: [],
+      activeDuelId: null,
+      createdAt: Date.now(),
+      npcProfilesBySocketId: {
+        [npcSocketId]: npcProfile
+      },
+      deckIdsBySocketId: {
+        [socket.id]: deck.deckIds,
+        [npcSocketId]: npcDeck
+      }
+    };
+
+    tcgLobbies.set(code, lobby);
+    p.tcgLobbyCode = code;
+
+    cb?.({ ok: true, lobby: publicTcgLobby(lobby, socket.id) });
+    emitTcgLobbyUpdate(lobby);
+
+    setTimeout(() => {
+      const liveLobby = tcgLobbies.get(code);
+    if (!liveLobby || liveLobby.activeDuelId) return;
+
+    const result = createTcgDuelFromLobby(liveLobby);
+    if (result?.ok) {
+      const liveDuel = tcgDuels.get(result.duelId);
+      tcgMaybeScheduleNpcAction(liveDuel, true);
+    }
+    }, 1000 + Math.random() * 1400);
+  });
+
+  socket.on("tcgLobbySetVisibility", data => {
+    const p = getPlayer(socket.id);
+    const lobby = p?.tcgLobbyCode ? tcgLobbies.get(p.tcgLobbyCode) : null;
+    if (!lobby || lobby.leaderSocketId !== socket.id) return;
+
+    lobby.visibility = normalizeTcgLobbyVisibility(data?.visibility);
+    emitTcgLobbyUpdate(lobby);
+  });
+
+  socket.on("tcgLobbyAssignSlot", data => {
+    const p = getPlayer(socket.id);
+    const lobby = p?.tcgLobbyCode ? tcgLobbies.get(p.tcgLobbyCode) : null;
+    if (!lobby || lobby.leaderSocketId !== socket.id || lobby.activeDuelId) return;
+
+    const targetSocketId = String(data?.socketId || "");
+    const targetSlot = Math.max(0, Math.min(1, Math.floor(Number(data?.slotIndex || 0))));
+    if (!targetSocketId || !lobby.members.includes(targetSocketId)) return;
+
+    const previousSlot = lobby.duelSlots.indexOf(targetSocketId);
+    const displacedSocketId = lobby.duelSlots[targetSlot] || null;
+
+    if (previousSlot >= 0) lobby.duelSlots[previousSlot] = null;
+    lobby.spectators = (lobby.spectators || []).filter(id => id !== targetSocketId);
+
+    lobby.duelSlots[targetSlot] = targetSocketId;
+
+    if (displacedSocketId && displacedSocketId !== targetSocketId && !lobby.spectators.includes(displacedSocketId)) {
+      lobby.spectators.push(displacedSocketId);
+    }
+
+    emitTcgLobbyUpdate(lobby);
+  });
+
+  socket.on("tcgLobbyStartDuel", (data, cb) => {
+    const p = getPlayer(socket.id);
+    const lobby = p?.tcgLobbyCode ? tcgLobbies.get(p.tcgLobbyCode) : null;
+    if (!lobby || lobby.leaderSocketId !== socket.id) return cb?.({ ok: false, error: "Only the lobby leader can start the duel." });
+    if (lobby.activeDuelId) return cb?.({ ok: false, error: "A duel is already active." });
+
+    const result = createTcgDuelFromLobby(lobby);
+    cb?.(result);
+  });
+
+  socket.on("tcgLobbyLeave", () => {
+    leaveTcgLobby(socket.id, "Left Card Duel lobby.");
+  });
+
+  socket.on("tcgDuelRpsPick", data => {
+    const p = getPlayer(socket.id);
+    const duel = p?.tcgDuelId ? tcgDuels.get(p.tcgDuelId) : null;
+    const choice = String(data?.choice || "").toLowerCase();
+
+    if (!duel || duel.duelId !== data?.duelId || duel.status !== "rps" || duel.rps?.revealing) return;
+    if (!TCG_RPS_CHOICES.has(choice)) return;
+    if (duel.rps?.picks?.[socket.id]) return;
+
+    duel.rps.picks[socket.id] = choice;
+    tcgSetRpsWaitingStatus(duel);
+
+    const resolved = resolveTcgRpsRound(duel);
+    if (!resolved) emitTcgDuelUpdate(duel);
+
+    tcgMaybeScheduleNpcAction(duel, true);
+  });
+
+  socket.on("tcgDuelTurnChoice", data => {
+    const p = getPlayer(socket.id);
+    const duel = p?.tcgDuelId ? tcgDuels.get(p.tcgDuelId) : null;
+
+    if (!duel || duel.duelId !== data?.duelId || duel.status !== "turn_choice") return;
+    if (duel.chooserSocketId !== socket.id) return;
+
+    const opponentSocketId = getTcgOpponentSocketId(duel, socket.id);
+    const choice = data?.choice === "second" ? "second" : "first";
+    const firstSocketId = choice === "first" ? socket.id : opponentSocketId;
+
+    startTcgDuelTurns(duel, firstSocketId);
+    tcgMaybeScheduleNpcAction(duel, true);
+  });
+
+  socket.on("tcgDuelAction", (data, cb) => {
+    const p = getPlayer(socket.id);
+    const duel = p?.tcgDuelId ? tcgDuels.get(p.tcgDuelId) : null;
+
+    if (!duel || duel.duelId !== data?.duelId) {
+      return cb?.({ ok: false, error: "Card Duel not found." });
+    }
+
+    let result = { ok: false, error: "Unknown Card Duel action." };
+
+    if (data?.action === "draw_phase") {
+      result = tcgDrawForTurn(duel, socket.id);
+    } else if (data?.action === "summon") {
+      result = tcgSummonCreature(duel, socket.id, data.handIndex, data.slotIndex, data.sacrificeSlots, {
+        position: data.position,
+        faceDown: !!data.faceDown
+      });
+    } else if (data?.action === "set_spell_trap") {
+      result = tcgSetSpellTrap(duel, socket.id, data.handIndex, data.slotIndex);
+    } else if (data?.action === "activate_spell_trap") {
+      result = tcgActivateSpellTrap(duel, socket.id, data.slotIndex, data.targetSlotIndex);
+    } else if (data?.action === "move_creature") {
+      result = tcgMoveCreature(duel, socket.id, data.fromSlotIndex, data.toSlotIndex, data.toRow);
+    } else if (data?.action === "move_spell_trap") {
+      result = tcgMoveSpellTrap(duel, socket.id, data.fromSlotIndex, data.toSlotIndex);
+    } else if (data?.action === "attack") {
+      result = tcgAttackWithCreature(duel, socket.id, data.attackerSlotIndex, data.targetSlotIndex, data.attackDirection, data.directLaneIndex);
+    } else if (data?.action === "phase") {
+      result = tcgSetPhase(duel, socket.id, data.phase);
+    } else if (data?.action === "end_turn") {
+      result = tcgEndTurn(duel, socket.id);
+    } else if (data?.action === "forfeit") {
+      forfeitTcgDuel(duel, socket.id, "forfeit");
+      result = { ok: true };
+    }
+
+    cb?.(result);
+
+    if (result?.ok) {
+      tcgMaybeScheduleNpcAction(duel, true);
+    }
+  });
+
   socket.on("leaveParty", () => {
     leaveParty(socket.id);
     broadcastOnlineList();
@@ -6242,7 +10020,7 @@ socket.on("accountAction", async (data = {}, cb) => {
     }
 
     if (party.members.length < 2) {
-      return socket.emit("partyError", "Invite at least one teammate first, or queue alone with NPC teammates from the client.");
+      return socket.emit("partyError", "Invite at least one teammate first, or queue alone and let matchmaking fill the squad.");
     }
 
     if (cleanMode === "duo" && party.members.length > 2) {
@@ -6869,6 +10647,9 @@ target.lastDamageAt = now;
       const cardId = sanitizeMatchActionId(rawAction.cardId, 80);
       const x = Number(rawAction.x);
       const y = Number(rawAction.y);
+      const targetX = Number(rawAction.targetX);
+      const targetY = Number(rawAction.targetY);
+      const hasTarget = Number.isFinite(targetX) && Number.isFinite(targetY) && isPointInBounds(targetX, targetY, bounds);
       const angle = clampFiniteNumber(
         rawAction.angle,
         sourceEntry.angle || 0,
@@ -6894,7 +10675,8 @@ target.lastDamageAt = now;
         x,
         y,
         angle,
-        color: sanitizeMatchActionColor(rawAction.color, "#38bdf8")
+        color: sanitizeMatchActionColor(rawAction.color, "#38bdf8"),
+        ...(hasTarget ? { targetX, targetY } : {})
       });
 
       return;
@@ -7567,6 +11349,16 @@ socket.on("matchLocalDeath", data => {
       }
 
       if (p.playerId && idToSocket.get(p.playerId) === socket.id) idToSocket.delete(p.playerId);
+
+      const tcgDuel = p.tcgDuelId ? tcgDuels.get(p.tcgDuelId) : null;
+
+      if (tcgDuel) {
+        forfeitTcgDuel(tcgDuel, socket.id, "disconnect");
+      }
+
+      if (p.tcgLobbyCode) {
+        leaveTcgLobby(socket.id, "Disconnected from Card Duel lobby.");
+      }
 
       const match = p.matchId ? matches.get(p.matchId) : null;
 
