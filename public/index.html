@@ -1333,6 +1333,22 @@
                 transform: none;
             }
         }
+
+        @media (min-width: 901px) {
+            .site-game-shell:not(.site-mobile-play-mode) .game-frame-wrap {
+                height: clamp(640px, calc((var(--site-vh) * 100) - (var(--site-pad) * 2) - 42px), 980px);
+                min-height: min(640px, calc((var(--site-vh) * 100) - 24px));
+                max-height: none;
+            }
+
+            .site-game-shell:fullscreen .game-frame-wrap,
+            .site-game-shell:-webkit-full-screen .game-frame-wrap {
+                height: 100vh;
+                height: calc(var(--site-vh) * 100);
+                min-height: calc(var(--site-vh) * 100);
+                max-height: none;
+            }
+        }
     </style>
 </head>
 <body>
