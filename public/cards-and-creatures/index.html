@@ -267,6 +267,13 @@ function escapeCardArtText(value = "") {
             if (!card) return "generic";
             if (card.id === "aurelia_infernal_reaper" || card.family === "Reaperborn") return "reaper";
             if (card.id === "starvisitor_ufo") return "ufo";
+            if (card.id === "pie_throw") return "pie_throw";
+            if (card.id === "leaf_tornado") return "leaf_tornado";
+            if (card.id === "maple_barrage") return "maple_barrage";
+            if (card.id === "leaf_pile_snare") return "leaf_pile_snare";
+            if (card.id === "scarecrow_hex") return "scarecrow_hex";
+            if (card.id === "pumpkin_pop_mine") return "pumpkin_pop_mine";
+            if (card.id === "muddy_boots") return "muddy_boots";
             if (card.category === "magic") return "magic";
             if (card.category === "trap") return "trap";
 
@@ -292,6 +299,14 @@ function escapeCardArtText(value = "") {
             if (family === "Shoreguard") return "crab";
             if (family === "Shellguard") return "turtle";
             if (family === "Steamscale") return "koi";
+            if (family === "Fallbound") {
+                if (card.id === "pumpkin_golem") return "pumpkin_golem";
+                if (card.id === "king_pumpkin") return "king_pumpkin";
+                if (card.id === "amber_cider_drake") return "cider_drake";
+                if (card.id === "scarecrow_sentinel") return "scarecrow";
+                if (card.id === "chestnut_boar") return "chestnut_boar";
+                return "fall_stag";
+            }
             if (family === "Casino") return "casino";
             return "generic";
         }
@@ -341,7 +356,8 @@ function escapeCardArtText(value = "") {
             const typeLine = card?.category === "monster" ? `STAGE ${card.evolutionStage || 1}` : (card?.category || "CARD").toUpperCase();
             const stage = Number(card?.evolutionStage || 1);
             const scale = card?.category === "monster" ? (0.9 + Math.min(stage, 4) * 0.07).toFixed(2) : "1";
-            const bg2 = kind === "reaper" ? "#070012" : kind === "ufo" ? "#031b13" : kind === "blacktide" ? "#031823" : kind === "hollow" ? "#071326" : kind === "mecha" ? "#111827" : kind === "blood" ? "#2f0509" : kind === "trap" ? "#1e1035" : kind === "magic" ? "#081331" : "#020617";
+            const isFallArt = ["fall_stag","pumpkin_golem","cider_drake","scarecrow","chestnut_boar","king_pumpkin","pie_throw","leaf_tornado","maple_barrage","leaf_pile_snare","scarecrow_hex","pumpkin_pop_mine","muddy_boots"].includes(kind);
+            const bg2 = kind === "reaper" ? "#070012" : kind === "ufo" ? "#031b13" : kind === "blacktide" ? "#031823" : kind === "hollow" ? "#071326" : kind === "mecha" ? "#111827" : kind === "blood" ? "#2f0509" : isFallArt ? "#2f1608" : kind === "trap" ? "#1e1035" : kind === "magic" ? "#081331" : "#020617";
             const bodyFill = {
                 ember: "#7c2d12",
                 iron: "#475569",
@@ -360,7 +376,13 @@ function escapeCardArtText(value = "") {
                 crystal: "#1e40af",
                 hollow: "#0f172a",
                 mecha: "#475569",
-                blood: "#7f1d1d"
+                blood: "#7f1d1d",
+                fall_stag: "#7c2d12",
+                pumpkin_golem: "#57534e",
+                cider_drake: "#9a3412",
+                scarecrow: "#1f2937",
+                chestnut_boar: "#78350f",
+                king_pumpkin: "#ea580c"
             }[kind] || "#1e293b";
 
             const cardId = String(card?.id || "").toLowerCase();
@@ -373,6 +395,149 @@ function escapeCardArtText(value = "") {
             const creatureFrame = `<path d="M36 127 C62 88 82 51 120 48 C158 51 179 88 204 127" fill="none" stroke="${color}" stroke-width="3" opacity=".22"/><circle cx="55" cy="57" r="3" fill="#fff" opacity=".5"/><circle cx="188" cy="70" r="2.5" fill="#fff" opacity=".42"/><circle cx="176" cy="39" r="2" fill="${color}" opacity="${rareGlow}"/>`;
 
             const creatureArt = (() => {
+                if (kind === "king_pumpkin") {
+                    return `<g transform="translate(120 100) scale(${artScale}) translate(-120 -100)">${creatureFrame}${creatureShadow}
+                        <path d="M63 104 C68 66 94 43 120 43 C147 43 174 66 179 104 C170 145 139 163 120 163 C101 163 70 145 63 104Z" fill="#f97316" stroke="#fed7aa" stroke-width="6"/>
+                        <path d="M120 45 C96 62 96 145 120 162 C144 145 144 62 120 45Z" fill="#ea580c" opacity=".62"/>
+                        <path d="M96 92 L111 104 L95 114Z M145 92 L129 104 L145 114Z" fill="#111827"/>
+                        <path d="M94 129 C108 142 132 142 147 129 L137 139 L127 132 L118 142 L108 132Z" fill="#111827"/>
+                        <path d="M119 40 C111 23 124 11 143 18" fill="none" stroke="#65a30d" stroke-width="8" stroke-linecap="round"/>
+                        <path d="M84 115 C48 106 30 81 34 53 M156 115 C193 105 211 82 206 53 M76 133 C43 150 34 172 48 185 M165 132 C198 150 207 172 193 185" fill="none" stroke="#166534" stroke-width="9" stroke-linecap="round"/>
+                        <path d="M94 76 C110 83 131 83 147 76" fill="none" stroke="#fde68a" stroke-width="3" opacity=".42"/>
+                    </g>`;
+                }
+
+                if (kind === "cider_drake") {
+                    return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
+                        <path d="M45 130 C70 88 92 62 120 52 C148 62 171 88 195 130 C164 119 76 119 45 130Z" fill="#7c2d12" stroke="#fed7aa" stroke-width="5"/>
+                        <path d="M78 91 C48 72 31 48 25 24 C56 31 84 56 101 86Z M162 91 C192 72 209 48 215 24 C184 31 156 56 139 86Z" fill="#f97316" stroke="#fde68a" stroke-width="4" opacity=".92"/>
+                        <ellipse cx="120" cy="54" rx="27" ry="22" fill="#fb923c" stroke="#fed7aa" stroke-width="4"/>
+                        <path d="M101 69 C89 50 84 33 87 17 M139 69 C151 50 156 33 153 17" fill="none" stroke="#facc15" stroke-width="5" stroke-linecap="round"/>
+                        <circle cx="109" cy="49" r="4" fill="#111827"/><circle cx="131" cy="49" r="4" fill="#111827"/>
+                        <path d="M120 75 C113 102 112 128 120 151 C128 128 127 102 120 75Z" fill="#9a3412" stroke="#fed7aa" stroke-width="4"/>
+                        <path d="M100 113 C112 119 128 119 140 113 M103 126 C114 132 127 132 137 126" fill="none" stroke="#fde68a" stroke-width="3" opacity=".62"/>
+                    </g>`;
+                }
+
+                if (kind === "fall_stag") {
+                    return `<g transform="translate(120 99) scale(${artScale}) translate(-120 -99)">${creatureFrame}${creatureShadow}
+                        <path d="M48 128 C73 94 103 77 141 84 C166 89 185 105 194 128 C160 119 128 122 95 136 C72 145 55 139 48 128Z" fill="#7c2d12" stroke="#fed7aa" stroke-width="5"/>
+                        <ellipse cx="154" cy="81" rx="26" ry="21" fill="#9a3412" stroke="#fed7aa" stroke-width="4"/>
+                        <path d="M151 58 C143 37 128 30 111 26 M149 57 C157 36 174 28 194 24" fill="none" stroke="#facc15" stroke-width="5" stroke-linecap="round"/>
+                        <path d="M119 30 L105 18 M123 36 L106 37 M132 44 L115 53 M184 28 L201 17 M178 36 L198 36 M168 45 L187 55" fill="none" stroke="#fde68a" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M80 130 L64 153 M112 132 L108 158 M145 126 L157 151 M169 119 L187 139" stroke="#fed7aa" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="164" cy="76" r="4" fill="#fef3c7"/><circle cx="165" cy="76" r="2" fill="#111827"/>
+                    </g>`;
+                }
+
+                if (kind === "pumpkin_golem") {
+                    return `<g transform="translate(120 100) scale(${artScale}) translate(-120 -100)">${creatureFrame}${creatureShadow}
+                        <path d="M63 137 L82 83 L121 62 L161 83 L181 137 C152 153 91 153 63 137Z" fill="#57534e" stroke="#fed7aa" stroke-width="5"/>
+                        <path d="M82 88 L60 103 L49 137 M160 88 L183 103 L194 137" fill="none" stroke="#92400e" stroke-width="11" stroke-linecap="round"/>
+                        <ellipse cx="120" cy="55" rx="39" ry="31" fill="#f97316" stroke="#fed7aa" stroke-width="5"/>
+                        <path d="M120 25 C114 17 120 9 130 15" fill="none" stroke="#65a30d" stroke-width="5" stroke-linecap="round"/>
+                        <path d="M101 50 L112 58 L101 64Z M139 50 L128 58 L139 64Z" fill="#111827"/>
+                        <path d="M105 73 C116 79 128 79 139 73" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M77 140 L59 160 M108 148 L104 166 M139 148 L144 166 M168 139 L188 158" stroke="#d6d3d1" stroke-width="8" stroke-linecap="round"/>
+                    </g>`;
+                }
+
+                if (kind === "scarecrow") {
+                    return `<g transform="translate(120 100) scale(${artScale}) translate(-120 -100)">${creatureFrame}${creatureShadow}
+                        <path d="M120 37 L120 166 M55 82 L185 82" stroke="#6f3f18" stroke-width="9" stroke-linecap="round"/>
+                        <path d="M78 86 C93 65 107 60 120 60 C133 60 147 65 162 86 L148 132 C134 145 106 145 92 132Z" fill="#8b3f24" stroke="#d6a94f" stroke-width="5"/>
+                        <path d="M100 89 H140 L145 134 H95Z" fill="#374151" stroke="#9ca3af" stroke-width="4"/>
+                        <path d="M65 82 L37 67 M175 82 L203 67 M66 84 L39 100 M174 84 L201 100" stroke="#d6a94f" stroke-width="6" stroke-linecap="round"/>
+                        <ellipse cx="120" cy="51" rx="29" ry="25" fill="#b45309" stroke="#fde68a" stroke-width="5"/>
+                        <ellipse cx="120" cy="35" rx="62" ry="13" fill="#a16207" stroke="#fde68a" stroke-width="4"/>
+                        <path d="M91 35 C108 8 136 8 151 35 C139 44 105 44 91 35Z" fill="#8a5a24" stroke="#f8d28a" stroke-width="4"/>
+                        <path d="M101 48 L112 55 L101 62 M139 48 L128 55 L139 62" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M103 70 C116 80 129 80 140 70 M98 70 L91 76 M144 70 L151 76" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M93 137 L75 165 M111 146 L105 174 M129 146 L135 174 M147 137 L166 165" stroke="#92400e" stroke-width="7" stroke-linecap="round"/>
+                        <path d="M88 132 C71 131 53 138 39 153 M152 132 C170 131 188 138 202 153" fill="none" stroke="#d6a94f" stroke-width="5" opacity=".75"/>
+                    </g>`;
+                }
+
+                if (kind === "chestnut_boar") {
+                    return `<g transform="translate(120 100) scale(${artScale}) translate(-120 -100)">${creatureFrame}${creatureShadow}
+                        <path d="M43 123 C64 90 101 76 145 85 C174 91 194 107 203 128 C167 124 137 130 103 142 C73 153 50 143 43 123Z" fill="#78350f" stroke="#fed7aa" stroke-width="5"/>
+                        <path d="M83 92 C101 67 134 61 160 78 C139 84 114 92 91 111Z" fill="#92400e" stroke="#facc15" stroke-width="4"/>
+                        <ellipse cx="157" cy="91" rx="33" ry="27" fill="#92400e" stroke="#fed7aa" stroke-width="4"/>
+                        <circle cx="169" cy="85" r="4" fill="#111827"/>
+                        <path d="M182 98 C202 93 209 82 210 68 C195 78 187 87 181 99Z M178 108 C199 111 210 122 216 139 C198 134 187 124 177 110Z" fill="#fef3c7" stroke="#92400e" stroke-width="3"/>
+                        <path d="M70 131 L53 158 M104 139 L98 165 M141 132 L152 158 M168 121 L189 143" stroke="#fed7aa" stroke-width="8" stroke-linecap="round"/>
+                    </g>`;
+                }
+
+                if (kind === "pie_throw") {
+                    return `<g>${creatureFrame}<ellipse cx="120" cy="134" rx="62" ry="13" fill="#000" opacity=".28"/>
+                        <circle cx="120" cy="92" r="48" fill="#d97706" stroke="#fef3c7" stroke-width="6"/>
+                        <circle cx="120" cy="92" r="35" fill="#b91c1c" stroke="#fed7aa" stroke-width="4"/>
+                        <path d="M88 78 L152 111 M92 111 L150 77 M86 94 H154 M102 61 L139 125 M139 61 L101 125" stroke="#fef3c7" stroke-width="7" stroke-linecap="round" opacity=".92"/>
+                        <circle cx="103" cy="82" r="5" fill="#fecaca"/><circle cx="132" cy="105" r="4" fill="#fecaca"/><circle cx="142" cy="84" r="4" fill="#fee2e2"/>
+                    </g>`;
+                }
+
+                if (kind === "leaf_tornado") {
+                    return `<g>${creatureFrame}<ellipse cx="120" cy="142" rx="64" ry="12" fill="#000" opacity=".3"/>
+                        <path d="M94 134 C150 124 151 82 103 71 C148 56 182 98 142 126 C127 137 105 144 82 147Z" fill="#57534e" opacity=".62" stroke="#fed7aa" stroke-width="4"/>
+                        <path d="M91 126 C138 113 143 85 107 80 M104 111 C150 104 158 78 130 63 M83 141 C132 138 162 119 170 93" fill="none" stroke="#facc15" stroke-width="5" stroke-linecap="round"/>
+                        <path d="M82 82 L104 74 L98 95Z M152 67 L174 75 L154 88Z M155 122 L182 125 L162 142Z M81 130 L61 144 L72 115Z" fill="#f97316" stroke="#ffedd5" stroke-width="2"/>
+                    </g>`;
+                }
+
+                if (kind === "maple_barrage") {
+                    return `<g>${creatureFrame}<ellipse cx="120" cy="140" rx="66" ry="12" fill="#000" opacity=".28"/>
+                        <path d="M120 43 L131 75 L165 59 L147 91 L184 98 L149 112 L169 143 L133 128 L120 163 L107 128 L71 143 L91 112 L56 98 L93 91 L75 59 L109 75Z" fill="#f97316" stroke="#fef3c7" stroke-width="5"/>
+                        <path d="M120 58 V148 M91 93 L149 116 M149 93 L91 116" stroke="#92400e" stroke-width="4" stroke-linecap="round"/>
+                    </g>`;
+                }
+
+                if (kind === "leaf_pile_snare") {
+                    return `<g>${creatureFrame}<ellipse cx="120" cy="140" rx="70" ry="13" fill="#000" opacity=".3"/>
+                        <path d="M120 56 L132 88 L166 72 L149 103 L185 111 L151 124 L170 153 L134 139 L120 174 L106 139 L70 153 L89 124 L55 111 L91 103 L74 72 L108 88Z" fill="#f97316" stroke="#fef3c7" stroke-width="4"/>
+                        <path d="M79 114 C99 88 143 86 165 113 C145 134 97 137 76 119Z" fill="#facc15" opacity=".8" stroke="#92400e" stroke-width="3"/>
+                        <path d="M89 121 C91 99 105 87 120 87 C137 87 151 100 153 122" fill="none" stroke="#14532d" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+                    </g>`;
+                }
+
+                if (kind === "scarecrow_hex") {
+                    return `<g>${creatureFrame}<ellipse cx="120" cy="143" rx="50" ry="11" fill="#000" opacity=".34"/>
+                        <path d="M120 39 L120 163 M58 82 L182 82" stroke="#6f3f18" stroke-width="9" stroke-linecap="round"/>
+                        <path d="M82 86 C96 66 108 60 120 60 C133 60 145 66 158 86 L146 130 C133 144 107 144 94 130Z" fill="#8b3f24" stroke="#d6a94f" stroke-width="5"/>
+                        <path d="M101 89 H139 L144 132 H96Z" fill="#374151" stroke="#9ca3af" stroke-width="4"/>
+                        <path d="M66 82 L39 68 M174 82 L201 68 M67 84 L41 101 M173 84 L199 101" stroke="#d6a94f" stroke-width="6" stroke-linecap="round"/>
+                        <ellipse cx="120" cy="51" rx="29" ry="25" fill="#b45309" stroke="#fde68a" stroke-width="5"/>
+                        <ellipse cx="120" cy="35" rx="62" ry="13" fill="#a16207" stroke="#fde68a" stroke-width="4"/>
+                        <path d="M91 35 C108 8 136 8 151 35 C139 44 105 44 91 35Z" fill="#8a5a24" stroke="#f8d28a" stroke-width="4"/>
+                        <path d="M101 48 L112 55 L101 62 M139 48 L128 55 L139 62" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M103 70 C116 80 129 80 140 70 M98 70 L91 76 M144 70 L151 76" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round"/>
+                        <path d="M94 136 L77 164 M112 144 L106 172 M128 144 L134 172 M146 136 L163 164" stroke="#92400e" stroke-width="7" stroke-linecap="round"/>
+                        <circle cx="120" cy="91" r="48" fill="none" stroke="#a855f7" stroke-width="5" opacity=".55"/>
+                        <path d="M83 126 C105 112 136 112 158 126" fill="none" stroke="#a855f7" stroke-width="6" stroke-linecap="round" opacity=".66"/>
+                    </g>`;
+                }
+
+                if (kind === "pumpkin_pop_mine") {
+                    return `<g>${creatureFrame}<ellipse cx="120" cy="140" rx="64" ry="13" fill="#000" opacity=".3"/>
+                        <circle cx="120" cy="93" r="48" fill="#f97316" stroke="#fef3c7" stroke-width="6"/>
+                        <path d="M120 47 C101 62 98 124 120 139 C142 124 139 62 120 47Z" fill="#ea580c" opacity=".6"/>
+                        <path d="M101 88 L113 96 L101 104Z M139 88 L127 96 L139 104Z" fill="#111827"/>
+                        <path d="M103 116 C114 124 128 124 139 116" fill="none" stroke="#111827" stroke-width="5" stroke-linecap="round"/>
+                        <path d="M120 45 C115 33 124 24 137 29" fill="none" stroke="#65a30d" stroke-width="6" stroke-linecap="round"/>
+                        <path d="M70 122 L52 139 M169 121 L190 137 M81 75 L61 63 M160 76 L183 62" stroke="#facc15" stroke-width="5" stroke-linecap="round"/>
+                    </g>`;
+                }
+
+                if (kind === "muddy_boots") {
+                    return `<g>${creatureFrame}<ellipse cx="120" cy="142" rx="72" ry="15" fill="#000" opacity=".3"/>
+                        <ellipse cx="120" cy="116" rx="72" ry="38" fill="#713f12" stroke="#fed7aa" stroke-width="5"/>
+                        <path d="M66 116 C89 99 112 101 132 116 C151 129 172 126 188 110" fill="none" stroke="#a16207" stroke-width="13" stroke-linecap="round" opacity=".76"/>
+                        <path d="M81 53 H112 L118 111 H77Z M128 51 H158 L163 108 H123Z" fill="#292524" stroke="#fde68a" stroke-width="4"/>
+                        <path d="M77 103 C91 96 112 99 125 113 C107 122 87 120 73 111Z M123 101 C138 95 158 98 170 111 C152 121 132 119 119 109Z" fill="#451a03" stroke="#fed7aa" stroke-width="3"/>
+                    </g>`;
+                }
+
                 if (kind === "blacktide") {
                     if (/ship|broadside|blackflag|corsair|pirate/.test(creatureKey)) {
                         return `<g transform="translate(120 98) scale(${artScale}) translate(-120 -98)">${creatureFrame}${creatureShadow}
@@ -796,6 +961,293 @@ function escapeCardArtText(value = "") {
 
     const CARD_POOL = JSON.parse(document.getElementById("duelio-card-data").textContent);
     const EXTRA_CARD_DATA = [
+      {
+        id: "harvest_stag",
+        name: "Harvest Stag",
+        category: "monster",
+        family: "Fallbound",
+        rarity: "Rare",
+        seasonalEvent: "Fall Event",
+        evolutionLine: "fallbound_harvest_stag_line",
+        evolutionStage: 3,
+        evolvesFrom: null,
+        evolvesTo: null,
+        attackType: "Dash",
+        visualColor: "#f97316",
+        particleType: "fallLeaves",
+        iconSymbol: "HS",
+        description: "A rare autumn stag that charges in a straight line with glowing antlers, clean damage, and light knockback.",
+        damage: 30,
+        speed: 790,
+        range: 455,
+        width: 31,
+        knockback: 18,
+        cooldown: 7.2,
+        durabilityMax: 32
+      },
+      {
+        id: "pumpkin_golem",
+        name: "Pumpkin Golem",
+        category: "monster",
+        family: "Fallbound",
+        rarity: "Epic",
+        seasonalEvent: "Fall Event",
+        evolutionLine: "fallbound_pumpkin_golem_line",
+        evolutionStage: 4,
+        evolvesFrom: null,
+        evolvesTo: null,
+        attackType: "Leap",
+        visualColor: "#fb923c",
+        particleType: "stone",
+        iconSymbol: "PG",
+        description: "An epic chunky golem with a pumpkin head. It lobs itself into a heavy slam, then bursts in a small orange leaf explosion.",
+        damage: 18,
+        speed: 360,
+        range: 390,
+        width: 48,
+        knockback: 34,
+        cooldown: 11.5,
+        durabilityMax: 46,
+        impactRadius: 82,
+        explosionDamage: 28,
+        explosionRadius: 118
+      },
+      {
+        id: "amber_cider_drake",
+        name: "Amber Cider Drake",
+        category: "monster",
+        family: "Fallbound",
+        rarity: "Super Ultra Rare",
+        seasonalEvent: "Fall Event",
+        evolutionLine: "fallbound_amber_cider_drake_line",
+        evolutionStage: 5,
+        evolvesFrom: null,
+        evolvesTo: null,
+        attackType: "SuperUltraMount",
+        mountKind: "cider_drake",
+        visualColor: "#f97316",
+        particleType: "fallLeaves",
+        iconSymbol: "ACD",
+        description: "A super ultra rare autumn dragon mount. Ride it into battle, then release warm cider breath that burns, slows, and pushes enemies back.",
+        damage: 32,
+        range: 430,
+        width: 92,
+        knockback: 26,
+        cooldown: 58,
+        durabilityMax: 100,
+        mountArmorMax: 170,
+        mountBreathDamage: 32
+      },
+      {
+        id: "king_pumpkin",
+        name: "King Pumpkin",
+        category: "monster",
+        family: "Fallbound",
+        rarity: "Super Ultra Rare",
+        seasonalEvent: "Fall Event",
+        evolutionLine: "fallbound_king_pumpkin_line",
+        evolutionStage: 5,
+        evolvesFrom: null,
+        evolvesTo: null,
+        attackType: "SuperUltraMount",
+        mountKind: "king_pumpkin",
+        visualColor: "#f97316",
+        particleType: "fallLeaves",
+        iconSymbol: "KP",
+        description: "A giant haunted pumpkin king mount with low armor but high attack pressure. It swings crawling vine tentacles up close and throws smaller pumpkins at range.",
+        damage: 44,
+        range: 520,
+        width: 118,
+        knockback: 38,
+        cooldown: 62,
+        durabilityMax: 100,
+        mountArmorMax: 145,
+        mountVineDamage: 48,
+        mountPumpkinDamage: 34
+      },
+      {
+        id: "scarecrow_sentinel",
+        name: "Scarecrow Sentinel",
+        category: "monster",
+        family: "Fallbound",
+        rarity: "Legendary",
+        seasonalEvent: "Fall Event",
+        evolutionLine: "fallbound_scarecrow_sentinel_line",
+        evolutionStage: 4,
+        evolvesFrom: null,
+        evolvesTo: null,
+        attackType: "Pierce",
+        visualColor: "#d97706",
+        particleType: "fallLeaves",
+        iconSymbol: "SS",
+        description: "A legendary straw guardian built from crossed wood, burlap, hay, and old field clothes. Its needle lunge drains HP, fears, and weakens enemies it hits.",
+        damage: 44,
+        damageMin: 38,
+        damageMax: 52,
+        speed: 640,
+        range: 525,
+        width: 40,
+        knockback: 24,
+        cooldown: 10.8,
+        durabilityMax: 34,
+        healOnHit: 18
+      },
+      {
+        id: "chestnut_boar",
+        name: "Chestnut Boar",
+        category: "monster",
+        family: "Fallbound",
+        rarity: "Epic",
+        seasonalEvent: "Fall Event",
+        evolutionLine: "fallbound_chestnut_boar_line",
+        evolutionStage: 4,
+        evolvesFrom: null,
+        evolvesTo: null,
+        attackType: "BoarRide",
+        visualColor: "#92400e",
+        particleType: "fallLeaves",
+        iconSymbol: "CB",
+        description: "An armored fall boar with chestnut-shell plating. Mount it for a short rushing charge that deals heavy impact damage, then vanishes.",
+        damage: 38,
+        speed: 760,
+        range: 430,
+        width: 38,
+        knockback: 36,
+        cooldown: 14.5,
+        durabilityMax: 4,
+        rideDuration: 5.6,
+        rideImpactDamage: 44
+      },
+      {
+        id: "pie_throw",
+        name: "Pie Throw",
+        category: "magic",
+        rarity: "Uncommon",
+        seasonalEvent: "Fall Event",
+        effectType: "MagicProjectile",
+        visualColor: "#f59e0b",
+        particleType: "applePie",
+        iconSymbol: "PIE",
+        description: "Fall Event reward card. Throws a spinning apple pie that splats on impact, deals solid damage, slows movement, and leaves pie on the target's face as it fades.",
+        damage: 18,
+        cooldown: 7.8,
+        range: 470,
+        uses: 3,
+        rewardRestricted: true,
+        boosterExcluded: true,
+        lootExcluded: true
+      },
+      {
+        id: "leaf_tornado",
+        name: "Leaf Tornado",
+        category: "magic",
+        rarity: "Epic",
+        seasonalEvent: "Fall Event",
+        effectType: "LeafTornado",
+        visualColor: "#f97316",
+        particleType: "fallLeaves",
+        iconSymbol: "LT",
+        description: "Sends out a compact tornado full of fall leaves, pushing enemies while dealing repeated tick damage.",
+        damage: 5,
+        cooldown: 16,
+        range: 560,
+        radius: 96,
+        duration: 3.8,
+        uses: 2
+      },
+      {
+        id: "maple_barrage",
+        name: "Maple Barrage",
+        category: "magic",
+        rarity: "Rare",
+        seasonalEvent: "Fall Event",
+        effectType: "MapleBarrage",
+        visualColor: "#f97316",
+        particleType: "fallLeaves",
+        iconSymbol: "MB",
+        description: "Fires a fan of sharp maple leaves that slice forward in a wide readable spread.",
+        damage: 9,
+        cooldown: 10.5,
+        range: 560,
+        projectileCount: 7,
+        uses: 3
+      },
+      {
+        id: "leaf_pile_snare",
+        name: "Leaf Pile Snare",
+        category: "trap",
+        rarity: "Rare",
+        seasonalEvent: "Fall Event",
+        triggerType: "ManualPlace",
+        effectType: "LeafPileSnare",
+        visualColor: "#facc15",
+        particleType: "fallLeaves",
+        iconSymbol: "LS",
+        description: "Places a normal-looking fall leaf pile trap. Enemies that step close take damage, get briefly rooted, and are heavily slowed.",
+        damage: 12,
+        cooldown: 10.5,
+        triggerRange: 82,
+        radius: 104,
+        duration: 3.4,
+        uses: 2
+      },
+      {
+        id: "scarecrow_hex",
+        name: "Scarecrow Hex",
+        category: "trap",
+        rarity: "Epic",
+        seasonalEvent: "Fall Event",
+        triggerType: "ManualPlace",
+        effectType: "ScarecrowHex",
+        visualColor: "#a855f7",
+        particleType: "fallLeaves",
+        iconSymbol: "SH",
+        description: "Places a field scarecrow that blends with harmless fall decorations. When an enemy approaches, it releases a fear hex that damages, slows, and shoves them away.",
+        damage: 18,
+        cooldown: 16,
+        triggerRange: 95,
+        radius: 136,
+        duration: 2.8,
+        uses: 2
+      },
+      {
+        id: "pumpkin_pop_mine",
+        name: "Pumpkin Pop Mine",
+        category: "trap",
+        rarity: "Rare",
+        seasonalEvent: "Fall Event",
+        triggerType: "ManualPlace",
+        effectType: "PumpkinPopMine",
+        visualColor: "#f97316",
+        particleType: "fallLeaves",
+        iconSymbol: "PM",
+        description: "Places a bright jack-o-lantern pumpkin mine that pops when enemies get close, dealing splash damage and knockback.",
+        damage: 36,
+        minDamage: 14,
+        cooldown: 12.8,
+        triggerRange: 86,
+        radius: 132,
+        knockback: 56,
+        uses: 2
+      },
+      {
+        id: "muddy_boots",
+        name: "Muddy Boots",
+        category: "trap",
+        rarity: "Uncommon",
+        seasonalEvent: "Fall Event",
+        triggerType: "ManualPlace",
+        effectType: "MuddyBoots",
+        visualColor: "#854d0e",
+        particleType: "fallLeaves",
+        iconSymbol: "MBT",
+        description: "Places a muddy patch that slows enemies and makes dash-style creature attacks feel shorter while the mud clings to them.",
+        cooldown: 11.5,
+        triggerRange: 92,
+        radius: 118,
+        duration: 4.2,
+        uses: 2
+      },
       {"id":"reef_shark_pup","name":"Reef Shark Pup","category":"monster","family":"Blacktide","rarity":"Rare","evolutionLine":"blacktide_shark_line","evolutionStage":1,"evolvesFrom":null,"evolvesTo":"great_white_mauler","attackType":"Dash","visualColor":"#67e8f9","particleType":"water","iconSymbol":"RS","description":"A fast reef shark bite that lunges forward, clips enemies with a water wake, and can leave a short Bleed.","damage":29,"cooldown":2.55,"range":390,"duration":2.8,"durabilityMax":34,"knockback":18,"width":30},
       {"id":"great_white_mauler","name":"Great White Mauler","category":"monster","family":"Blacktide","rarity":"Epic","evolutionLine":"blacktide_shark_line","evolutionStage":2,"evolvesFrom":"reef_shark_pup","evolvesTo":"blackflag_broadside","attackType":"Pierce","visualColor":"#e0f2fe","particleType":"water","iconSymbol":"GW","description":"A fully exposed great white shark rush that tears through a line, knocks targets back, and leaves a heavy bite wound.","damage":42,"cooldown":3.55,"range":560,"duration":3.6,"durabilityMax":48,"knockback":32,"width":46},
             {"id":"slotty","name":"Slotty","category":"monster","family":"Casino","rarity":"Rare","evolutionLine":"casino_slotty_line","evolutionStage":1,"attackType":"SlottyBomb","visualColor":"#facc15","particleType":"gold","iconSymbol":"777","description":"Slot-machine exclusive creature. Slotty bounces toward an enemy, then bursts into a coin explosion on impact.","damage":22,"cooldown":12,"range":690,"durabilityMax":24,"knockback":32,"width":28},
@@ -875,11 +1327,13 @@ function escapeCardArtText(value = "") {
     });
 
     const rarityOrder = { Common:1, Uncommon:2, Rare:3, Epic:4, Legendary:5, Mythic:6, "Hollow Rare":7, "Super Ultra Rare":8, "God Tier":9, God:9 };
-    const featuredIds = ["coconut_crab_titan","tideglass_turtle","emberfin_koi_dragon","suncrest_phoenix","slotty","scratchy","casino_orbit","blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","asterion_rift_crown_wyrm","aurelia_infernal_reaper","nova_seraph","neon_kirin","abyss_leviathan","infernal_fenrir","absolute_hydra","eclipse_monarch","blood_anvil_colossus","titan_breaker","reaper_cerberus","archive_dragon","aurora_chimera"];
-    const effectIds = ["coconut_crab_titan","tideglass_turtle","slotty","scratchy","suncrest_phoenix","mirage_coyotes","emberfin_koi_dragon","casino_orbit","blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","infernal_fenrir","absolute_hydra","neon_kirin","elder_thorn_king","pestilent_king","eclipse_monarch","aurelia_infernal_reaper","abyss_leviathan","blood_anvil_colossus"];
+    const featuredIds = ["king_pumpkin","amber_cider_drake","scarecrow_sentinel","chestnut_boar","pumpkin_golem","harvest_stag","coconut_crab_titan","tideglass_turtle","emberfin_koi_dragon","suncrest_phoenix","slotty","scratchy","casino_orbit","blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","asterion_rift_crown_wyrm","aurelia_infernal_reaper","nova_seraph","neon_kirin","abyss_leviathan","infernal_fenrir","absolute_hydra","eclipse_monarch","blood_anvil_colossus","titan_breaker","reaper_cerberus","archive_dragon","aurora_chimera"];
+    const effectIds = ["king_pumpkin","amber_cider_drake","chestnut_boar","scarecrow_sentinel","pumpkin_golem","harvest_stag","coconut_crab_titan","tideglass_turtle","slotty","scratchy","suncrest_phoenix","mirage_coyotes","emberfin_koi_dragon","casino_orbit","blackflag_broadside","great_white_mauler","reef_shark_pup","nova_titan_biosuit","hollow_prism_seraph","starvisitor_ufo","infernal_fenrir","absolute_hydra","neon_kirin","elder_thorn_king","pestilent_king","eclipse_monarch","aurelia_infernal_reaper","abyss_leviathan","blood_anvil_colossus"];
     const categoryLabels = { monster:"Creatures", magic:"Magic", trap:"Traps" };
     const shortFamilyCopy = { Emberkin:"fast fire pressure", Ironhide:"heavy armor and knockback", Frostveil:"cold control and slows", Voltbeast:"speed, shock, and chase", Thornwild:"roots, poison, and plant pressure", Plaguekin:"poison and nasty trades", Umbra:"shadow plays and dark pressure", Starborn:"cosmic burst damage", Dunesoul:"sand, sun, and control", Tidecall:"water pressure and big finishers", Blacktide:"shark rushes, bleeding bites, and pirate broadside pressure", Graveborn:"bones, bleed, and fear", Runebound:"runes, paper, and weird tricks", Crystalbloom:"clean crystal burst", Bloodforge:"blood iron and heavy hits", Reaperborn:"mythic reaper energy", Hollowborn:"rainbow two-phase Hollow burst pressure", Titanhost:"Super Ultra mecha suit attacks",
 Riftcrown:"cyan portals, delayed sky strikes, and cosmic wyrm pressure", Summerborn:"phoenix dives, mirage pack rushes, and heat pressure", Shoreguard:"crab claws, beach bruising, and object shredding", Shellguard:"mount armor, turtle body pressure, and tideglass waves", Steamscale:"fire-water dragon spirals with steam burst control", Casino:"slot-machine chaos, scratch-ticket bursts, and jackpot projectiles" };
+
+    shortFamilyCopy.Fallbound = "autumn mounts, harvest guardians, leaf pressure, and pumpkin camouflage";
 
     function byId(id) { return CARD_POOL.find(card => card.id === id); }
     function cardSort(a,b) { return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0) || (b.evolutionStage || 0) - (a.evolutionStage || 0) || a.name.localeCompare(b.name); }
@@ -907,10 +1361,10 @@ Riftcrown:"cyan portals, delayed sky strikes, and cosmic wyrm pressure", Summerb
 
     function renderHero() {
       const stackIds = [
+  "king_pumpkin",
+  "amber_cider_drake",
   "nova_titan_biosuit",
-  "hollow_prism_seraph",
-  "asterion_rift_crown_wyrm",
-  "starvisitor_ufo"
+  "hollow_prism_seraph"
 ];
       document.getElementById("hero-card-stack").innerHTML = stackIds.map(id => makeCard(byId(id) || CARD_POOL[0], true)).join("");
     }
@@ -934,9 +1388,12 @@ function renderStats() {
         const line = monsters.filter(c => c.family === family).sort((a,b) => (a.evolutionStage || 0) - (b.evolutionStage || 0));
         const boss = [...line].sort(cardSort)[0] || line[0];
         const names = line.map(c => `<span class="card-chip ${rarityClass(c)}">${c.name}</span>`).join("");
+        const familyCopy = family === "Fallbound"
+          ? `${shortFamilyCopy[family]}. These are seasonal stand-alone Fall cards, including short rides, heavy slams, scarecrow pressure, and Super Ultra mounts.`
+          : `${shortFamilyCopy[family] || "a creature line with its own match identity"}. The line goes from early-match pressure to a much louder final form.`;
         return `<article class="family-card">
           ${makeCard(boss, true)}
-          <div class="family-copy"><h3>${family}</h3><p>${shortFamilyCopy[family] || "a creature line with its own match identity"}. The line goes from early-match pressure to a much louder final form.</p><div class="evo-line">${names}</div></div>
+          <div class="family-copy"><h3>${family}</h3><p>${familyCopy}</p><div class="evo-line">${names}</div></div>
         </article>`;
       }).join("");
     }
@@ -1053,6 +1510,19 @@ function renderStats() {
           ctx.lineTo(px - size * 0.45, py);
           ctx.closePath();
           ctx.fill();
+        } else if (particle.includes("fall")) {
+          ctx.fillStyle = i % 3 === 0 ? "#f97316" : i % 3 === 1 ? "#facc15" : "#f9a8d4";
+          ctx.beginPath();
+          ctx.moveTo(px, py - size);
+          ctx.lineTo(px + size * 0.75, py - size * 0.12);
+          ctx.lineTo(px + size * 0.22, py + size * 0.22);
+          ctx.lineTo(px + size * 0.48, py + size);
+          ctx.lineTo(px, py + size * 0.52);
+          ctx.lineTo(px - size * 0.48, py + size);
+          ctx.lineTo(px - size * 0.22, py + size * 0.22);
+          ctx.lineTo(px - size * 0.75, py - size * 0.12);
+          ctx.closePath();
+          ctx.fill();
         } else {
           ctx.beginPath();
           ctx.arc(px, py, size * 0.55, 0, Math.PI * 2);
@@ -1105,6 +1575,266 @@ function renderStats() {
       ctx.restore();
     }
 
+    function drawFallPreviewCreature(ctx, card, age, strideSeed, w, color) {
+      if (card.family !== "Fallbound") return false;
+
+      const id = String(card.id || "");
+      const run = Math.sin(age * 14 + strideSeed);
+      const pulse = Math.sin(age * 5 + strideSeed) * 0.5 + 0.5;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.shadowBlur = 24;
+      ctx.shadowColor = color;
+      ctx.strokeStyle = "rgba(255,248,220,.86)";
+      ctx.lineWidth = Math.max(2, w * 0.12);
+
+      if (id === "harvest_stag") {
+        ctx.fillStyle = "#7c2d12";
+        ctx.beginPath();
+        ctx.ellipse(-w * 0.15, 0, w * 1.55, w * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.ellipse(w * 1.18, -w * 0.24, w * 0.52, w * 0.36, -0.15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#92400e";
+        ctx.beginPath();
+        ctx.moveTo(w * 0.9, -w * 0.34);
+        ctx.lineTo(w * 0.58, -w * 0.92);
+        ctx.lineTo(w * 1.08, -w * 0.55);
+        ctx.moveTo(w * 1.26, -w * 0.38);
+        ctx.lineTo(w * 1.58, -w * 0.9);
+        ctx.lineTo(w * 1.42, -w * 0.28);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = Math.max(2, w * 0.13);
+        ctx.beginPath();
+        ctx.moveTo(w * 1.1, -w * 0.55);
+        ctx.lineTo(w * 0.72, -w * 1.32);
+        ctx.moveTo(w * 1.08, -w * 0.58);
+        ctx.lineTo(w * 1.02, -w * 1.42);
+        ctx.moveTo(w * 1.34, -w * 0.55);
+        ctx.lineTo(w * 1.78, -w * 1.28);
+        ctx.moveTo(w * 1.34, -w * 0.57);
+        ctx.lineTo(w * 1.32, -w * 1.43);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#fde68a";
+        ctx.lineWidth = Math.max(1.5, w * 0.08);
+        [-0.82, -0.28, 0.36, 0.88].forEach((legX, i) => {
+          ctx.beginPath();
+          ctx.moveTo(w * legX, w * 0.45);
+          ctx.lineTo(w * (legX + run * 0.18 * (i % 2 ? -1 : 1)), w * 1.2);
+          ctx.stroke();
+        });
+
+        ctx.fillStyle = "#111827";
+        ctx.beginPath();
+        ctx.arc(w * 1.36, -w * 0.3, Math.max(2, w * 0.1), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (id === "pumpkin_golem") {
+        ctx.fillStyle = "#57534e";
+        ctx.beginPath();
+        ctx.moveTo(-w * 1.2, w * 0.6);
+        ctx.lineTo(-w * 0.92, -w * 0.58);
+        ctx.lineTo(-w * 0.1, -w * 1.0);
+        ctx.lineTo(w * 0.9, -w * 0.55);
+        ctx.lineTo(w * 1.22, w * 0.62);
+        ctx.quadraticCurveTo(0, w * 1.05, -w * 1.2, w * 0.6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = "#92400e";
+        ctx.lineWidth = Math.max(4, w * 0.26);
+        ctx.beginPath();
+        ctx.moveTo(-w * 1.0, -w * 0.2);
+        ctx.lineTo(-w * 1.85, w * 0.5);
+        ctx.moveTo(w * 0.9, -w * 0.2);
+        ctx.lineTo(w * 1.85, w * 0.5);
+        ctx.stroke();
+
+        ctx.fillStyle = "#f97316";
+        ctx.strokeStyle = "#fed7aa";
+        ctx.lineWidth = Math.max(2, w * 0.11);
+        ctx.beginPath();
+        ctx.ellipse(w * 0.08, -w * 1.08, w * 0.82, w * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#111827";
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.22, -w * 1.1);
+        ctx.lineTo(-w * 0.02, -w * 0.95);
+        ctx.lineTo(-w * 0.24, -w * 0.84);
+        ctx.moveTo(w * 0.38, -w * 1.1);
+        ctx.lineTo(w * 0.14, -w * 0.95);
+        ctx.lineTo(w * 0.38, -w * 0.84);
+        ctx.fill();
+
+        ctx.strokeStyle = "#111827";
+        ctx.lineWidth = Math.max(2, w * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.14, -w * 0.62);
+        ctx.quadraticCurveTo(w * 0.1, -w * 0.48, w * 0.36, -w * 0.62);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#fb923c";
+        ctx.globalAlpha = 0.72;
+        ctx.beginPath();
+        ctx.ellipse(0, w * 0.86, w * (1.3 + pulse * 0.35), w * 0.28, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (id === "scarecrow_sentinel") {
+        ctx.strokeStyle = "#6f3f18";
+        ctx.lineWidth = Math.max(4, w * 0.16);
+        ctx.beginPath();
+        ctx.moveTo(0, -w * 1.62);
+        ctx.lineTo(0, w * 1.56);
+        ctx.moveTo(-w * 1.35, -w * 0.58);
+        ctx.lineTo(w * 1.35, -w * 0.58);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#d6a94f";
+        ctx.lineWidth = Math.max(2, w * 0.1);
+        [-1, 1].forEach(side => {
+          for (let i = 0; i < 4; i++) {
+            ctx.beginPath();
+            ctx.moveTo(side * w * 1.12, -w * 0.58);
+            ctx.lineTo(side * w * (1.42 + i * 0.12), -w * (0.92 - i * 0.16));
+            ctx.stroke();
+          }
+        });
+
+        ctx.fillStyle = "#8b3f24";
+        ctx.strokeStyle = "#d6a94f";
+        ctx.lineWidth = Math.max(2, w * 0.1);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.72, -w * 0.52);
+        ctx.quadraticCurveTo(0, -w * 1.02, w * 0.72, -w * 0.52);
+        ctx.lineTo(w * 0.44, w * 0.76);
+        ctx.quadraticCurveTo(0, w * 1.02, -w * 0.44, w * 0.76);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#374151";
+        ctx.strokeStyle = "#9ca3af";
+        ctx.lineWidth = Math.max(1.5, w * 0.07);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.34, -w * 0.30);
+        ctx.lineTo(w * 0.34, -w * 0.30);
+        ctx.lineTo(w * 0.44, w * 0.78);
+        ctx.lineTo(-w * 0.44, w * 0.78);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#b45309";
+        ctx.strokeStyle = "#fde68a";
+        ctx.beginPath();
+        ctx.ellipse(0, -w * 1.52, w * 0.54, w * 0.46, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#a16207";
+        ctx.beginPath();
+        ctx.ellipse(0, -w * 1.78, w * 1.18, w * 0.24, -0.04, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.54, -w * 1.80);
+        ctx.quadraticCurveTo(0, -w * 2.42, w * 0.58, -w * 1.80);
+        ctx.quadraticCurveTo(w * 0.22, -w * 1.62, -w * 0.54, -w * 1.80);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = "#111827";
+        ctx.lineWidth = Math.max(2, w * 0.1);
+        ctx.beginPath();
+        ctx.moveTo(-w * 0.22, -w * 1.58);
+        ctx.lineTo(-w * 0.04, -w * 1.46);
+        ctx.lineTo(-w * 0.24, -w * 1.36);
+        ctx.moveTo(w * 0.22, -w * 1.58);
+        ctx.lineTo(w * 0.04, -w * 1.46);
+        ctx.lineTo(w * 0.24, -w * 1.36);
+        ctx.moveTo(-w * 0.24, -w * 1.20);
+        ctx.quadraticCurveTo(0, -w * 1.05, w * 0.26, -w * 1.20);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#d97706";
+        ctx.lineWidth = Math.max(2, w * 0.08);
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.moveTo(w * 0.70, i * w * 0.18 - w * 0.08);
+          ctx.lineTo(w * 2.05, i * w * 0.08 - w * 0.08);
+          ctx.stroke();
+        }
+      } else if (id === "chestnut_boar") {
+        ctx.fillStyle = "#78350f";
+        ctx.beginPath();
+        ctx.ellipse(-w * 0.15, 0, w * 1.55, w * 0.72, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#92400e";
+        ctx.beginPath();
+        ctx.ellipse(w * 1.18, -w * 0.08, w * 0.72, w * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#451a03";
+        [-0.8, -0.28, 0.28].forEach(shellX => {
+          ctx.beginPath();
+          ctx.moveTo(w * shellX, -w * 0.62);
+          ctx.lineTo(w * (shellX + 0.28), -w * 1.18);
+          ctx.lineTo(w * (shellX + 0.56), -w * 0.48);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        ctx.fillStyle = "#fef3c7";
+        ctx.beginPath();
+        ctx.moveTo(w * 1.72, -w * 0.12);
+        ctx.lineTo(w * 2.35, -w * 0.42);
+        ctx.lineTo(w * 1.92, w * 0.12);
+        ctx.moveTo(w * 1.72, w * 0.18);
+        ctx.lineTo(w * 2.32, w * 0.54);
+        ctx.lineTo(w * 1.84, w * 0.38);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#111827";
+        ctx.beginPath();
+        ctx.arc(w * 1.34, -w * 0.24, Math.max(2, w * 0.1), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#fed7aa";
+        ctx.lineWidth = Math.max(2, w * 0.14);
+        [-0.9, -0.2, 0.55, 1.05].forEach((legX, i) => {
+          ctx.beginPath();
+          ctx.moveTo(w * legX, w * 0.52);
+          ctx.lineTo(w * (legX + run * 0.22 * (i % 2 ? -1 : 1)), w * 1.18);
+          ctx.stroke();
+        });
+      } else {
+        ctx.restore();
+        return false;
+      }
+
+      ctx.restore();
+      return true;
+    }
+
     function drawPreviewCreature(ctx, card, projectile) {
       const age = projectile.age || 0;
       const strideSeed = projectile.strideSeed || 0;
@@ -1124,6 +1854,11 @@ function renderStats() {
       grad.addColorStop(0.35, card.visualColor || "#67e8f9");
       grad.addColorStop(1, "rgba(2,6,23,0.96)");
       ctx.fillStyle = grad;
+
+      if (drawFallPreviewCreature(ctx, card, age, strideSeed, w, card.visualColor || "#f97316")) {
+        ctx.restore();
+        return;
+      }
 
       if (card.family === "Blacktide") {
         const blacktideKey = `${card.id || ""} ${card.name || ""}`.toLowerCase();
@@ -2149,7 +2884,10 @@ function renderStats() {
       const mountY = height * 0.5;
       const targetX = width - 44;
       const targetY = height * 0.5;
-      const isCrab = String(card.id || "").includes("crab");
+      const mountId = String(card.id || "").toLowerCase();
+      const isCrab = mountId.includes("crab");
+      const isCiderDrake = mountId.includes("cider_drake");
+      const isKingPumpkin = mountId.includes("king_pumpkin");
       const pulse = Math.sin(age * 5 + index) * 0.5 + 0.5;
 
       drawPreviewCardChip(ctx, card, 34, mountY);
@@ -2162,7 +2900,125 @@ function renderStats() {
       ctx.lineWidth = 3;
       ctx.strokeStyle = "rgba(236,253,245,.86)";
 
-      if (isCrab) {
+      if (isKingPumpkin) {
+        ctx.fillStyle = "#f97316";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 78, 50, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = "#fed7aa";
+        ctx.lineWidth = 2.5;
+        [-0.5, 0, 0.5].forEach(offset => {
+          ctx.beginPath();
+          ctx.ellipse(offset * 42, 0, 22, 48, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+
+        ctx.fillStyle = "#111827";
+        ctx.beginPath();
+        ctx.moveTo(-34, -12);
+        ctx.lineTo(-12, 0);
+        ctx.lineTo(-34, 12);
+        ctx.moveTo(34, -12);
+        ctx.lineTo(12, 0);
+        ctx.lineTo(34, 12);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.moveTo(-30, 22);
+        ctx.lineTo(-15, 34);
+        ctx.lineTo(0, 22);
+        ctx.lineTo(15, 34);
+        ctx.lineTo(32, 22);
+        ctx.lineTo(20, 42);
+        ctx.lineTo(-20, 42);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = "#65a30d";
+        ctx.lineWidth = 7;
+        [-1, 1].forEach(side => {
+          ctx.beginPath();
+          ctx.moveTo(side * 36, 18);
+          ctx.quadraticCurveTo(side * (82 + pulse * 16), -46, side * 124, -4);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(side * 22, 34);
+          ctx.quadraticCurveTo(side * (72 + pulse * 12), 68, side * 118, 34);
+          ctx.stroke();
+        });
+
+        ctx.strokeStyle = "#84cc16";
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(-12, -46);
+        ctx.quadraticCurveTo(-8, -72, 24, -66);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(254, 215, 170, 0.68)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-28, -10);
+        ctx.quadraticCurveTo(0, 0, 28, -10);
+        ctx.moveTo(-22, 6);
+        ctx.quadraticCurveTo(0, 14, 22, 6);
+        ctx.stroke();
+      } else if (isCiderDrake) {
+        ctx.fillStyle = "#9a3412";
+        ctx.beginPath();
+        ctx.ellipse(-8, 0, 78, 34, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#fb923c";
+        ctx.beginPath();
+        ctx.ellipse(72, -6, 26, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = "#f97316";
+        [-1, 1].forEach(side => {
+          ctx.beginPath();
+          ctx.moveTo(-16, -4);
+          ctx.quadraticCurveTo(side * 64, -64 - pulse * 8, side * 124, -22);
+          ctx.quadraticCurveTo(side * 54, -12, -16, 14);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        });
+
+        ctx.strokeStyle = "#facc15";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(78, -20);
+        ctx.lineTo(94, -44);
+        ctx.moveTo(68, -20);
+        ctx.lineTo(60, -44);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#fed7aa";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(-76, 4);
+        ctx.quadraticCurveTo(-128, 26, -146, -8);
+        ctx.stroke();
+
+        ctx.fillStyle = "#111827";
+        ctx.beginPath();
+        ctx.arc(82, -10, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(254, 215, 170, 0.68)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-30, -2);
+        ctx.quadraticCurveTo(0, 7, 30, -2);
+        ctx.moveTo(-24, 12);
+        ctx.quadraticCurveTo(0, 19, 24, 12);
+        ctx.stroke();
+      } else if (isCrab) {
         ctx.fillStyle = "#b45309";
         ctx.beginPath();
         ctx.ellipse(0, 0, 54, 34, 0, 0, Math.PI * 2);
@@ -2215,10 +3071,46 @@ function renderStats() {
       ctx.strokeStyle = color;
       ctx.lineWidth = isCrab ? 5 : 6;
       ctx.globalAlpha = 0.35 + pulse * 0.3;
-      ctx.beginPath();
-      ctx.moveTo(mountX + 62, mountY);
-      ctx.quadraticCurveTo(width * 0.62, mountY + (isCrab ? Math.sin(age * 8) * 18 : -30), targetX - 8, targetY);
-      ctx.stroke();
+
+      if (isKingPumpkin) {
+        [-1, 1].forEach(side => {
+          ctx.strokeStyle = "#65a30d";
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.moveTo(mountX + side * 48, mountY + 8);
+          ctx.quadraticCurveTo(width * 0.58, mountY + side * 42, targetX - 18, targetY + side * 12);
+          ctx.stroke();
+        });
+
+        const lob = (age * 0.55 + index * 0.13) % 1;
+        const px = mountX + 70 + (targetX - mountX - 92) * lob;
+        const py = mountY - Math.sin(lob * Math.PI) * 42;
+        ctx.fillStyle = "#f97316";
+        ctx.strokeStyle = "#fed7aa";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px, py, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (isCiderDrake) {
+        const grad = ctx.createLinearGradient(mountX + 60, mountY, targetX, targetY);
+        grad.addColorStop(0, "rgba(249,115,22,.62)");
+        grad.addColorStop(0.55, "rgba(250,204,21,.36)");
+        grad.addColorStop(1, "rgba(249,115,22,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(mountX + 70, mountY - 18);
+        ctx.lineTo(targetX - 8, targetY - 34);
+        ctx.lineTo(targetX - 8, targetY + 34);
+        ctx.lineTo(mountX + 70, mountY + 18);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(mountX + 62, mountY);
+        ctx.quadraticCurveTo(width * 0.62, mountY + (isCrab ? Math.sin(age * 8) * 18 : -30), targetX - 8, targetY);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -2313,8 +3205,10 @@ function renderStats() {
       const isOrbit = card.attackType === "OrbitUfo";
       const isCasinoOrbit = card.attackType === "CasinoOrbit";
       const isCrabMount = isMount && String(card.id || "").includes("crab");
-      const attackLabel = isSuit ? "Attached Suit" : isCrabMount ? "Mount + Claw Melee" : isMount ? "Mount + Skill" : isCasinoOrbit ? "Orbit + Lucky Shot" : isOrbit ? "Orbit Companion" : (card.attackType || "Projectile");
-      const particleLabel = isSuit ? "mecha host" : isCrabMount ? "close-range claw swing" : isMount ? `${card.mountKind || "mount"} body + skill` : isCasinoOrbit ? "orbit symbols + fired chip" : isOrbit ? "laser zap" : (card.particleType || "creature");
+      const isCiderDrakeMount = isMount && card.id === "amber_cider_drake";
+      const isKingPumpkinMount = isMount && card.id === "king_pumpkin";
+      const attackLabel = isSuit ? "Attached Suit" : isKingPumpkinMount ? "Mount + Vine Swing / Pumpkin Toss" : isCiderDrakeMount ? "Mount + Cider Breath" : isCrabMount ? "Mount + Claw Melee" : isMount ? "Mount + Skill" : isCasinoOrbit ? "Orbit + Lucky Shot" : isOrbit ? "Orbit Companion" : (card.attackType || "Projectile");
+      const particleLabel = isSuit ? "mecha host" : isKingPumpkinMount ? "vine tentacles + thrown pumpkin" : isCiderDrakeMount ? "warm breath cone" : isCrabMount ? "close-range claw swing" : isMount ? `${card.mountKind || "mount"} body + skill` : isCasinoOrbit ? "orbit symbols + fired chip" : isOrbit ? "laser zap" : (card.particleType || "creature");
       const previewLabel = isSuit ? "in-game suit ability preview" : isMount ? "in-game mount ability preview" : isCasinoOrbit || isOrbit ? "in-game orbit ability preview" : "in-game projectile preview";
 
       return `
@@ -2352,9 +3246,11 @@ function renderStats() {
         const isOrbit = card.attackType === "OrbitUfo";
         const isCasinoOrbit = card.attackType === "CasinoOrbit";
         const isCrabMount = isMount && String(card.id || "").includes("crab");
+        const isCiderDrakeMount = isMount && card.id === "amber_cider_drake";
+        const isKingPumpkinMount = isMount && card.id === "king_pumpkin";
         const isBroadside = !!card.broadsideVolley;
-        const previewNoun = isSuit ? "attached suit" : isCrabMount ? "mount melee" : isMount ? "mount skill" : isCasinoOrbit ? "casino orbit" : isOrbit ? "orbit companion" : isBroadside ? "broadside ship" : "projectile";
-        const attackName = isSuit ? "Slash / Blast / Rush" : isCrabMount ? "Claw Combo / Body Crush" : isMount ? "Mounted Skill" : isCasinoOrbit ? "Orbit Contact / Lucky Symbol Shot" : isOrbit ? "Orbit / Laser Zap" : isBroadside ? "Ship Charge / Cannon Volley" : (card.attackType || "Attack");
+        const previewNoun = isSuit ? "attached suit" : isKingPumpkinMount ? "pumpkin mount" : isCiderDrakeMount ? "dragon mount" : isCrabMount ? "mount melee" : isMount ? "mount skill" : isCasinoOrbit ? "casino orbit" : isOrbit ? "orbit companion" : isBroadside ? "broadside ship" : "projectile";
+        const attackName = isSuit ? "Slash / Blast / Rush" : isKingPumpkinMount ? "Vine Swing / Pumpkin Toss" : isCiderDrakeMount ? "Cider Breath Cone" : isCrabMount ? "Claw Combo / Body Crush" : isMount ? "Mounted Skill" : isCasinoOrbit ? "Orbit Contact / Lucky Symbol Shot" : isOrbit ? "Orbit / Laser Zap" : isBroadside ? "Ship Charge / Cannon Volley" : (card.attackType || "Attack");
         return `<article class="effect-card" style="--fx-color:${color}">
           ${projectilePreview(card, index)}
           <h3>${card.name}</h3>
@@ -2367,13 +3263,13 @@ function renderStats() {
 
     let activeFilter = "all";
     function renderControls() {
-      const filters = ["all","monster","magic","trap","Common","Uncommon","Rare","Epic","Legendary","Mythic","Hollow Rare","Super Ultra Rare","God Tier"];
+      const filters = ["all","monster","magic","trap","Fall Event","Common","Uncommon","Rare","Epic","Legendary","Mythic","Hollow Rare","Super Ultra Rare","God Tier"];
       document.getElementById("library-controls").innerHTML = filters.map(filter => `<button class="filter-btn ${activeFilter === filter ? "active" : ""}" type="button" data-filter="${filter}">${filter === "all" ? "All Cards" : filter === "monster" ? "Creatures" : filter}</button>`).join("");
       document.querySelectorAll(".filter-btn").forEach(btn => btn.addEventListener("click", () => { activeFilter = btn.dataset.filter; renderLibrary(); renderControls(); }));
     }
 
     function renderLibrary() {
-      const cards = CARD_POOL.filter(card => activeFilter === "all" || card.category === activeFilter || card.rarity === activeFilter).sort(cardSort);
+      const cards = CARD_POOL.filter(card => activeFilter === "all" || card.category === activeFilter || card.rarity === activeFilter || card.family === activeFilter || card.seasonalEvent === activeFilter).sort(cardSort);
       document.getElementById("library-grid").innerHTML = cards.map(card => makeCard(card, true)).join("");
     }
 
