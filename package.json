@@ -1,12 +1,13 @@
 {
   "name": "duel-survivor-server",
-  "version": "2.1.0",
+  "version": "2.3.0",
   "description": "Socket.IO multiplayer server for Duel Survivor",
   "main": "server.js",
 "scripts": {
   "verify": "node --check server.js",
   "build": "npm run verify",
-  "start": "node server.js"
+  "start": "node server.js",
+  "dev": "set NODE_ENV=development&& set RANKED_UPSTASH_FAIL_CLOSED=false&& node server.js"
 },
   "engines": {
     "node": ">=20"
